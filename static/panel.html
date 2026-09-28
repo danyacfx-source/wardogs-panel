@@ -1,0 +1,1311 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WARDOGS // Панель управления</title>
+<link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
+<link rel="stylesheet" href="/static/style.css?v=20260927-12" />
+</head>
+<body data-panel-mode="panel">
+<div id="app" v-cloak>
+<!-- WARDOGS_APP_TEMPLATE_START -->
+
+  <div v-if="booted && noAccess" class="app-wrap">
+    <div class="panel err-box" style="max-width:560px;margin:40px auto;">
+      <h2>Нет доступа к панели</h2>
+      <p>Нужно: <b>вход через Steam</b>, <b>привязка Discord</b> и <b>роль в Discord-гильдии с правами</b>.</p>
+      <template v-if="!state.me || !state.me.authed">
+        <p class="muted">Войдите через Steam.</p>
+        <button class="btn primary" @click="loginSteam">Войти через Steam</button>
+        <button v-if="devAuthEnabled" class="btn warn" @click="loginDev">Локальный dev-вход</button>
+      </template>
+      <template v-else-if="!state.me.discord.bound">
+        <p class="muted">Привяжите Discord-аккаунт.</p>
+        <button class="btn primary" @click="bindDiscord" :disabled="!authConfigured">Привязать Discord</button>
+      </template>
+      <template v-else>
+        <p class="muted">У ваших ролей нет прав в панели. Обратитесь к администратору.</p>
+        <button class="btn ghost" @click="refreshRoles">Обновить роли</button>
+      </template>
+      <p style="margin-top:16px;"><a href="/">← на главную (мониторинг)</a></p>
+    </div>
+  </div>
+
+  <!-- ======= ПАНЕЛЬ ======= -->
+  <div class="admin-shell" v-else-if="booted">
+    <aside class="admin-sidebar">
+      <a class="brand admin-brand" href="/"><span class="brand-mark">W</span> WARDOGS <small>CONTROL CENTER</small></a>
+      <div class="admin-search-wrap">
+        <div class="admin-search">
+          <input v-model="playerSearch" @keyup.enter="searchPlayers" placeholder="Игрок, SteamID…" aria-label="Поиск игрока" />
+          <kbd>↵</kbd>
+        </div>
+        <div v-if="playerSearchBusy" class="admin-search-results muted">Поиск…</div>
+        <div v-else-if="playerSearchResults.length" class="admin-search-results">
+          <button v-for="p in playerSearchResults" :key="p.steam_id" @click="openPlayerCard(p.steam_id)">
+            <b>{{ p.name }}</b><span>{{ p.steam_id }}</span>
+          </button>
+        </div>
+      </div>
+      <div class="admin-group-label">СЕРВЕРЫ</div>
+      <nav class="admin-nav">
+        <button v-for="t in tabs" :key="t.id" :class="['admin-nav-item', {active: state.tab === t.id}]" @click="state.tab = t.id">
+          <i :class="'nav-dot nav-' + t.id"></i>{{ t.label }}
+        </button>
+      </nav>
+      <div class="admin-group-label">ВЫБОР СЕРВЕРА</div>
+      <div class="admin-servers">
+        <button v-for="s in state.servers" :key="s.id" class="srv-tab"
+                :class="{ active: s.id === state.sid, offline: isOffline(s.id) }"
+                @click="selectServer(s.id)">
+          <span class="dot" :class="{ on: !isOffline(s.id) }"></span>
+          <span class="srv-name">{{ s.name }}</span>
+          <span class="srv-pop" v-if="plCount(s.id) !== null">{{ plCount(s.id) }}</span>
+        </button>
+      </div>
+      <div class="admin-user">
+        <span class="user-chip admin"><b>{{ (state.me && (state.me.persona || state.me.steam_id)) || '?' }}</b></span>
+        <div><a class="btn ghost small" href="/">На сайт</a><button class="btn ghost small" @click="logout">Выйти</button></div>
+      </div>
+    </aside>
+
+    <main class="content admin-content">
+
+      <header class="admin-page-head">
+        <div><div class="admin-path">— /admin/{{ state.tab === 'server' ? `servers/${state.sid}` : state.tab }}</div><h1>{{ state.tab === 'server' ? (state.servers.find(s => s.id === state.sid)?.name || 'Сервер') : (tabs.find(t => t.id === state.tab)?.label || 'Панель') }}</h1></div>
+        <div class="admin-head-actions"><span class="live-badge" :class="currentConnection.state" role="status"><i></i>{{ currentConnection.label }}</span><button class="btn ghost" @click="showOperations=!showOperations" :aria-expanded="showOperations">Действия · {{ operations.length }}</button><button class="btn ghost" @click="refreshAll(true); loadAttention()" :disabled="state.refreshing">Обновить</button></div>
+      </header>
+
+      <!-- последнее обновление -->
+      <div class="last-upd" v-if="lastUpdate">{{ lastUpdate }}</div>
+      <div class="connection-strip" aria-live="polite">
+        <span :class="panelReachable===false?'bad':'good'">● Панель: {{ panelReachable===null?'подключение':panelReachable?'на связи':'нет ответа' }}</span>
+        <span :class="currentConnection.state==='online'?'good':'bad'">● Сервер: {{ currentConnection.label.toLowerCase() }}</span>
+        <span v-if="currentConnection.age!==null">Данные: {{ currentConnection.age }} с назад</span>
+        <button v-if="has('roles')" class="mini-btn" @click="state.tab='discord'">Боты →</button>
+      </div>
+      <div v-if="currentConnection.state!=='online' && ov?.status" class="panel stale-notice" role="status">Показаны последние полученные данные. {{ currentConnection.detail }} Не повторяйте команды, пока не проверите их результат.</div>
+      <section v-if="showOperations" class="panel operation-log">
+        <div class="toolbar"><h2>Действия текущей сессии</h2><button class="mini-btn" @click="showOperations=false">Свернуть</button></div>
+        <p class="muted">Подтверждение API означает принятие операции. Состояние VIP проверяется отдельно в разделе синхронизации.</p>
+        <article v-for="op in operations" :key="op.id" :class="op.state"><div><b>{{ op.label }}</b><small>{{ op.server }} · {{ fmtDate(op.time) }}</small></div><span>{{ operationLabel(op.state) }}</span><small>{{ op.detail }}</small></article>
+        <div v-if="!operations.length" class="empty">Здесь появятся отправленные команды и результаты. Постоянная история доступна в аудите.</div>
+      </section>
+
+      <!-- ===== КАРТОЧКА СЕРВЕРА ===== -->
+      <section v-if="state.tab === 'server'" class="server-detail">
+        <div v-if="overview && overview.error" class="panel err-box"><b>Сервер недоступен.</b> {{ overview.error.message }}</div>
+        <template v-else-if="ov">
+          <div class="server-detail-hero">
+            <div class="server-badges">
+              <span class="server-pill" :class="{online:currentConnection.state==='online'}"><i></i>{{ currentConnection.label }}</span>
+              <span class="server-pill">{{ currentConnection.state==='online'?'RCON OK':'RCON: нет свежих данных' }}</span>
+              <span class="server-pill cyan">СИД {{ ov.status.players.current }}/{{ ov.status.players.max }}</span>
+              <span class="server-pill">{{ mapLabel(ov.status.map) }} · {{ modeLabel(ov.status.experiences) }} · {{ lightLabel(ov.status.lighting) }}</span>
+              <span class="server-pill mono" v-if="ov.server.server_id">ID {{ ov.server.server_id }}</span>
+            </div>
+            <div class="server-hero-actions">
+              <button v-if="has('broadcast')" class="btn ghost" @click="openBroadcast">📣 Бродкаст</button>
+              <button v-if="has('change_map')" class="btn primary" @click="state.tab='controls'">▧ Загрузить карту</button>
+              <button v-if="has('match_end')" class="btn danger" @click="endMatch">⚑ Завершить матч</button>
+            </div>
+          </div>
+
+          <nav class="server-detail-tabs" aria-label="Разделы сервера">
+            <button :class="{active:serverView==='overview'}" @click="serverView='overview'">Обзор</button>
+            <button v-if="has('players_view')" @click="state.tab='players'">Игроки <b>{{ ov.players?.count || 0 }}</b></button>
+            <button :class="{active:serverView==='commands'}" @click="serverView='commands'">Команды <b>10</b></button>
+            <button :class="{active:serverView==='analytics'}" @click="serverView='analytics'">Аналитика</button>
+            <button :class="{active:serverView==='rotation'}" @click="serverView='rotation'">Ротация</button>
+            <button v-if="has('config_view')" :class="{active:serverView==='server'}" @click="serverView='server'">Сервер</button>
+          </nav>
+
+          <template v-if="serverView === 'overview'">
+          <article class="panel server-match-card">
+            <header><b>Матч</b><span class="muted">опрос каждые {{ state.refresh }} с</span></header>
+            <div class="server-match-stats">
+              <div><span>ИГРОКОВ</span><b>{{ ov.status.players.current }}<small>/{{ ov.status.players.max }}</small></b></div>
+              <div><span>ВРЕМЯ МАТЧА</span><b>{{ fmtClock(ov.status.matchSeconds) }}</b></div>
+              <div><span>СЛЕДУЮЩАЯ КАРТА</span><b>{{ nextEntry ? `${mapLabel(nextEntry.map)} · ${modeLabel(nextEntry.experiences)}` : '—' }}</b></div>
+              <div><span>РОТАЦИЯ</span><b>{{ ov.rotation ? `${rotMode(ov.rotation)} · ${ov.rotation.entries?.length || 0}` : '—' }}</b></div>
+            </div>
+            <div class="server-faction-grid">
+              <div v-for="f in sortedFactions" :key="f.name" class="server-faction-card" :style="{'--team':f.colorHex}">
+                <strong>{{ f.name }}</strong><b>{{ f.score || 0 }}<small>/100</small></b>
+                <div class="bar"><div class="bar-fill" :style="{width:pctScore(f)+'%',background:f.colorHex}"></div></div>
+                <span>{{ factionPlayerCount(f.name) }} игроков</span>
+              </div>
+              <div v-if="!sortedFactions.length" class="muted">Сервер не передал данные фракций.</div>
+            </div>
+          </article>
+
+          <div class="server-detail-lower">
+            <article class="panel server-feed">
+              <header><h2>Сейчас на сервере</h2><span class="muted">обновлено {{ lastUpdate }}</span></header>
+              <button v-for="p in sortedPlayers.slice(0,8)" :key="p.steamId" class="server-feed-row" @click="openPlayerCard(p.steamId)">
+                <i></i><span><b>{{ p.name }}</b><small>{{ p.faction || 'Без фракции' }} · пинг {{ p.pingMs ?? '—' }} мс</small></span><time>K {{ p.kills || 0 }} · D {{ p.deaths || 0 }}</time>
+              </button>
+              <div v-if="!sortedPlayers.length" class="empty muted">Сервер пуст.</div>
+            </article>
+            <aside class="panel server-quick">
+              <h2>Быстрые команды</h2>
+              <button v-if="has('broadcast')" @click="openBroadcast"><i>📣</i><span><b>Бродкаст</b><small>Сообщение всем игрокам</small></span></button>
+              <button v-if="has('change_lighting')" @click="state.tab='controls'"><i>☼</i><span><b>Освещение</b><small>Сменить время суток</small></span></button>
+              <button v-if="has('change_map')" @click="state.tab='controls'"><i>▧</i><span><b>Загрузить карту</b><small>Карта, режим и освещение</small></span></button>
+              <button v-if="has('match_end')" @click="endMatch"><i>⚑</i><span><b>Завершить матч</b><small>Перейти к следующей карте</small></span></button>
+              <button v-if="has('match_restart')" @click="restartMatch"><i>↶</i><span><b>Перезапустить матч</b><small>Начать текущий матч заново</small></span></button>
+            </aside>
+          </div>
+          </template>
+
+          <template v-else-if="serverView === 'commands'">
+            <article class="panel command-section">
+              <header><h2>Сервер и матч</h2><p>Команды уходят на RCON API выбранного сервера и попадают в журнал.</p></header>
+              <div class="command-grid">
+                <button v-if="has('broadcast')" class="command-card" @click="openBroadcast"><strong>Бродкаст</strong><p>Сообщение всем игрокам на сервере.</p><code>POST /v1/broadcast</code><span>сразу</span></button>
+                <button v-if="has('change_lighting')" class="command-card cyan" @click="state.tab='controls'"><strong>Освещение</strong><p>Сменить время суток и погоду без остановки матча.</p><code>PUT /v1/world/lighting</code><span>сразу</span></button>
+                <button v-if="has('change_map')" class="command-card" @click="state.tab='controls'"><strong>Загрузить карту</strong><p>Карта, режим, освещение и зона — текущий матч прервётся.</p><code>POST /v1/match/map</code><span>с подтверждением</span></button>
+                <button v-if="has('match_end')" class="command-card" @click="endMatch"><strong>Завершить матч</strong><p>Подвести итог и перейти к следующей карте ротации.</p><code>POST /v1/match/end</code><span>с подтверждением</span></button>
+                <button v-if="has('match_restart')" class="command-card" @click="restartMatch"><strong>Перезапустить матч</strong><p>Счёт, время и покупки будут сброшены.</p><code>POST /v1/match/restart</code><span>с подтверждением</span></button>
+              </div>
+            </article>
+            <article class="panel command-section">
+              <header><h2>По игроку</h2><p>Сначала выберите игрока, затем подтвердите действие.</p></header>
+              <div class="command-grid">
+                <button v-if="has('message')" class="command-card" @click="openPlayerCommand('Предупредить')"><strong>Предупредить</strong><p>Отправить игроку личное сообщение.</p><code>POST /v1/players/{steamId}/message</code><span>по игроку</span></button>
+                <button v-if="has('kick')" class="command-card" @click="openPlayerCommand('Кикнуть')"><strong>Кикнуть</strong><p>Отключить игрока от сервера с причиной.</p><code>POST /v1/players/{steamId}/kick</code><span>по игроку</span></button>
+                <button v-if="has('move_faction')" class="command-card cyan" @click="openPlayerCommand('Сменить фракцию')"><strong>Сменить фракцию</strong><p>Перевести игрока в другую команду.</p><code>PATCH /v1/players/{steamId}</code><span>по игроку</span></button>
+                <button v-if="has('kill')" class="command-card" @click="openPlayerCommand('Убить')"><strong>Убить</strong><p>Игрок теряет купленное снаряжение и технику.</p><code>POST /v1/players/{steamId}/kill</code><span>с подтверждением · по игроку</span></button>
+                <button v-if="has('ban_add')" class="command-card" @click="state.tab='bans'"><strong>Забанить</strong><p>Бан по SteamID со сроком и причиной.</p><code>POST /v1/bans</code><span>с подтверждением · по игроку</span></button>
+                <button v-if="has('vip_edit')" class="command-card amber" @click="state.tab='vip'"><strong>VIP-слот</strong><p>Выдать слот со сроком или бессрочно.</p><code>POST /v1/reserved-slots</code><span>по игроку</span></button>
+              </div>
+            </article>
+          </template>
+
+          <template v-else-if="serverView === 'analytics'">
+            <article class="panel server-analytics">
+              <h2>Аналитика матча</h2>
+              <div class="analytics-metrics">
+                <div><span>УБИЙСТВ ЗА МАТЧ</span><b>{{ playerAnalytics.kills }}</b></div>
+                <div><span>СМЕРТЕЙ ЗА МАТЧ</span><b>{{ playerAnalytics.deaths }}</b></div>
+                <div><span>CASH НА СЕРВЕРЕ</span><b>${{ playerAnalytics.cash }}</b></div>
+                <div><span>СРЕДНИЙ / МАКС ПИНГ</span><b>{{ playerAnalytics.avgPing }} / {{ playerAnalytics.maxPing }} мс</b></div>
+              </div>
+              <div class="score-chart"><header><b>ГОНКА ОЧКОВ</b><span>текущее состояние матча</span></header><div class="chart-grid"><i v-for="n in 5" :key="n"></i><span v-for="f in sortedFactions" :key="f.name" :style="{left:pctScore(f)+'%',background:f.colorHex}" :title="`${f.name}: ${f.score}`"></span></div></div>
+              <div class="analytics-lower">
+                <div><h3>Баланс фракций</h3><table class="tbl"><thead><tr><th>Фракция</th><th>Игроков</th><th>K / D</th><th>Cash</th><th>Пинг</th></tr></thead><tbody><tr v-for="f in sortedFactions" :key="f.name"><td :style="{color:f.colorHex}"><b>{{ f.name }}</b></td><td>{{ factionAnalytics(f.name).players }}</td><td>{{ factionAnalytics(f.name).kills }} / {{ factionAnalytics(f.name).deaths }}</td><td>${{ factionAnalytics(f.name).cash }}</td><td>{{ factionAnalytics(f.name).ping }} мс</td></tr></tbody></table></div>
+                <div class="analytics-tops"><h3>Топы за сессию</h3><div v-for="(p,i) in topPlayers.slice(0,5)" :key="p.steamId"><b>{{ i+1 }} · {{ p.name }}</b><span>{{ p.kills || 0 }} / {{ p.deaths || 0 }} · ${{ p.cash || 0 }} · {{ p.pingMs || 0 }} мс</span></div><p v-if="!topPlayers.length" class="muted">Игроков пока нет.</p></div>
+              </div>
+            </article>
+          </template>
+
+          <template v-else-if="serverView === 'rotation'">
+            <article class="panel server-rotation-view">
+              <header><div><h2>Ротация карт</h2><span class="server-pill online">ротация включена</span><span class="server-pill">режим: {{ ov.rotation ? rotMode(ov.rotation) : '—' }}</span></div><div class="toolbar-actions"><button v-if="has('change_map')" class="btn ghost" @click="state.tab='controls'">Загрузить карту сейчас</button><button v-if="has('match_restart')" class="btn ghost" @click="restartMatch">Перезапустить матч</button><button class="btn primary" @click="state.tab='rotation'">Редактировать</button></div></header>
+              <div v-if="ov.rotation" class="server-rotation-list"><div v-for="(e,idx) in ov.rotation.entries" :key="e.index ?? idx" :class="['server-rotation-row',e.status||'']"><span>{{ idx+1 }}</span><div><b>{{ mapLabel(e.map) }}</b><small>{{ modeLabel(e.experiences) }} · {{ lightLabel(e.lighting) }}<template v-if="e.zoneAlternator"> · {{ e.zoneAlternator }}</template></small></div><em v-if="e.status">{{ e.status === 'current' ? 'сейчас' : 'следующая' }}</em><button v-if="has('change_map')" class="mini-btn" @click="prepareRotationMap(e)">Загрузить</button></div></div>
+              <div v-else class="empty muted">Сервер не передал ротацию.</div>
+            </article>
+          </template>
+
+          <template v-else-if="serverView === 'server'">
+            <article class="panel server-runtime">
+              <h2>Сервер</h2>
+              <div class="runtime-metrics"><div><span>ИМЯ В БРАУЗЕРЕ</span><b>{{ ov.status.serverName || ov.server.name }}</b></div><div><span>ЗАДЕРЖКА RCON</span><b>онлайн</b></div><div><span>ОПРОС</span><b>каждые {{ state.refresh }} с</b></div><div><span>СОСТОЯНИЕ</span><b>{{ ov.ok ? 'исправен' : 'ошибка' }}</b></div><div><span>АПТАЙМ СЕРВЕРА</span><b>{{ ov.health ? fmtDur(ov.health.uptimeSeconds) : '—' }}</b></div><div><span>БАНОВ</span><b>{{ ov.bans_count ?? 0 }}</b></div></div>
+              <h3>Маршруты API</h3><div class="route-cloud"><code v-for="route in serverApiRoutes" :key="route">{{ route }}</code></div>
+              <div class="runtime-lists"><div><h3>Резерв-слоты</h3><p class="muted">Управление списком доступно в разделе «Резервные слоты».</p><button class="btn ghost" @click="state.tab='reserved'">Открыть резерв</button></div><div><h3>Баны на сервере ({{ ov.bans_count ?? 0 }})</h3><p class="muted">Объединённая история и действия находятся в бан-листе.</p><button class="btn ghost" @click="state.tab='bans'">Открыть бан-лист</button></div><div><h3>Конфигурация</h3><p class="muted">ServerSettings.ini, проверка и применение ревизий.</p><button class="btn ghost" @click="state.tab='config'">Открыть конфиг</button></div></div>
+            </article>
+          </template>
+        </template>
+        <div v-else class="panel empty">Загрузка сервера…</div>
+      </section>
+
+      <!-- ===== СТАТУС ===== -->
+      <section v-if="state.tab === 'status'">
+        <div class="workbench-head"><div><h2>Рабочий стол</h2><p class="muted">Серверы и задачи, требующие внимания</p></div><button v-if="has('roles')" class="btn primary" @click="state.tab='discord'; startBotWizard()">+ Подключить бота</button></div>
+        <div class="attention-grid">
+          <button v-if="has('tickets_view') || has('tickets_edit')" @click="state.tab='tickets'" class="attention-card"><span>Открытые обращения</span><b>{{ overviewAttention.tickets ?? '—' }}</b><small>Перейти к тикетам →</small></button>
+          <button v-if="has('vip_view') || has('vip_edit')" @click="state.tab='vip'; vipFilter='all'" class="attention-card"><span>VIP истекают за 7 дней</span><b>{{ expiringVips.length }}</b><small>{{ overviewAttention.error || 'Проверить сроки →' }}</small></button>
+          <button v-if="has('vip_view') || has('vip_edit')" @click="state.tab='vip'; vipFilter='errors'" class="attention-card"><span>Ошибки выдачи VIP</span><b>{{ overviewAttention.vips.filter(v=>v.sync_state==='error').length }}</b><small>Повторить синхронизацию →</small></button>
+          <button @click="showOperations=true" class="attention-card"><span>Команды без подтверждения</span><b>{{ operations.filter(o=>['unknown','error'].includes(o.state)).length }}</b><small>Посмотреть результат →</small></button>
+        </div>
+        <div class="admin-server-grid">
+          <button v-for="s in state.servers" :key="'card-'+s.id" class="admin-server-card" @click="selectServer(s.id)" :class="{active:s.id===state.sid,offline:isOffline(s.id)}">
+            <div><strong>{{ s.name }}</strong><b>{{ plCount(s.id) || '—' }}</b></div>
+            <small v-if="state.ovById[s.id] && state.ovById[s.id].status">{{ mapLabel(state.ovById[s.id].status.map) }} · {{ modeLabel(state.ovById[s.id].status.experiences) }}</small>
+            <small v-else>Нет ответа</small>
+            <span><i :class="['dot',{on:!isOffline(s.id)}]"></i>{{ isOffline(s.id) ? 'не на связи' : 'на связи' }}</span>
+          </button>
+        </div>
+        <div v-if="overview && overview.error" class="panel err-box">
+          <b>Сервер недоступен.</b> {{ overview.error.message }} ({{ overview.error.code }})
+        </div>
+        <template v-else-if="ov">
+          <div class="cards">
+            <div class="card">
+              <div class="k">Сервер</div>
+              <div class="v big">{{ ov.status.serverName }}</div>
+              <div class="k">Карта</div>
+              <div class="v">{{ mapLabel(ov.status.map) }}</div>
+              <div class="k">Свет</div>
+              <div class="v">{{ lightLabel(ov.status.lighting) }}</div>
+              <div class="k">ID сервера</div>
+              <div class="v mono server-uuid" :title="ov.server.server_id || 'Сервер не передал ID'">{{ ov.server.server_id || 'недоступен' }}</div>
+            </div>
+            <div class="card">
+              <div class="k">Игроки</div>
+              <div class="v big">{{ ov.status.players.current }} / {{ ov.status.players.max }}</div>
+              <div class="bar"><div class="bar-fill" :style="{ width: pct(ov.status.players) + '%' }"></div></div>
+              <div class="k">{{ modeLabel(ov.status.experiences) }}</div>
+              <div class="v">{{ ov.server.build }}</div>
+            </div>
+            <div class="card">
+              <div class="k">Матч</div>
+              <div class="v big">{{ fmtClock(ov.status.matchSeconds) }}</div>
+              <div v-if="ov.health" class="k">Uptime сервера</div>
+              <div v-if="ov.health" class="v">{{ fmtDur(ov.health.uptimeSeconds) }}</div>
+            </div>
+            <div class="card">
+              <div class="k">Ротация</div>
+              <div class="v" v-if="ov.rotation">{{ rotMode(ov.rotation) }} ·
+                <span v-if="ov.status.rotation">сейчас #{{ ov.status.rotation.nowIndex ?? '—' }} → #{{ ov.status.rotation.nextIndex ?? '—' }}</span>
+              </div>
+              <div class="k">Следующая карта</div>
+              <div class="v" v-if="nextEntry">{{ mapLabel(nextEntry.map) }}</div>
+              <div v-if="ov.server.connect_url" class="k"><a :href="ov.server.connect_url" target="_blank" rel="noopener">Подключиться ▶</a></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>Счёт фракций</h2>
+            <div class="factions">
+              <div v-for="f in sortedFactions" :key="f.name" class="faction-row">
+                <span class="faction-dot" :style="{ background: f.colorHex }"></span>
+                <span class="faction-name">{{ f.name }}</span>
+                <div class="bar"><div class="bar-fill" :style="{ width: pctScore(f) + '%', background: f.colorHex }"></div></div>
+                <span class="faction-score">{{ f.score }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>Ротация карт</h2>
+            <div class="rot-list" v-if="ov.rotation">
+              <div v-for="(e, idx) in ov.rotation.entries" :key="e.index ?? idx"
+                   class="rot-entry" :class="[e.status ? e.status : '']">
+                <span class="rot-idx">{{ e.status ?? idx }}</span>
+                <b>{{ mapLabel(e.map) }}</b>
+                <span class="muted">{{ e.experiences.join(', ') }} · {{ lightLabel(e.lighting) }}</span>
+              </div>
+            </div>
+            <div class="muted" v-else>Ротация не отдана сервером.</div>
+          </div>
+        </template>
+        <div v-else class="panel empty">Загрузка…</div>
+      </section>
+
+      <!-- ===== РОТАЦИЯ ===== -->
+      <section v-if="state.tab === 'rotation'">
+        <div v-if="ov && ov.error" class="panel err-box"><b>Сервер недоступен.</b> {{ ov.error.message }}</div>
+        <template v-else-if="ov && ov.rotation">
+          <div class="panel rotation-panel-head">
+            <div>
+              <div class="k">Текущая ротация</div>
+              <h2>{{ rotMode(ov.rotation) }}</h2>
+              <div class="muted">
+                Сейчас #{{ ov.status.rotation?.nowIndex ?? '—' }}
+                <span v-if="ov.status.rotation"> · следующая #{{ ov.status.rotation.nextIndex ?? '—' }}</span>
+              </div>
+            </div>
+            <div class="rotation-current-next">
+              <div><span>Сейчас</span><b>{{ mapLabel(ov.status.map) }}</b></div>
+              <div><span>Следующая</span><b>{{ nextEntry ? mapLabel(nextEntry.map) : '—' }}</b></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="toolbar">
+              <h2>Карты в ротации</h2>
+              <div class="toolbar-actions">
+                <button v-if="has('change_map') && !rotationEdit" class="btn primary" @click="startRotationEdit">Редактировать</button>
+                <button v-if="!rotationEdit" class="btn ghost" @click="refreshAll(true)" :disabled="state.refreshing">Обновить</button>
+                <template v-else>
+                  <button class="btn ghost" @click="cancelRotationEdit" :disabled="rotationSaving">Отмена</button>
+                  <button class="btn primary" @click="saveRotation" :disabled="rotationSaving">Сохранить</button>
+                </template>
+              </div>
+            </div>
+            <div v-if="!rotationEdit" class="rotation-list">
+              <div v-for="(e, idx) in (ov.rotation.entries || [])" :key="e.index ?? idx"
+                   class="rotation-row" :class="[e.status || '', {current: e.status === 'current', next: e.status === 'next'}]">
+                <div class="rotation-number">{{ e.status === 'current' ? 'СЕЙЧАС' : (e.status === 'next' ? 'ДАЛЕЕ' : `#${e.index ?? idx}`) }}</div>
+                <div class="rotation-map">
+                  <b>{{ mapLabel(e.map) }}</b>
+                  <span>{{ modeLabel(e.experiences) || 'Режим по умолчанию' }} · {{ lightLabel(e.lighting) }}</span>
+                </div>
+                <button v-if="has('change_map')" class="btn ghost small" @click="prepareRotationMap(e)">Выбрать</button>
+              </div>
+            </div>
+            <div v-else class="rotation-editor">
+              <div class="rotation-edit-warning">Изменения отправляются на RCON-сервер. Если upstream не поддерживает запись <span class="mono">PUT /v1/rotation</span>, сервер вернёт ошибку, а текущая ротация останется без изменений.</div>
+              <div v-for="(entry, idx) in rotationDraft" :key="idx" class="rotation-edit-row">
+                <div class="rotation-edit-index">#{{ idx + 1 }}</div>
+                <div class="rotation-edit-fields">
+                  <label>Карта
+                    <select v-if="Object.keys(catalog.maps || {}).length" v-model="entry.map">
+                      <option v-for="(map, key) in catalog.maps" :key="key" :value="key">{{ map.display || key }}</option>
+                    </select>
+                    <input v-else v-model.trim="entry.map" placeholder="ID карты">
+                  </label>
+                  <label>Режимы через запятую
+                    <input v-model="entry.experiencesText" placeholder="например: Conquest, Skirmish">
+                  </label>
+                  <label>Освещение
+                    <select v-if="catalog.lightings.length" v-model="entry.lighting">
+                      <option value="">— по умолчанию —</option>
+                      <option v-for="lighting in catalog.lightings" :key="lighting" :value="lighting">{{ lightLabel(lighting) }}</option>
+                    </select>
+                    <input v-else v-model.trim="entry.lighting" placeholder="ID освещения">
+                  </label>
+                  <label>Альтернатор зоны
+                    <select v-if="catalog.maps[entry.map] && catalog.maps[entry.map].alternators?.length" v-model="entry.zoneAlternator">
+                      <option value="">— по умолчанию —</option>
+                      <option v-for="alternator in catalog.maps[entry.map].alternators" :key="alternator.tag" :value="alternator.tag">{{ alternator.display }}</option>
+                    </select>
+                    <input v-else v-model.trim="entry.zoneAlternator" placeholder="не задан">
+                  </label>
+                </div>
+                <div class="rotation-edit-actions">
+                  <button class="mini-btn" @click="moveRotationEntry(idx, -1)" :disabled="idx === 0">↑</button>
+                  <button class="mini-btn" @click="moveRotationEntry(idx, 1)" :disabled="idx === rotationDraft.length - 1">↓</button>
+                  <button class="mini-btn danger" @click="removeRotationEntry(idx)">Удалить</button>
+                </div>
+              </div>
+              <button class="btn ghost" @click="addRotationEntry">+ Добавить карту</button>
+            </div>
+          </div>
+        </template>
+        <div v-else-if="ov" class="panel empty">Ротация не отдана сервером.</div>
+        <div v-else class="panel empty">Загрузка…</div>
+      </section>
+
+      <!-- ===== ИГРОКИ ===== -->
+      <section v-if="state.tab === 'players'">
+        <div v-if="ov && ov.error" class="panel err-box"><b>Сервер недоступен.</b> {{ ov.error.message }}</div>
+        <template v-else-if="ov">
+          <div class="panel">
+            <div class="toolbar">
+              <h2>Игроки на сервере — {{ ov.players ? ov.players.count : 0 }}</h2>
+              <div class="toolbar-actions">
+                <input class="players-filter" v-model="playersTableQuery" type="search" placeholder="Поиск игрока…" aria-label="Фильтр игроков">
+                <select class="players-sort" v-model="playersTableSort" aria-label="Сортировка игроков">
+                  <option value="kills">По убийствам</option>
+                  <option value="deaths">По смертям</option>
+                  <option value="kd">По K/D</option>
+                  <option value="name">По имени</option>
+                  <option value="ping">По пингу</option>
+                </select>
+                <button v-if="has('broadcast')" class="btn primary" @click="openBroadcast">📢 Объявление</button>
+              </div>
+            </div>
+            <div class="table-scroll">
+              <table class="tbl">
+                <thead>
+                  <tr>
+                    <th>#</th><th>Игрок</th><th>Команда</th><th class="num">K</th>
+                    <th class="num">D</th><th class="num">KD</th><th class="num">Касса</th>
+                    <th class="num">Пинг</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(p, i) in pagedPlayers" :key="p.steamId">
+                    <td>{{ (playersTablePage - 1) * playersTablePageSize + i + 1 }}</td>
+                    <td>
+                      <button class="player-name-link" @click="openPlayerCard(p, p)">
+                        <b>{{ p.name }}</b>
+                      </button>
+                      <div class="muted steam">[{{ shortSid(p.steamId) }}]</div>
+                    </td>
+                    <td>
+                      <details v-if="has('move_faction')" class="faction-picker">
+                        <summary><i :style="{background:factionColor(p.faction)}"></i>{{ p.faction || 'Без команды' }}<span>⌄</span></summary>
+                        <div class="faction-picker-menu">
+                          <button v-for="f in ov.status.factionScores || []" :key="f.name" type="button"
+                                  :class="{active:f.name === p.faction}" :disabled="f.name === p.faction"
+                                  @click="chooseFaction(p, f.name, $event)"><i :style="{background:f.colorHex}"></i><span>{{ f.name }}</span><b v-if="f.name === p.faction">✓</b></button>
+                        </div>
+                      </details>
+                      <span v-else>{{ p.faction }}</span>
+                    </td>
+                    <td class="num">{{ p.kills }}</td>
+                    <td class="num">{{ p.deaths }}</td>
+                    <td class="num">{{ kd(p) }}</td>
+                    <td class="num">{{ p.cash }}</td>
+                    <td class="num">{{ p.pingMs }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-if="ov.players && ov.players.players.length && !sortedPlayers.length" class="muted">По фильтру игроки не найдены.</div>
+            <div v-else-if="!ov.players || !ov.players.players.length" class="muted">Сервер пуст.</div>
+            <div v-if="playersTablePages > 1" class="players-pagination">
+              <button class="mini-btn" @click="setPlayersTablePage(playersTablePage - 1)" :disabled="playersTablePage === 1">←</button>
+              <span class="muted">Страница {{ playersTablePage }} из {{ playersTablePages }}</span>
+              <button class="mini-btn" @click="setPlayersTablePage(playersTablePage + 1)" :disabled="playersTablePage === playersTablePages">→</button>
+            </div>
+          </div>
+        </template>
+        <div v-else class="panel empty">Загрузка…</div>
+      </section>
+
+      <!-- ===== КАРТА/МАТЧ ===== -->
+      <section v-if="state.tab === 'controls'">
+        <template v-if="ov && ov.error"><div class="panel err-box"><b>Сервер недоступен.</b> {{ ov.error.message }}</div></template>
+        <template v-else-if="ov">
+          <div class="grid2">
+            <div v-if="has('change_map')" class="panel">
+              <h2>Смена карты / режима</h2>
+              <label>Карта</label>
+              <select v-model="form.map">
+                <option v-for="(m, key) in catalog.maps" :key="key" :value="key">{{ m.display }} <template v-if="ruName(key)">({{ ruName(key) }})</template></option>
+              </select>
+              <label>Режим (опционально, можно несколько)</label>
+              <div class="chips" v-if="catalog.maps && catalog.maps[form.map]">
+                <label v-for="ex in catalog.maps[form.map].experiences" :key="ex" class="chip">
+                  <input type="checkbox" :value="ex" v-model="form.experiences" /> {{ ex }}
+                </label>
+              </div>
+              <label>Свет</label>
+              <select v-model="form.lighting">
+                <option value="">— текущий —</option>
+                <option v-for="l in catalog.lightings" :key="l" :value="l">{{ lightLabel(l) }}</option>
+              </select>
+              <label>Альтернатор зоны</label>
+              <select v-model="form.zoneAlternator">
+                <option value="">— по умолчанию —</option>
+                <option v-for="a in (catalog.maps[form.map] || {}).alternators" :key="a.tag" :value="a.tag">{{ a.display }}</option>
+              </select>
+              <div class="actions">
+                <button class="btn primary" @click="changeMap" :disabled="busy">Сменить карту</button>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h2>Матч</h2>
+              <div class="kv"><span>Сейчас:</span><b>{{ mapLabel(ov.status.map) }}</b></div>
+              <div class="kv"><span>Свет:</span><b>{{ lightLabel(ov.status.lighting) }}</b></div>
+              <div class="kv"><span>Время матча:</span><b>{{ fmtClock(ov.status.matchSeconds) }}</b></div>
+              <template v-if="has('change_lighting')">
+                <label>Сменить свет без смены карты</label>
+                <div class="chips">
+                  <button v-for="l in catalog.lightings" :key="l" class="btn ghost small"
+                          :class="{ active: l === ov.status.lighting }" @click="changeLighting(l)" :disabled="busy || l === ov.status.lighting">{{ lightLabel(l) }}</button>
+                </div>
+              </template>
+              <div class="actions">
+                <button v-if="has('match_end')" class="btn success" @click="endMatch" :disabled="busy">Завершить матч</button>
+                <button v-if="has('match_restart')" class="btn danger" @click="restartMatch" :disabled="busy">Перезапустить матч</button>
+              </div>
+            </div>
+          </div>
+        </template>
+        <div v-else class="panel empty">Загрузка…</div>
+      </section>
+
+      <!-- ===== БАНЫ ===== -->
+      <section v-if="state.tab === 'bans'">
+        <div class="panel">
+          <div class="toolbar bans-head">
+            <h2>Баны — {{ ov && ov.bans_count != null ? ov.bans_count : (ov && ov.bans ? ov.bans.count : 0) }}</h2>
+            <div class="toolbar-actions">
+              <a v-if="state.sid && has('ban_view')" class="btn ghost" :href="`/api/server/${state.sid}/bans/export`" download>Экспорт CSV</a>
+              <button v-if="has('ban_remove')" class="btn danger" @click="bulkUnban" :disabled="!selectedBansCount">Снять выбранные · {{ selectedBansCount }}</button>
+              <button class="btn ghost" @click="refreshBans" :disabled="state.refreshing">Обновить</button>
+              <button v-if="has('ban_add')" class="btn primary" @click="openAddBan">+ Добавить бан</button>
+            </div>
+          </div>
+          <div class="bans-toolbar">
+            <input v-model="bansQuery" type="search" placeholder="SteamID, причина или администратор…" aria-label="Поиск по бан-листу">
+            <select v-model="bansSort" aria-label="Сортировка бан-листа">
+              <option value="newest">Сначала новые</option>
+              <option value="oldest">Сначала старые</option>
+              <option value="steam">По SteamID</option>
+              <option value="reason">По причине</option>
+              <option value="expiry">По окончанию</option>
+            </select>
+            <span class="muted">Найдено: {{ filteredBans.length }}</span>
+          </div>
+          <div class="table-scroll">
+            <table class="tbl">
+              <thead><tr><th v-if="has('ban_remove')">✓</th><th>Steam64 / игрок</th><th>Причина</th><th>Срок</th><th>Кем</th><th>Когда</th><th v-if="has('ban_remove')"></th></tr></thead>
+              <tbody v-if="ov && ov.bans">
+                <tr v-for="b in pagedBans" :key="b.steamId">
+                  <td v-if="has('ban_remove')"><input type="checkbox" :checked="banSelected.includes(b.steamId)" @change="toggleBanSelected(b.steamId)" :aria-label="`Выбрать бан ${b.steamId}`"></td>
+                  <td>
+                    <div class="ban-steam">
+                      <button class="ticket-player-link mono" type="button" @click="openPlayerCard(b.steamId)">{{ b.steamId }}</button>
+                      <button class="copy-icon" type="button" title="Скопировать SteamID64" @click="copyText(b.steamId, 'SteamID64')">⧉</button>
+                    </div>
+                    <small v-if="b.displayName" class="muted">{{ b.displayName }}</small>
+                  </td>
+                  <td class="ban-reason" :title="b.reason || ''">{{ b.reason || '—' }}</td>
+                  <td>
+                    <span v-if="b.managed" class="badge" :class="{warn: b.syncState === 'error'}">
+                      {{ b.expiresUtc ? fmtDate(b.expiresUtc * 1000) : 'навсегда' }}
+                    </span>
+                    <span v-else class="muted">неизвестно</span>
+                  </td>
+                  <td>{{ b.bannedBy || '—' }}</td>
+                  <td>{{ fmtDate(b.bannedAtUtc) }}</td>
+                  <td v-if="has('ban_remove')"><button v-if="has('ban_add') && b.managed" class="mini-btn" @click="editBan(b)">Изменить</button> <button class="mini-btn danger" @click="unban(b)">Снять</button></td>
+                </tr>
+                <tr v-if="!(ov.bans.bans || []).length"><td :colspan="has('ban_remove') ? 6 : 5" class="muted">Бан-лист пуст.</td></tr>
+                <tr v-else-if="!filteredBans.length"><td :colspan="has('ban_remove') ? 6 : 5" class="muted">По фильтру ничего не найдено.</td></tr>
+              </tbody>
+              <tbody v-else><tr><td :colspan="has('ban_remove') ? 6 : 5" class="muted">Загрузка…</td></tr></tbody>
+            </table>
+          </div>
+          <div v-if="bansPages > 1" class="players-pagination">
+            <button class="mini-btn" @click="setBansPage(bansPage - 1)" :disabled="bansPage === 1">←</button>
+            <span class="muted">Страница {{ bansPage }} из {{ bansPages }}</span>
+            <button class="mini-btn" @click="setBansPage(bansPage + 1)" :disabled="bansPage === bansPages">→</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== РЕЗЕРВНЫЕ СЛОТЫ ===== -->
+      <section v-if="state.tab === 'reserved'">
+        <div class="panel">
+          <div class="toolbar"><h2>Резервные слоты — {{ reserved.count }}</h2><button class="btn ghost" @click="loadReserved">Обновить</button></div>
+          <div v-if="has('reserved_edit')" class="reserve-limit">
+            <div><strong>Количество резервных мест</strong><div class="muted">Применяется сразу, без перезапуска сервера. Максимум игроков: {{ reserved.max_players ?? '—' }}.</div></div>
+            <input type="number" v-model.number="reservedLimit" min="0" :max="reserved.max_players || 100" :disabled="!reserved.limit_supported">
+            <button class="btn primary" @click="saveReservedLimit" :disabled="!reserved.limit_supported">Применить</button>
+          </div>
+          <div v-if="has('reserved_edit') && !reserved.limit_supported" class="warn-strip reserve-warning">Этот сервер не поддерживает живое изменение количества резервных мест.</div>
+          <h3 class="reserve-subtitle">Игроки с доступом к резерву</h3>
+          <div v-if="has('reserved_edit')" class="reserve-add">
+            <input type="text" v-model="reservedSteamId" maxlength="17" placeholder="SteamID64 — 17 цифр" @keyup.enter="addReserved">
+            <button class="btn primary" @click="addReserved" :disabled="!reserved.add_supported">Добавить</button>
+          </div>
+          <div v-if="has('reserved_edit') && reserved.player_list_live_via_config" class="info-strip reserve-warning">SteamID применяется через <span class="mono">DefaultReservedPlayerIds</span> сразу, без перезапуска сервера.</div>
+          <div v-else-if="has('reserved_edit') && !reserved.add_supported" class="warn-strip reserve-warning">Этот сервер не поддерживает изменение списка резервных игроков.</div>
+          <div class="reserve-list" v-if="reserved.slots.length">
+            <div v-for="id in reserved.slots" :key="id" class="reserve-row"><span class="mono">{{ id }}</span><span class="badge success">резерв</span><button v-if="has('reserved_edit')" class="mini-btn danger" @click="removeReserved(id)" :disabled="!reserved.remove_supported">Снять</button></div>
+          </div>
+          <div v-else-if="reserved.loaded" class="empty">Список резервных игроков пуст.</div>
+        </div>
+      </section>
+
+      <!-- ===== VIP-СЛОТЫ ===== -->
+      <section v-if="state.tab === 'vip'">
+        <div class="panel payment-center">
+          <div class="toolbar"><div><h2>VIP и платежи</h2><p class="muted">Donatty ещё не подключён. Заявки сохраняются без списания денег и автоматической выдачи VIP.</p></div><button v-if="has('vip_edit')" class="btn primary" @click="createVipOrder" :disabled="!payments.plans.length">+ Заявка VIP</button></div>
+          <div class="plan-grid"><article v-for="plan in payments.plans" :key="plan.id"><b>{{ plan.name }}</b><strong>{{ plan.amount.toLocaleString('ru-RU') }} ₽</strong><small>{{ plan.seats }} мест · {{ plan.months }} мес.</small></article></div>
+          <div v-if="payments.error" class="err-box">{{ payments.error }} <button class="mini-btn" @click="loadPayments">Повторить</button></div>
+          <details><summary>Заявки и коды оплаты · {{ payments.items.length }}</summary>
+            <div class="table-scroll"><table class="tbl"><thead><tr><th>Код</th><th>Покупатель</th><th>Тариф / сервер</th><th>Состав</th><th>Состояние</th><th></th></tr></thead><tbody><tr v-for="order in payments.items" :key="order.id"><td class="mono">{{ order.id }}</td><td><button class="ticket-player-link" @click="openPlayerCard(order.buyer_steam_id)">{{ order.buyer_steam_id }}</button></td><td>{{ payments.plans.find(p=>p.id===order.plan_id)?.name }}<small>{{ order.server_id }} · {{ order.amount }} ₽</small></td><td :title="order.recipients.join(', ')">{{ order.recipients.length }}/{{ order.seats }}</td><td>{{ order.status==='cancelled'?'Отменена':'Ожидает оплаты' }}</td><td><button v-if="has('vip_edit') && order.status==='awaiting_payment'" class="mini-btn" @click="cancelVipOrder(order)">Отменить</button></td></tr></tbody></table></div>
+            <p v-if="!payments.items.length" class="empty">Заявок пока нет. Код будет создан автоматически.</p>
+          </details>
+        </div>
+        <header class="staff-page-head">
+          <div>
+            <div class="admin-path">— /admin/vip</div>
+            <h2>VIP-слоты</h2>
+            <p>Срочный доступ к резерву выбранного сервера. Выдача и истечение синхронизируются автоматически.</p>
+          </div>
+          <button v-if="has('vip_edit')" class="btn primary" @click="saveVipSlot()">+ Выдать VIP</button>
+        </header>
+        <div class="panel vip-toolbar">
+          <input v-model="vipQuery" type="search" placeholder="Ник, SteamID или заметка…" aria-label="Поиск VIP">
+          <select v-model="vipFilter" aria-label="Фильтр VIP">
+            <option value="active">Активные</option>
+            <option value="all">Все</option>
+            <option value="expired">Истёкшие</option>
+            <option value="errors">Ошибки синхронизации</option>
+          </select>
+          <button class="btn ghost" @click="loadVipSlots" :disabled="vip.loading">Обновить</button>
+          <span class="muted">{{ filteredVips.length }} из {{ vip.count }}</span>
+        </div>
+        <div v-if="vip.loading && !vip.items.length" class="panel empty">Загрузка VIP-слотов…</div>
+        <div v-else-if="vip.error" class="panel err-box">{{ vip.error }}</div>
+        <div v-else-if="filteredVips.length" class="vip-grid">
+          <article v-for="item in filteredVips" :key="item.id" class="vip-card" :class="{expired: !item.active, error: item.sync_state === 'error'}">
+            <header>
+              <div>
+                <h3><button class="ticket-player-link" @click="openPlayerCard(item.steam_id)">{{ item.display_name || 'Игрок' }}</button></h3>
+                <a v-if="steamProfileUrl(item.steam_id)" :href="steamProfileUrl(item.steam_id)" target="_blank" rel="noopener noreferrer" class="mono">{{ item.steam_id }} ↗</a>
+                <span v-else class="mono">{{ item.steam_id }}</span>
+              </div>
+              <span class="vip-status" :class="item.sync_state">{{ vipStateLabel(item) }}</span>
+            </header>
+            <div class="vip-meta">
+              <div><span>Срок</span><b>{{ item.expires_utc ? fmtDate(item.expires_utc * 1000) : 'Бессрочно' }}</b></div>
+              <div><span>Синхронизация</span><b>{{ item.synced_utc ? fmtDate(item.synced_utc * 1000) : 'ещё не выполнялась' }}</b></div>
+            </div>
+            <p>{{ item.note || 'Заметка не добавлена.' }}</p>
+            <div v-if="item.sync_error" class="vip-sync-error">{{ item.sync_error }}</div>
+            <footer v-if="has('vip_edit')">
+              <button class="mini-btn" @click="saveVipSlot(item)">Изменить</button>
+              <button v-if="item.expires_utc" class="mini-btn" @click="extendVip(item)">Продлить</button>
+              <button v-if="item.sync_state !== 'synced' || !item.active" class="mini-btn warn" @click="syncVipSlot(item)">Повторить синхронизацию</button>
+              <button class="mini-btn danger" @click="deleteVipSlot(item)">Отозвать</button>
+            </footer>
+          </article>
+        </div>
+        <div v-else class="panel empty">{{ vip.items.length ? 'По текущему фильтру записей нет.' : 'VIP-слоты ещё не выдавались.' }}</div>
+        <div class="panel" v-if="vip.history.length"><h2>Журнал изменений VIP</h2><div class="table-scroll"><table class="tbl"><thead><tr><th>Время</th><th>Кто</th><th>Событие</th><th>Детали</th></tr></thead><tbody><tr v-for="item in vip.history" :key="`${item.timestamp_utc}-${item.event}`"><td>{{ fmtDate(item.timestamp_utc * 1000) }}</td><td class="mono">{{ item.actor_steam_id || 'система' }}</td><td>{{ item.event }}</td><td class="mono">{{ item.detail }}</td></tr></tbody></table></div></div>
+      </section>
+
+      <!-- ===== АУДИТ ===== -->
+      <section v-if="state.tab === 'audit'">
+        <div class="panel">
+          <div class="toolbar">
+            <h2>Аудит действий админов</h2>
+            <div><a class="btn ghost small" href="/api/audit/export" download>Скачать CSV</a><label>Строк: <select v-model="auditLimit" @change="loadAudit"><option v-for="n in [20,50,100,200]" :key="n" :value="n">{{ n }}</option></select></label></div>
+          </div>
+          <div class="table-scroll">
+            <table class="tbl">
+              <thead><tr><th>Время</th><th>Событие</th><th>Peer</th><th>Детали</th></tr></thead>
+              <tbody>
+                <tr v-for="(e, i) in audit" :key="i">
+                  <td class="mono">{{ fmtDate(e.timestampUtc) }}</td>
+                  <td><span class="evt">{{ e.event }}</span></td>
+                  <td class="mono">{{ e.peer || '—' }}</td>
+                  <td class="mono">{{ e.detail || '' }}</td>
+                </tr>
+                <tr v-if="!audit.length"><td colspan="4" class="muted">История пуста.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="panel audit-local">
+            <h2>Аудит сайта</h2>
+            <div class="table-scroll"><table class="tbl"><thead><tr><th>Время</th><th>Кто</th><th>Сервер</th><th>Событие</th><th>Детали</th></tr></thead><tbody>
+              <tr v-for="(e, i) in siteAudit" :key="i"><td>{{ fmtDate(e.timestamp_utc * 1000) }}</td><td class="mono">{{ e.actor_steam_id || 'система' }}</td><td>{{ e.server_id || '—' }}</td><td>{{ e.event }}</td><td class="mono">{{ e.detail }}</td></tr>
+              <tr v-if="!siteAudit.length"><td colspan="5" class="muted">Локальных действий пока нет.</td></tr>
+            </tbody></table></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== КЛАНЫ ===== -->
+      <section v-if="state.tab === 'clans'">
+        <header class="staff-page-head">
+          <div>
+            <div class="admin-path">— /admin/clans</div>
+            <h2>Кланы</h2>
+            <p>Локальный справочник кланов и привязка игроков. Данные не зависят от доступности игрового сервера.</p>
+          </div>
+          <button class="btn primary" @click="createClan">+ Создать клан</button>
+        </header>
+        <div class="panel clan-toolbar">
+          <input v-model="clanQuery" type="search" placeholder="Название, тег или описание…" aria-label="Поиск кланов">
+          <button class="btn ghost" @click="loadClans(true)" :disabled="clans.loading">Обновить</button>
+          <span class="muted">{{ filteredClans.length }} из {{ clans.items.length }}</span>
+        </div>
+        <div v-if="clans.loading && !clans.items.length" class="panel empty">Загрузка кланов…</div>
+        <div v-else-if="clans.error" class="panel err-box">{{ clans.error }}</div>
+        <div v-else-if="filteredClans.length" class="clan-grid">
+          <article v-for="clan in filteredClans" :key="clan.id" class="clan-card" @click="openClan(clan)" tabindex="0" @keyup.enter="openClan(clan)">
+            <header>
+              <span class="clan-emblem" :class="clan.color"><img v-if="clan.emblem_url" :src="clan.emblem_url" alt=""><template v-else>{{ clan.tag.slice(0, 2).toUpperCase() }}</template></span>
+              <div><h3>[{{ clan.tag }}] {{ clan.name }}</h3><small>{{ clan.member_count }} участников</small></div>
+            </header>
+            <p>{{ clan.description || 'Описание не добавлено.' }}</p>
+            <footer>
+              <span class="muted">обновлён {{ fmtDate(clan.updated_utc * 1000) }}</span>
+              <div class="toolbar-actions">
+                <button class="mini-btn" @click.stop="editClan(clan)">Редактировать</button>
+                <button class="mini-btn danger" @click.stop="deleteClan(clan)">Удалить</button>
+              </div>
+            </footer>
+          </article>
+        </div>
+        <div v-else class="panel empty">{{ clans.items.length ? 'По фильтру кланы не найдены.' : 'Кланов пока нет. Создайте первый клан.' }}</div>
+        <div v-if="selectedClan" class="clan-card-backdrop" @click.self="selectedClan = null">
+          <aside class="clan-profile" role="dialog" aria-modal="true" :aria-label="`Клан ${selectedClan.name}`">
+            <header class="clan-profile-cover" :class="selectedClan.color" :style="selectedClan.cover_url ? {backgroundImage:`linear-gradient(90deg,rgba(7,6,7,.92),rgba(7,6,7,.32)),url('${selectedClan.cover_url}')`} : {}">
+              <button class="player-card-close" @click="selectedClan = null" aria-label="Закрыть">×</button>
+              <div class="clan-profile-title"><span class="clan-emblem large" :class="selectedClan.color"><img v-if="selectedClan.emblem_url" :src="selectedClan.emblem_url" alt=""><template v-else>{{ selectedClan.tag.slice(0,2).toUpperCase() }}</template></span><div><span class="admin-path">КАРТОЧКА КЛАНА</span><h2>[{{ selectedClan.tag }}] {{ selectedClan.name }}</h2><p>{{ selectedClan.description || 'Описание не добавлено.' }}</p></div></div>
+            </header>
+            <div class="clan-profile-content">
+              <section class="clan-profile-summary"><div><span>Лидер</span><button v-if="selectedClan.leader" class="ticket-player-link" @click="openPlayerCard(selectedClan.leader.steam_id)">{{ selectedClan.leader.name || selectedClan.leader.steam_id }}</button><b v-else>Не назначен</b></div><div><span>Состав</span><b>{{ selectedClan.member_count }} участников</b></div><div><span>Основан</span><b>{{ fmtDate(selectedClan.created_utc * 1000) }}</b></div></section>
+              <section v-if="has('clans')" class="clan-media-manage"><label>Эмблема<input type="file" accept="image/png,image/jpeg,image/webp" @change="uploadClanMedia($event,'emblem')"><small>PNG, JPG или WebP · до 2 МБ</small></label><label>Обложка<input type="file" accept="image/png,image/jpeg,image/webp" @change="uploadClanMedia($event,'cover')"><small>PNG, JPG или WebP · до 2 МБ</small></label><button class="mini-btn" @click="editClan(selectedClan)">Редактировать данные</button></section>
+              <section class="clan-roster"><div class="toolbar"><div><h3>Состав клана</h3><p class="muted">Роль «Лидер» уникальна: при назначении предыдущий лидер станет участником.</p></div><button v-if="has('clans')" class="btn primary" @click="addClanMember">+ Добавить участника</button></div>
+                <div class="clan-member-head"><span>ИГРОК</span><span>РОЛЬ</span><span>В КЛАНЕ С</span><span></span></div>
+                <article v-for="member in selectedClan.members" :key="member.steam_id" class="clan-member-row" :class="{'is-leader':member.member_role==='Лидер','is-deputy':member.member_role==='Заместитель'}"><div><span class="member-avatar">{{ (member.name || member.steam_id).slice(0,1).toUpperCase() }}</span><span><button class="ticket-player-link" @click="openPlayerCard(member.steam_id)">{{ member.name || 'Игрок' }}</button><small class="mono">{{ member.steam_id }}</small></span></div><select :value="member.member_role" :disabled="!has('clans')" @change="saveClanMember(member.steam_id,$event.target.value)"><option>Лидер</option><option>Заместитель</option><option>Участник</option></select><time>{{ fmtDate(member.joined_utc * 1000) }}</time><button v-if="has('clans')" class="mini-btn danger" @click="removeClanMember(member)">Исключить</button></article>
+                <div v-if="!selectedClan.members.length" class="empty">В клане пока нет участников. Добавьте лидера или участников по SteamID.</div>
+              </section>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ===== ТИКЕТЫ ===== -->
+      <section v-if="state.tab === 'tickets'">
+        <header class="staff-page-head">
+          <div>
+            <div class="admin-path">— /admin/tickets</div>
+            <h2>Тикеты</h2>
+            <p>Внутренние задачи и обращения администрации с приоритетами, статусами и обсуждением.</p>
+          </div>
+          <button v-if="has('tickets_edit')" class="btn primary" @click="createTicket">+ Новый тикет</button>
+        </header>
+        <div class="panel ticket-toolbar">
+          <input v-model="ticketQuery" type="search" placeholder="Заголовок, игрок или автор…" aria-label="Поиск тикетов">
+          <select v-model="ticketStatusFilter" aria-label="Статус тикета">
+            <option value="active">Активные</option>
+            <option value="all">Все статусы</option>
+            <option value="open">Открытые</option>
+            <option value="in_progress">В работе</option>
+            <option value="resolved">Решённые</option>
+            <option value="closed">Закрытые</option>
+          </select>
+          <select v-model="ticketPriorityFilter" aria-label="Приоритет тикета">
+            <option value="all">Все приоритеты</option>
+            <option value="urgent">Срочные</option>
+            <option value="high">Высокие</option>
+            <option value="normal">Обычные</option>
+            <option value="low">Низкие</option>
+          </select>
+          <button class="btn ghost" @click="loadTickets" :disabled="tickets.loading">Обновить</button>
+        </div>
+        <div v-if="tickets.error" class="panel err-box">{{ tickets.error }}</div>
+        <div v-else class="tickets-layout">
+          <div class="ticket-list">
+            <button v-for="ticket in filteredTickets" :key="ticket.id" class="ticket-row"
+                    :class="{active: tickets.selected?.id === ticket.id}" @click="openTicket(ticket)">
+              <span class="ticket-priority" :class="ticket.priority">{{ ticketPriorityLabel(ticket.priority) }}</span>
+              <div>
+                <b>{{ ticket.title }}</b>
+                <small>
+                  {{ ticketStatusLabel(ticket.status) }} · {{ ticket.comment_count }} комм. ·
+                  обновлён {{ fmtDate(ticket.updated_utc * 1000) }}
+                </small>
+              </div>
+              <span v-if="ticket.player_steam_id" class="mono">{{ shortSid(ticket.player_steam_id) }}</span>
+            </button>
+            <div v-if="tickets.loading && !tickets.items.length" class="panel empty">Загрузка тикетов…</div>
+            <div v-else-if="!filteredTickets.length" class="panel empty">{{ tickets.items.length ? 'По фильтру тикеты не найдены.' : 'Тикетов пока нет.' }}</div>
+          </div>
+
+          <aside class="panel ticket-detail">
+            <div v-if="tickets.detailLoading" class="empty">Загрузка тикета…</div>
+            <template v-else-if="tickets.selected">
+              <header class="ticket-detail-head">
+                <div>
+                  <span class="ticket-priority" :class="tickets.selected.priority">{{ ticketPriorityLabel(tickets.selected.priority) }}</span>
+                  <h3>{{ tickets.selected.title }}</h3>
+                  <small>создал {{ tickets.selected.created_by_name || shortSid(tickets.selected.created_by) }} · {{ fmtDate(tickets.selected.created_utc * 1000) }}</small>
+                </div>
+                <div v-if="has('tickets_edit')" class="toolbar-actions">
+                  <button class="mini-btn" @click="editTicket(tickets.selected)">Редактировать</button>
+                  <button class="mini-btn danger" @click="deleteTicket(tickets.selected)">Удалить</button>
+                </div>
+              </header>
+              <p class="ticket-description">{{ tickets.selected.description || 'Описание не добавлено.' }}</p>
+              <div class="ticket-properties">
+                <label>Статус
+                  <select :value="tickets.selected.status" :disabled="!has('tickets_edit')" @change="patchTicket({status: $event.target.value})">
+                    <option value="open">Открыт</option>
+                    <option value="in_progress">В работе</option>
+                    <option value="resolved">Решён</option>
+                    <option value="closed">Закрыт</option>
+                  </select>
+                </label>
+                <label>Приоритет
+                  <select :value="tickets.selected.priority" :disabled="!has('tickets_edit')" @change="patchTicket({priority: $event.target.value})">
+                    <option value="low">Низкий</option>
+                    <option value="normal">Обычный</option>
+                    <option value="high">Высокий</option>
+                    <option value="urgent">Срочный</option>
+                  </select>
+                </label>
+                <div v-if="tickets.selected.player_steam_id">
+                  <span>Игрок</span>
+                  <button class="ticket-player-link mono" @click="openPlayerCard(tickets.selected.player_steam_id)">{{ tickets.selected.player_steam_id }}</button>
+                </div>
+                <div>
+                  <span>Исполнитель</span>
+                  <b>{{ tickets.selected.assigned_name || (tickets.selected.assigned_to ? shortSid(tickets.selected.assigned_to) : 'не назначен') }}</b>
+                  <div v-if="has('tickets_edit')" class="ticket-assignee-actions">
+                    <button v-if="tickets.selected.assigned_to !== me?.steam_id" class="mini-btn" @click="patchTicket({assigned_to: me?.steam_id})">Взять себе</button>
+                    <button v-else class="mini-btn" @click="patchTicket({assigned_to: null})">Снять себя</button>
+                  </div>
+                </div>
+              </div>
+              <section class="ticket-comments">
+                <div class="player-section-title">Обсуждение · {{ tickets.selected.comments.length }}</div>
+                <article v-for="comment in tickets.selected.comments" :key="comment.id" class="ticket-comment">
+                  <header><b>{{ comment.author_name || shortSid(comment.author_steam_id) }}</b><small>{{ fmtDate(comment.created_utc * 1000) }}</small></header>
+                  <p>{{ comment.body }}</p>
+                </article>
+                <form v-if="has('tickets_edit')" class="ticket-comment-form" @submit.prevent="addTicketComment">
+                  <textarea v-model="ticketCommentDraft" maxlength="2000" rows="3" placeholder="Добавить комментарий…"></textarea>
+                  <div><small>{{ ticketCommentDraft.length }} / 2000</small><button class="btn primary small" :disabled="!ticketCommentDraft.trim()">Отправить</button></div>
+                </form>
+              </section>
+              <section v-if="tickets.selected.history?.length" class="ticket-comments"><div class="player-section-title">История обработки</div><article v-for="item in tickets.selected.history" :key="`${item.timestamp_utc}-${item.event}`" class="ticket-comment"><header><b>{{ item.event }}</b><small>{{ fmtDate(item.timestamp_utc * 1000) }}</small></header><p class="mono">{{ item.detail }}</p></article></section>
+            </template>
+            <div v-else class="player-empty-tab">
+              <strong>Выберите тикет</strong>
+              <span>Здесь появятся детали, свойства и обсуждение.</span>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ===== АДМИНИСТРАЦИЯ ===== -->
+      <section v-if="state.tab === 'staff'">
+        <header class="staff-page-head">
+          <div>
+            <div class="admin-path">— /admin/staff</div>
+            <h2>Администрация</h2>
+            <p>Все участники с ролью на сайте. Роли приходят из Discord и обновляются автоматически.</p>
+          </div>
+          <span class="staff-total">{{ staff.count }} чел.</span>
+        </header>
+        <div class="panel staff-search-panel">
+          <span class="muted">Ник, SteamID или Discord</span>
+          <input v-model="staffQuery" type="search" placeholder="Найти…" aria-label="Поиск администрации">
+        </div>
+        <div v-if="staff.loading" class="panel empty">Загрузка администрации…</div>
+        <div v-else-if="staff.error" class="panel err-box">{{ staff.error }}</div>
+        <template v-else-if="staff.items.length">
+          <section v-for="[group, members] in staffGroups()" :key="group" class="panel staff-group">
+            <header class="staff-group-head">
+              <h3>{{ group }}</h3><span>{{ members.length }}</span>
+            </header>
+            <div class="staff-list">
+              <article v-for="item in members" :key="item.steam_id" class="staff-row">
+                <button class="staff-person" @click="openPlayerCard(item.steam_id)">
+                  <span class="staff-avatar">{{ (item.persona || item.discord_name || 'A').slice(0, 1).toUpperCase() }}</span>
+                  <span class="staff-person-text"><b>{{ item.persona || 'Без ника' }}</b><small>{{ item.steam_id }}</small></span>
+                </button>
+                <a v-if="item.discord_id" class="staff-discord" :href="`https://discord.com/users/${item.discord_id}`" target="_blank" rel="noopener noreferrer">
+                  <b>{{ item.discord_name || 'Discord' }}</b><small>{{ item.discord_id }}</small>
+                </a>
+                <span v-else class="muted">Discord не привязан</span>
+                <span class="staff-role">{{ item.role_names?.[0] || item.group }}</span>
+                <span class="staff-updated">
+                  <small>обновлено {{ item.roles_updated_utc ? fmtDate(item.roles_updated_utc * 1000) : '—' }}</small>
+                  <small>на сайте {{ item.last_seen_utc ? fmtDate(item.last_seen_utc * 1000) : '—' }}</small>
+                </span>
+              </article>
+            </div>
+          </section>
+        </template>
+        <div v-else class="panel empty">Участники с подтверждёнными ролями пока не найдены.</div>
+      </section>
+
+      <!-- ===== DISCORD ===== -->
+      <section v-if="state.tab === 'discord'">
+        <header class="staff-page-head"><div><div class="admin-path">— /admin/discord</div><h2>Discord-центр</h2><p>Привязки Steam ↔ Discord, голосовые комнаты, диагностика ролей и журнал изменений.</p></div><button class="btn ghost" @click="loadDiscordAdmin" :disabled="discordAdmin.loading">Обновить</button></header>
+        <div v-if="discordAdmin.loading" class="skeleton-grid"><i v-for="n in 4" :key="n" class="skeleton-card"></i></div>
+        <div v-else-if="discordAdmin.error" class="panel err-box">{{ discordAdmin.error }}</div>
+        <template v-else>
+          <div class="cards"><div class="card"><div class="k">Привязок</div><div class="v big">{{ discordAdmin.summary.bindings || 0 }}</div></div><div class="card"><div class="k">Ботов онлайн</div><div class="v big">{{ discordAdmin.summary.bots_online || 0 }} / {{ discordAdmin.summary.bots || 0 }}</div></div><div class="card"><div class="k">Голосовых комнат</div><div class="v big">{{ discordAdmin.summary.voice_channels || 0 }}</div></div><div class="card"><div class="k">Настроенных ролей</div><div class="v big">{{ discordAdmin.summary.configured_roles || 0 }}</div></div></div>
+          <div class="panel bot-registry">
+            <div class="toolbar"><div><h2>Подключение ботов</h2><p class="muted">Индивидуальные ключи и состояние каждой интеграции. До 64 ботов.</p></div><button class="btn primary" @click="startBotWizard">+ Подключить бота</button></div>
+            <div v-if="botWizard.open" class="bot-wizard">
+            <div class="wizard-steps"><b :class="{active:botWizard.step===1}">1 · Регистрация</b><b :class="{active:botWizard.step===2}">2 · Настройка на хосте</b><b :class="{active:botWizard.step===3}">3 · Связь подтверждена</b><button class="mini-btn" @click="botWizard.open=false; botIssuedToken=''">Закрыть</button></div>
+            <div v-if="botWizard.step===1" class="bot-create-grid">
+              <label>Название<input v-model.trim="botDraft.name" maxlength="80" placeholder="Например, Модератор"></label>
+              <label>Системный ID<input v-model.trim="botDraft.bot_id" maxlength="48" placeholder="moderation-bot"></label>
+              <label>Discord Guild ID<input v-model.trim="botDraft.guild_id" maxlength="20" placeholder="необязательно"></label>
+              <button class="btn primary" @click="createBotIntegration" :disabled="botWizard.busy">Создать ключ</button>
+            </div>
+            <div v-if="botWizard.step===1" class="scope-choices"><label v-for="scope in botScopeChoices" :key="scope.id"><input type="checkbox" v-model="botDraft.scopes" :value="scope.id">{{ scope.label }}</label><small>Выбирайте права отдельно для каждого бота. Остальные операции подключаются по мере появления поддерживающих их обработчиков.</small></div>
+            <div v-else><p>На хосте бота задайте адрес панели, его ID <code>{{ botWizard.id }}</code> и выданный ключ. Бот должен отправлять heartbeat каждые 60 секунд.</p><p class="muted">Для бота на другом хосте нужен доступный HTTPS-адрес панели. Адрес 127.0.0.1 работает только на том же компьютере.</p><code>POST /api/bot/v1/heartbeat · X-Bot-ID: {{ botWizard.id }} · Authorization: Bearer &lt;ключ&gt;</code><pre>{"version":"1.0","detail":"ready"}</pre><button class="btn primary" @click="checkBotConnection">Проверить подключение</button><span v-if="botWizard.step===3" class="good"> Бот на связи</span></div>
+            </div>
+            <div v-if="botIssuedToken" class="bot-token-once"><div><b>Новый ключ — показывается один раз</b><code>{{ botIssuedToken }}</code></div><button class="btn ghost small" @click="copyBotToken">Копировать</button></div>
+            <div class="bot-registry-list">
+              <article v-for="bot in (discordAdmin.bots || [])" :key="bot.bot_id" class="bot-registry-row" :class="{disabled:!bot.enabled}">
+                <span class="dot" :class="{on:bot.online}"></span>
+                <div><b>{{ bot.name }}</b><small>{{ bot.bot_id }} · {{ bot.guild_id || 'гильдия не указана' }}</small></div>
+                <div class="bot-health"><span class="badge">{{ bot.online ? 'онлайн' : (bot.status || 'ожидание') }}</span><small>{{ bot.last_seen_utc ? fmtDate(bot.last_seen_utc * 1000) : 'ещё не подключался' }}</small></div>
+                <div class="bot-scopes"><span v-for="scope in bot.scopes" :key="scope" class="badge">{{ scope }}</span></div>
+                <div class="toolbar-actions"><button class="mini-btn" @click="showBotEvents(bot)">События</button><button class="mini-btn" @click="rotateBotToken(bot)">Новый ключ</button><button class="mini-btn" :class="{danger:bot.enabled}" @click="toggleBotIntegration(bot)">{{ bot.enabled ? 'Отключить' : 'Включить' }}</button></div>
+              </article>
+              <div v-if="!(discordAdmin.bots || []).length" class="empty">Боты ещё не подключены. Начните с кнопки «Подключить бота».</div>
+            </div>
+            <div v-if="botEventsName" class="bot-event-list"><h3>События: {{ botEventsName }}</h3><p v-for="event in botEvents" :key="event.event_id"><time>{{ fmtDate(event.created_utc*1000) }}</time> · {{ event.event_type }} · {{ event.event_id }}</p><p v-if="!botEvents.length" class="muted">Событий пока нет.</p></div>
+          </div>
+          <div class="panel"><h2>Диагностика пользователей</h2><div class="table-scroll"><table class="tbl"><thead><tr><th>Steam</th><th>Discord</th><th>Роли</th><th>Проблема</th></tr></thead><tbody><tr v-for="item in discordAdmin.diagnostics" :key="item.steam_id"><td><button class="ticket-player-link" @click="openPlayerCard(item.steam_id)">{{ item.persona || item.steam_id }}</button></td><td>{{ item.discord_name || item.discord_id }}</td><td>{{ item.role_names.join(', ') || '—' }}</td><td class="warn-text">{{ item.problems.join('; ') }}</td></tr><tr v-if="!discordAdmin.diagnostics.length"><td colspan="4" class="muted">Проблем с ролями не найдено.</td></tr></tbody></table></div></div>
+          <div class="grid2"><div class="panel"><h2>Привязки Steam ↔ Discord</h2><div class="compact-list"><div v-for="item in discordAdmin.bindings" :key="item.steam_id" class="reserve-row"><button class="ticket-player-link" @click="openPlayerCard(item.steam_id)">{{ item.persona || item.steam_id }}</button><span>{{ item.discord_name || item.discord_id }}</span><span class="badge" :class="{warn: !item.guild_member}">{{ item.guild_member ? 'в гильдии' : 'вне гильдии' }}</span></div></div></div><div class="panel"><h2>Голосовые комнаты</h2><div class="compact-list"><div v-for="channel in discordAdmin.voice_channels" :key="channel.id" class="reserve-row"><b>{{ channel.name }}</b><span class="mono">{{ channel.id }}</span><span class="muted">лимит {{ channel.user_limit || '∞' }}</span></div><div v-if="!discordAdmin.voice_channels.length" class="muted">Комнаты не получены.</div></div></div></div>
+          <div class="panel"><div class="toolbar"><h2>Временные комнаты «Асуны Юки»</h2><span v-if="discordAdmin.tempvoice_error" class="muted">{{ discordAdmin.tempvoice_error }}</span></div><div class="compact-list"><article v-for="room in (discordAdmin.tempvoice?.rooms || [])" :key="room.channel_id" class="reserve-row tempvoice-row"><div><b>{{ room.name || room.channel_id }}</b><small>владелец: {{ room.owner_name || room.owner_id }}</small></div><span>{{ room.members?.length || 0 }} участников</span><span class="muted">{{ (room.members || []).map(member => member.name).join(', ') || 'комната пуста' }}</span><div class="toolbar-actions"><button class="mini-btn" @click="transferTempVoice(room)">Передать</button><button class="mini-btn danger" @click="deleteTempVoice(room)">Удалить</button></div></article><div v-if="!discordAdmin.tempvoice_error && !(discordAdmin.tempvoice?.rooms || []).length" class="muted">Активных временных комнат нет.</div></div></div>
+          <div class="panel"><h2>Журнал Discord и ролей</h2><div class="table-scroll"><table class="tbl"><thead><tr><th>Время</th><th>Кто</th><th>Событие</th><th>Детали</th></tr></thead><tbody><tr v-for="item in discordAdmin.actions" :key="`${item.timestamp_utc}-${item.event}`"><td>{{ fmtDate(item.timestamp_utc * 1000) }}</td><td class="mono">{{ item.actor_steam_id || 'система' }}</td><td>{{ item.event }}</td><td class="mono">{{ item.detail }}</td></tr><tr v-if="!discordAdmin.actions.length"><td colspan="4" class="muted">Событий пока нет.</td></tr></tbody></table></div></div>
+        </template>
+      </section>
+
+      <!-- ===== СОСТОЯНИЕ СИСТЕМ ===== -->
+      <section v-if="state.tab === 'system'">
+        <header class="staff-page-head"><div><div class="admin-path">— /admin/system</div><h2>Центр состояния</h2><p>Игровые серверы, база, Steam, Discord и связь с «Асуной Юки» в одном месте.</p></div><button class="btn ghost" @click="loadSystemStatus" :disabled="systemStatus.loading">Проверить сейчас</button></header>
+        <div v-if="systemStatus.loading" class="skeleton-grid"><i v-for="n in 5" :key="n" class="skeleton-card"></i></div>
+        <div v-else-if="systemStatus.error" class="panel err-box">{{ systemStatus.error }}</div>
+        <template v-else><div class="status-service-grid"><article v-for="service in systemStatus.services" :key="service.id" class="panel status-service" :class="{failed: !service.ok}"><span class="dot" :class="{on: service.ok}"></span><div><h3>{{ service.name || service.id }}</h3><p>{{ service.detail || (service.ok ? 'Работает' : 'Недоступен') }}</p></div><b>{{ service.ok ? 'OK' : 'СБОЙ' }}</b></article></div><div class="panel"><h2>История изменений состояния</h2><div class="table-scroll"><table class="tbl"><thead><tr><th>Время</th><th>Сервис</th><th>Состояние</th><th>Подробности</th></tr></thead><tbody><tr v-for="item in systemStatus.history" :key="`${item.timestamp_utc}-${item.service}`"><td>{{ fmtDate(item.timestamp_utc * 1000) }}</td><td>{{ item.service }}</td><td><span class="badge" :class="{warn: !item.ok}">{{ item.ok ? 'восстановлен' : 'сбой' }}</span></td><td>{{ item.detail }}</td></tr><tr v-if="!systemStatus.history.length"><td colspan="4" class="muted">Изменений состояния пока нет.</td></tr></tbody></table></div></div></template>
+      </section>
+
+      <!-- ===== КОНФИГ ===== -->
+      <section v-if="state.tab === 'config'">
+        <div class="panel">
+          <div class="toolbar">
+            <h2>Конфиг сервера <span class="muted">(ServerSettings.ini)</span></h2>
+            <div class="toolbar-actions">
+              <button class="btn ghost" @click="loadConfig" :disabled="busy">Обновить</button>
+              <button v-if="has('config_edit')" class="btn danger" @click="applyConfig" :disabled="busy || !cfg.loaded">Применить</button>
+            </div>
+          </div>
+          <div v-if="!has('config_edit')" class="warn-strip" style="padding:8px 10px;border-radius:8px;">У вас просмотр конфига. Запись — только с правом «config_edit».</div>
+          <div v-if="!cfg.writable" class="err-box">Сервер не разрешает запись конфига (config.writable = false).</div>
+          <div v-if="cfg.revision" class="muted">Ревизия: <span class="mono">{{ cfg.revision }}</span></div>
+          <div v-if="cfg.warnings && cfg.warnings.length" class="warn-box">
+            <b>Предупреждения сервера:</b>
+            <div v-for="(w, i) in cfg.warnings" :key="i" class="mono">{{ w }}</div>
+          </div>
+          <textarea class="cfg-text" v-model="cfg.text" rows="20" spellcheck="false"
+                    :disabled="!cfg.writable || !has('config_edit')" placeholder="Загрузка конфига…"></textarea>
+          <div v-if="cfgResult" class="result monospace" :class="cfgResultStatus">
+            <div v-if="cfgResult.error" class="err">{{ cfgResult.error.code }}: {{ cfgResult.error.message }}</div>
+            <div v-if="cfgResult.errors && cfgResult.errors.length"><b>Ошибки:</b>
+              <div v-for="(e, i) in cfgResult.errors" :key="i">{{ e.section }} › {{ e.key }}: {{ e.message }} ({{ e.code }})</div>
+            </div>
+            <div v-if="cfgResult.changed && cfgResult.changed.length"><b>Изменено:</b>
+              <div v-for="(c, i) in cfgResult.changed" :key="i">{{ c.section }}: +{{ c.added }} −{{ c.removed }} {{ JSON.stringify(c.keys) }}</div>
+            </div>
+            <div v-if="cfgResult.status >= 400 && !cfgResult.changed" class="muted">HTTP {{ cfgResult.status }}</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== ПРАВА РОЛЕЙ ===== -->
+      <section v-if="state.tab === 'roles'">
+        <div class="panel">
+          <div class="roles-page-head">
+            <div>
+              <div class="admin-path">— /admin/roles</div>
+              <h2>Права ролей Discord</h2>
+              <p class="muted">Настройте доступ один раз — пользователи получают сумму прав всех своих ролей.</p>
+            </div>
+            <div class="toolbar-actions">
+              <button class="btn ghost" @click="previewUserPermissions">Права пользователя</button>
+              <button v-if="dirtyRolesCount" class="btn primary" @click="saveAllRoles" :disabled="busy">Сохранить все · {{ dirtyRolesCount }}</button>
+              <button class="btn ghost" @click="loadRoles(true)" :disabled="busy">Обновить роли</button>
+            </div>
+          </div>
+          <div class="roles-info">
+            <b>Подсказка</b>
+            <span>Изменения применяются только после нажатия «Сохранить». Legacy-роли из <span class="mono">WARDOGS_ADMIN_ROLES</span> получают полный доступ, пока для них не задана ручная настройка.</span>
+          </div>
+          <div class="roles-toolbar">
+            <input v-model="roleSearch" type="search" placeholder="Поиск роли…" aria-label="Поиск роли">
+            <select v-model="rolePermissionFilter" aria-label="Фильтр ролей">
+              <option value="all">Все роли</option>
+              <option value="configured">С ручной настройкой</option>
+              <option value="legacy">Legacy-роли</option>
+              <option value="changed">Есть несохранённые изменения</option>
+            </select>
+            <span class="muted">{{ visibleRoles().length }} из {{ rolesList.length }}</span>
+            <button class="mini-btn" @click="bulkRolePreset" :disabled="!selectedRolesCount">Шаблон выбранным · {{ selectedRolesCount }}</button>
+            <button class="mini-btn" @click="compareSelectedRoles" :disabled="selectedRolesCount !== 2">Сравнить две</button>
+          </div>
+          <div v-if="!rolesList.length" class="empty">Роли не получены (бот не добавлен в гильдию или неверно указан GUILD_ID/BOT_TOKEN).</div>
+          <div v-else-if="!visibleRoles().length" class="empty">Роли по текущему фильтру не найдены.</div>
+          <div v-else class="roles-grid">
+            <article v-for="r in visibleRoles()" :key="r.id" class="role-card">
+              <header class="role-card-head">
+                <div>
+                  <h3><input type="checkbox" :checked="roleSelected.includes(r.id)" @change="toggleRoleSelected(r.id)" :aria-label="`Выбрать роль ${r.name}`"> {{ r.name }}</h3>
+                  <div class="mono">{{ r.id }}</div>
+                </div>
+                <div class="role-card-badges">
+                  <span v-if="r.configured" class="badge">ручная настройка</span>
+                  <span v-else-if="r.legacy" class="badge warn">★ legacy: полный доступ</span>
+                  <span v-if="roleDirty(r)" class="role-unsaved">не сохранено</span>
+                </div>
+              </header>
+              <div class="role-summary">
+                <b>{{ draftFor(r).length }} / {{ allPerms.length }}</b><span>прав выдано</span>
+              </div>
+              <div v-if="roleConflicts(r).length" class="warn-strip">Конфликты: {{ roleConflicts(r).join('; ') }}</div>
+              <div class="role-tools">
+                <div class="role-presets">
+                  <span>Шаблон:</span>
+                  <button class="mini-btn" @click="roleApplyPreset(r, 'observer')">Наблюдатель</button>
+                  <button class="mini-btn" @click="roleApplyPreset(r, 'moderator')">Модератор</button>
+                  <button class="mini-btn" @click="roleApplyPreset(r, 'administrator')">Администратор</button>
+                </div>
+                <div class="role-copy">
+                  <select v-model="roleCopySources[r.id]" aria-label="Роль-источник">
+                    <option value="">Скопировать из роли…</option>
+                    <option v-for="source in rolesList.filter((item) => item.id !== r.id)" :key="source.id" :value="source.id">{{ source.name }}</option>
+                  </select>
+                  <button class="mini-btn" @click="roleCopyFrom(r)" :disabled="!roleCopySources[r.id]">Копировать</button>
+                </div>
+              </div>
+              <div class="role-groups">
+                <details v-for="group in rolePermissionGroups()" :key="group.id" open>
+                  <summary>
+                    <span>{{ group.label }}</span>
+                    <small>{{ roleGroupCount(r, group) }} / {{ group.perms.length }}</small>
+                    <button class="mini-btn" @click.prevent="roleToggleGroup(r, group, !roleGroupChecked(r, group))">{{ roleGroupChecked(r, group) ? 'Снять всё' : 'Выдать всё' }}</button>
+                  </summary>
+                  <label v-for="p in group.perms" :key="p" class="permission-option" :title="permHint(p)">
+                    <input type="checkbox" :checked="roleHas(r, p)" @change="roleTog(r, p, $event.target.checked)">
+                    <span><b>{{ permLabel(p) }}</b><small>{{ permHint(p) }}</small></span>
+                  </label>
+                </details>
+              </div>
+              <footer class="role-card-foot">
+                <button class="btn ghost small" @click="showRoleHistory(r)">История роли</button>
+                <button v-if="roleDirty(r)" class="btn ghost small" @click="roleReset(r)" :disabled="busy">Сбросить</button>
+                <span v-else class="muted">Настройки сохранены</span>
+                <button class="btn primary small" @click="saveRole(r)" :disabled="busy || !roleDirty(r)">Сохранить права</button>
+              </footer>
+            </article>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <div v-if="playerCard.open" class="player-card-backdrop" @click.self="closePlayerCard">
+    <aside class="player-card" role="dialog" aria-modal="true" aria-label="Карточка игрока">
+      <header class="player-card-top">
+        <strong>Игрок</strong>
+        <button class="player-card-close" @click="closePlayerCard" aria-label="Закрыть">×</button>
+      </header>
+      <div class="player-card-body">
+        <div class="player-card-head">
+          <div class="player-identity">
+            <img v-if="playerCard.profile?.avatar_url" class="player-avatar image" :src="playerCard.profile.avatar_url" alt="Аватар Steam">
+            <div v-else class="player-avatar" aria-hidden="true">{{ (playerCard.profile?.name || playerCard.live?.name || 'И').slice(0, 1).toUpperCase() }}</div>
+            <div>
+              <h2>{{ playerCard.profile?.name || playerCard.live?.name || 'Игрок' }}</h2>
+              <div class="mono muted">{{ playerCard.profile?.steam_id || playerCard.live?.steamId }}</div>
+            </div>
+          </div>
+          <div class="player-card-badges">
+            <span class="player-chip">{{ playerCard.live ? 'онлайн сейчас' : (playerCard.profile?.last_seen_utc ? `был ${fmtDate(playerCard.profile.last_seen_utc * 1000)}` : 'история панели') }}</span>
+            <span v-if="playerCard.profile?.steam?.vac_banned || playerCard.profile?.steam?.game_bans" class="player-chip danger">game-ban</span>
+          </div>
+        </div>
+        <nav class="player-tabs" aria-label="Разделы карточки игрока">
+          <button :class="{active: playerCardTab === 'overview'}" @click="playerCardTab = 'overview'">Обзор</button>
+          <button :class="{active: playerCardTab === 'stats'}" @click="playerCardTab = 'stats'">Статистика</button>
+          <button :class="{active: playerCardTab === 'clan'}" @click="playerCardTab = 'clan'">Клан</button>
+          <button v-if="has('player_notes')" :class="{active: playerCardTab === 'notes'}" @click="playerCardTab = 'notes'">Заметки</button>
+        </nav>
+      </div>
+      <div class="player-card-content">
+        <div v-if="playerCard.loading" class="empty">Загрузка карточки…</div>
+        <div v-else-if="playerCard.error" class="err-box">{{ playerCard.error }}</div>
+        <template v-else-if="playerCard.profile">
+          <template v-if="playerCardTab === 'overview'">
+            <div class="player-stat-grid">
+              <div class="player-stat"><span>K / D сессия</span><b>{{ playerCard.live ? kd(playerCard.live) : '—' }}</b><small v-if="playerCard.live">K {{ playerCard.live.kills || 0 }} · D {{ playerCard.live.deaths || 0 }}</small></div>
+              <div class="player-stat"><span>K / D всего</span><b>{{ kd(playerCard.profile) }}</b><small>K {{ playerCard.profile.kills || 0 }} · D {{ playerCard.profile.deaths || 0 }}</small></div>
+              <div class="player-stat"><span>Cash / дельта</span><b>{{ playerCard.live?.cash ?? '—' }}</b></div>
+              <div class="player-stat"><span>Времени у нас</span><b>{{ fmtPlaytime(playerCard.profile.total_seconds) }}</b></div>
+              <div class="player-stat"><span>Серверов всего</span><b>{{ playerCard.profile.server_count }}</b></div>
+              <div class="player-stat"><span>Текущая сессия</span><b>{{ playerCard.live ? fmtPlaytime(playerCard.profile.current_session_seconds) : '—' }}</b></div>
+              <div class="player-stat"><span>Любимая фракция</span><b class="player-positive">{{ playerCard.live?.faction || '—' }}</b></div>
+              <div class="player-stat"><span>Сессий</span><b>{{ playerCard.profile.session_count }}</b></div>
+            </div>
+
+            <section class="player-section">
+              <div class="player-section-title">Аккаунт Steam</div>
+              <div class="player-tags">
+                <a class="player-tag steam-profile" :href="playerCard.profile.steam_profile_url" target="_blank" rel="noopener">профиль открыт ↗</a>
+                <span v-if="playerCard.profile.steam?.time_created_utc" class="player-tag">аккаунт с {{ fmtDate(playerCard.profile.steam.time_created_utc * 1000) }}</span>
+                <span class="player-tag green">VAC: {{ playerCard.profile.steam?.vac_bans || 0 }}</span>
+                <span class="player-tag" :class="{'red': (playerCard.profile.steam?.game_bans || 0) > 0}">game-баны: {{ playerCard.profile.steam?.game_bans || 0 }}</span>
+                <span v-if="playerCard.profile.steam?.days_since_last_ban" class="player-tag red">последний бан {{ playerCard.profile.steam.days_since_last_ban }} дн. назад</span>
+                <span class="player-tag">{{ playerCard.profile.last_seen_utc ? `проверено ${fmtDate(playerCard.profile.last_seen_utc * 1000)}` : 'дата проверки неизвестна' }}</span>
+                <span v-for="vipItem in (playerCard.profile.vip_slots || []).filter((item) => item.active)" :key="vipItem.id" class="player-tag purple">
+                  VIP {{ vipItem.server_id }} · {{ vipItem.expires_utc ? fmtDate(vipItem.expires_utc * 1000) : 'бессрочно' }}
+                </span>
+              </div>
+            </section>
+
+            <section class="player-section">
+              <div class="player-section-title">Действия</div>
+              <div class="player-card-actions">
+                <button v-if="has('vip_edit')" class="btn ghost" @click="saveVipSlot({steam_id:playerCard.profile.steam_id,display_name:playerCard.profile.name})">Выдать VIP</button>
+                <button v-if="has('message')" class="btn ghost" :disabled="!playerCard.live" @click="playerCardAction('message')">Написать</button>
+                <button v-if="has('kick')" class="btn ghost" :disabled="!playerCard.live" @click="playerCardAction('kick')">Кикнуть</button>
+                <select v-if="has('move_faction') && playerCard.live" class="player-card-faction" v-model="playerCardFaction" @change="changePlayerCardFaction(playerCardFaction)" aria-label="Сменить фракцию">
+                  <option v-for="f in (ov?.status?.factionScores || [])" :key="f.name" :value="f.name">{{ f.name }}</option>
+                </select>
+                <button v-else-if="has('move_faction')" class="btn ghost" disabled>Сменить фракцию</button>
+                <button v-if="has('kill')" class="btn ghost" :disabled="!playerCard.live" @click="playerCardAction('kill')">Убить (slay)</button>
+                <button v-if="has('ban_add')" class="btn danger-outline" :disabled="!playerCard.live" @click="playerCardAction('ban')">Забанить</button>
+              </div>
+              <p class="player-action-hint">Опасные действия требуют подтверждения. Для действий на сервере игрок должен быть онлайн.</p>
+            </section>
+
+            <section class="player-section">
+              <div class="player-section-title">Метки</div>
+              <div class="player-tags">
+                <span class="player-tag">игрок: 1</span>
+                <span class="player-tag">серверов: {{ playerCard.profile.server_count }}</span>
+                <span class="player-tag">впервые: {{ playerCard.profile.first_seen_utc ? fmtDate(playerCard.profile.first_seen_utc * 1000) : '—' }}</span>
+                <button v-for="item in (playerCard.profile.tags || [])" :key="item.id"
+                        type="button" class="player-tag editable" :class="item.color"
+                        :title="playerCard.profile.can_edit_tags ? 'Нажмите, чтобы удалить' : item.label"
+                        @click="playerCard.profile.can_edit_tags && deletePlayerTag(item)">
+                  {{ item.label }}<span v-if="playerCard.profile.can_edit_tags"> ×</span>
+                </button>
+                <button v-if="playerCard.profile.can_edit_tags" type="button" class="player-tag add" @click="addPlayerTag">+ добавить</button>
+              </div>
+            </section>
+
+            <section class="player-section player-history">
+              <div class="player-section-title">История наказаний</div>
+              <a v-if="playerCard.profile.can_view_punishments" class="mini-btn" :href="`/api/players/${playerCard.profile.steam_id}/history/export`" download>Экспорт CSV</a>
+              <div v-if="playerCard.profile.can_view_punishments && playerCard.profile.punishments?.length" class="punishment-list">
+                <article v-for="item in playerCard.profile.punishments" :key="`${item.timestamp_utc}-${item.event}`" class="punishment-item">
+                  <span class="punishment-dot" :class="{danger: item.event === 'ban.add'}"></span>
+                  <div>
+                    <b>{{ punishmentLabel(item.event) }}</b>
+                    <small>{{ item.server_id || 'панель' }} · {{ item.actor_name || shortSid(item.actor_steam_id) }} · {{ fmtDate(item.timestamp_utc * 1000) }}</small>
+                  </div>
+                </article>
+              </div>
+              <p v-else-if="playerCard.profile.can_view_punishments" class="muted">Наказаний в журнале панели не найдено.</p>
+              <p v-else class="muted">История доступна сотрудникам с правами на баны или аудит.</p>
+            </section>
+          </template>
+
+          <template v-else-if="playerCardTab === 'stats'">
+            <section class="player-section">
+              <div class="player-section-title">Статистика по серверам</div>
+              <div class="table-scroll">
+                <table class="tbl player-history-table">
+                  <thead><tr><th>Сервер</th><th>K / D</th><th>Фракция</th><th>Время</th><th>Сессии</th><th>Последний визит</th></tr></thead>
+                  <tbody>
+                    <tr v-for="s in playerCard.profile.servers" :key="s.server_id">
+                      <td>{{ s.server_id }}</td>
+                      <td>{{ kd(s) }} <small class="muted">· K {{ s.kills }} / D {{ s.deaths }}</small></td>
+                      <td>{{ s.faction || '—' }}</td>
+                      <td>{{ fmtPlaytime(s.total_seconds) }}<span v-if="s.online" class="status-dot online" title="Сейчас онлайн"></span></td>
+                      <td>{{ s.session_count || 0 }}</td>
+                      <td>{{ s.seen_utc ? fmtDate(s.seen_utc * 1000) : '—' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </template>
+          <template v-else-if="playerCardTab === 'clan'">
+            <section class="player-clan">
+              <div v-if="playerCard.profile.clan" class="player-clan-card">
+                <span class="clan-emblem large" :class="playerCard.profile.clan.color">{{ playerCard.profile.clan.tag.slice(0, 2).toUpperCase() }}</span>
+                <div>
+                  <span class="player-section-title">Текущий клан</span>
+                  <h3>[{{ playerCard.profile.clan.tag }}] {{ playerCard.profile.clan.name }}</h3>
+                  <p>{{ playerCard.profile.clan.description || 'Описание не добавлено.' }}</p>
+                  <div class="player-tags">
+                    <span class="player-tag">{{ playerCard.profile.clan.member_role }}</span>
+                    <span class="player-tag">с {{ fmtDate(playerCard.profile.clan.joined_utc * 1000) }}</span>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="player-empty-tab compact">
+                <strong>Игрок не состоит в клане</strong>
+                <span>Назначьте клан ниже, если у вашей роли есть соответствующее право.</span>
+              </div>
+              <div v-if="playerCard.profile.can_edit_clan" class="player-clan-manage">
+                <label>Назначить клан</label>
+                <select v-model="playerCardClanId" @change="changePlayerClan(playerCardClanId)">
+                  <option value="">Без клана</option>
+                  <option v-for="clan in clans.items" :key="clan.id" :value="clan.id">[{{ clan.tag }}] {{ clan.name }}</option>
+                </select>
+                <button v-if="!clans.items.length" class="btn ghost small" @click="closePlayerCard(); state.tab = 'clans'">Создать первый клан</button>
+              </div>
+            </section>
+          </template>
+          <template v-else-if="playerCardTab === 'notes'">
+            <section class="player-notes">
+              <form v-if="playerNotes.canEdit" class="player-note-compose" @submit.prevent="addPlayerNote">
+                <label for="player-note-draft">Новая внутренняя заметка</label>
+                <textarea id="player-note-draft" v-model="playerNotes.draft" maxlength="2000" rows="4"
+                          placeholder="Контекст для администрации: нарушения, договорённости, важные наблюдения…"></textarea>
+                <div>
+                  <small>{{ playerNotes.draft.length }} / 2000</small>
+                  <button class="btn primary small" type="submit" :disabled="busy || !playerNotes.draft.trim()">Добавить заметку</button>
+                </div>
+              </form>
+              <div v-else-if="!playerNotes.loading && !playerNotes.error" class="info-strip">
+                Заметки доступны для чтения. Для добавления и удаления нужно право «Заметки игроков».
+              </div>
+              <div v-if="playerNotes.loading" class="empty">Загрузка заметок…</div>
+              <div v-else-if="playerNotes.error" class="err-box">{{ playerNotes.error }}</div>
+              <div v-else-if="playerNotes.items.length" class="player-notes-list">
+                <article v-for="item in playerNotes.items" :key="item.id" class="player-note">
+                  <header>
+                    <div>
+                      <b>{{ item.author_name || shortSid(item.author_steam_id) }}</b>
+                      <small>{{ fmtDate(item.created_utc * 1000) }}</small>
+                    </div>
+                    <button v-if="playerNotes.canEdit" class="mini-btn danger" type="button" @click="deletePlayerNote(item)">Удалить</button>
+                  </header>
+                  <p>{{ item.note }}</p>
+                </article>
+              </div>
+              <div v-else class="player-empty-tab">
+                <strong>Заметок пока нет</strong>
+                <span>Внутренние заметки видны только сотрудникам с доступом к карточкам игроков.</span>
+              </div>
+            </section>
+          </template>
+        </template>
+        </div>
+      <footer class="player-card-footer">
+        <a v-if="steamProfileUrl(playerCard.profile?.steam_id || playerCard.live?.steamId)"
+           :href="steamProfileUrl(playerCard.profile?.steam_id || playerCard.live?.steamId)"
+           target="_blank" rel="noopener noreferrer">Профиль Steam ↗</a>
+        <span v-else class="muted">SteamID недоступен</span>
+        <button class="btn ghost" @click="closePlayerCard">Закрыть</button>
+      </footer>
+    </aside>
+  </div>
+
+  <div v-if="actionDialog.open" class="action-dialog-backdrop" @click.self="cancelActionDialog">
+    <form class="action-dialog" role="dialog" aria-modal="true" :aria-label="actionDialog.title" @submit.prevent="submitActionDialog">
+      <header>
+        <div>
+          <span class="admin-path">Подтверждение действия</span>
+          <h2>{{ actionDialog.title }}</h2>
+        </div>
+        <button type="button" class="player-card-close" @click="cancelActionDialog" aria-label="Закрыть">×</button>
+      </header>
+      <p v-if="actionDialog.message" class="action-dialog-message">{{ actionDialog.message }}</p>
+      <label v-for="field in actionDialog.fields" :key="field.key" class="action-dialog-field">
+        <span>{{ field.label }}<b v-if="field.required">*</b></span>
+        <textarea v-if="field.type === 'textarea'" v-model="field.value" :maxlength="field.maxLength" :placeholder="field.placeholder" rows="4"></textarea>
+        <select v-else-if="field.type === 'select'" v-model="field.value">
+          <option v-for="option in field.options || []" :key="option.value" :value="option.value">{{ option.label }}</option>
+        </select>
+        <input v-else v-model="field.value" :type="field.type || 'text'" :maxlength="field.maxLength" :placeholder="field.placeholder" autocomplete="off">
+        <small v-if="field.maxLength">{{ String(field.value || '').length }} / {{ field.maxLength }}</small>
+      </label>
+      <div v-if="actionDialog.error" class="err-box">{{ actionDialog.error }}</div>
+      <footer>
+        <button type="button" class="btn ghost" @click="cancelActionDialog">Отмена</button>
+        <button type="submit" class="btn" :class="actionDialog.danger ? 'danger' : 'primary'" :disabled="busy">{{ actionDialog.confirmText }}</button>
+      </footer>
+    </form>
+  </div>
+
+  <div v-if="toasts.length" class="toasts">
+    <div v-for="(t, i) in toasts" :key="i" class="toast" :class="t.kind">{{ t.text }}</div>
+  </div>
+<!-- WARDOGS_APP_TEMPLATE_END -->
+</div>
+
+<script src="/static/vendor/vue.global.prod.js"></script>
+<script src="/static/panel.render.js?v=20260927-12"></script>
+<script src="/static/app.js?v=20260927-12"></script>
+</body>
+</html>

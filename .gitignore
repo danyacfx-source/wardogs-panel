@@ -1,0 +1,26 @@
+# Local secrets and runtime data
+.env
+servers.json
+site.db
+*.db
+*.db-shm
+*.db-wal
+*.zip
+*.rar
+*.log
+
+# Python-generated files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+

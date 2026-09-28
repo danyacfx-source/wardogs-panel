@@ -1,0 +1,38 @@
+services:
+  wardogs:
+    build: .
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: "1.0"
+    ulimits:
+      nofile:
+        soft: 4096
+        hard: 8192
+    env_file: .env
+    volumes:
+      - ./servers.json:/app/servers.json:ro
+      - wardogs-data:/app/data
+    environment:
+      WARDOGS_HOST: 0.0.0.0
+      WARDOGS_PORT: 8236
+      WARDOGS_DB: /app/data/site.db
+    ports:
+      - "127.0.0.1:8236:8236"
+    pids_limit: 256
+    memswap_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+volumes:
+  wardogs-data:

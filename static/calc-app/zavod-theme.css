@@ -1,0 +1,127 @@
+/*
+ * ZAVOD skin for the embedded WARDOGS Artillery Calculator (apollyon-sys/wardogs-calculator, MIT).
+ * Loaded after the upstream stylesheets: only re-points the upstream theme variables to the
+ * site's tokens (frontend/src/app/global.css) and trims third-party chrome. Upstream files stay
+ * untouched so the app can be re-vendored — see calc-app/README.md.
+ */
+
+:root,
+:root[data-theme="light"] {
+    color-scheme: dark;
+
+    --body-bg: #121212;
+    --header-bg: #1a1a1a;
+    --aside-bg: #1a1a1a;
+    --map-bg: #0e0e0e;
+    --panel-bg: #161616;
+    --input-bg: #161616;
+    --input-hover-bg: #212121;
+
+    --border: #2c2c2c;
+    --border-light: #3a3a3a;
+
+    --text: #f0f0f0;
+    --muted: #a8a8a8;
+
+    --accent: #ffb95c;
+    --accent-border: #ff8a00;
+
+    --primary-bg: #2e1c0a;
+    --primary-border: #5c3a14;
+
+    --active-bg: #2e1c0a;
+
+    --grid-major: #4a4a4a;
+    --grid-minor: #292929;
+}
+
+body {
+    font: 500 14px/1.45 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Header: brand-like title, no upstream icon. */
+header {
+    border-bottom-color: #212121;
+}
+
+.header-brand-icon,
+.mobile-brand-icon {
+    display: none !important;
+}
+
+header h1,
+.mobile-brand-title {
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: #ffffff;
+}
+
+/* The site has one theme; the toggle would only produce a light page that clashes with the shell. */
+#themeToggle,
+.theme-toggle,
+#mobileThemeToggle {
+    display: none !important;
+}
+
+/* Controls follow the site's pill/accent language. */
+button,
+select,
+input[type="number"],
+input[type="text"] {
+    border-radius: 8px;
+}
+
+.primary,
+button.primary,
+.save-target-button.primary {
+    background: linear-gradient(90deg, #ffc247, #ff8a00);
+    border-color: #ff8a00;
+    color: #1a1204;
+    font-weight: 800;
+}
+
+.primary:hover,
+button.primary:hover {
+    filter: brightness(1.05);
+}
+
+.mode button.active,
+[aria-pressed="true"] {
+    color: #ffd699;
+}
+
+/* Third-party links: partner banner and the upstream donation dialog are not part of the site. */
+.footer-partners,
+.footer-partner,
+.mobile-partner-link,
+.donation-links,
+.donation-support-button,
+.feedback-launcher,
+#feedbackLauncher {
+    display: none !important;
+}
+
+footer,
+.footer-disclaimer,
+.footer-meta,
+.footer-author {
+    color: #767676;
+}
+
+footer a {
+    color: #a8a8a8;
+}
+
+footer a:hover {
+    color: #ffd699;
+}
+
+/* Scrollbars in the site's greys. */
+::-webkit-scrollbar-thumb {
+    background: #3a3a3a;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #ff8a00;
+}

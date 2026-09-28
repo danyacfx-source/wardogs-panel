@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: wardogs_test
+          POSTGRES_USER: wardogs
+          POSTGRES_PASSWORD: wardogs-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wardogs -d wardogs_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m compileall -q app tests
+      - run: node --check static/app.js
+      - run: node --check static/portal.js
+      - run: python -m pytest -q
+      - run: pip-audit -r requirements.txt
+      - name: PostgreSQL smoke test
+        env:
+          WARDOGS_ENV: development
+          WARDOGS_DISABLE_BACKGROUND: "1"
+          WARDOGS_DATABASE_URL: postgresql://wardogs:wardogs-ci-only@127.0.0.1:5432/wardogs_test
+        run: |
+          python - <<'PY'
+          import asyncio
+          from app import db
+
+          async def smoke():
+              await db.init()
+              assert await db.schema_version() == db.REQUIRED_SCHEMA_VERSION
+              await db.upsert_user("76561190000000000", "PG smoke")
+              token = await db.create_session("76561190000000000")
+              assert await db.get_session(token) == "76561190000000000"
+              await db.log_site_audit("76561190000000000", "pg", "ci.smoke", "ok")
+              assert (await db.verify_site_audit_chain(force=True))["ok"]
+              await db.delete_session(token)
+              await db.close()
+
+          asyncio.run(smoke())
+          PY
+      - run: docker build --pull -t wardogs-panel:ci .

@@ -1,0 +1,16 @@
+.env
+servers.json
+*.db
+*.db-shm
+*.db-wal
+.git
+.gitignore
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+tests
+PROJECT_OVERVIEW.md
+README.md
+deploy

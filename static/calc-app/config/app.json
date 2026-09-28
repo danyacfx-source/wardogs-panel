@@ -1,0 +1,64 @@
+{
+  "collab": {
+    "enabled": false,
+    "serverUrl": "",
+    "maxParticipants": 8,
+    "roomLifetimeHours": 6,
+    "maxRoomsPerDay": 250,
+    "maxChangeBatchesPerDay": 20000,
+    "maxChangeBatchesPerRoom": 1000,
+    "batchDelayMs": 300,
+    "allowedOrigins": [],
+    "developmentOrigins": [
+      "http://localhost:8000",
+      "http://127.0.0.1:8000"
+    ],
+    "maxRoomsPerAdmission": 25,
+    "admissionLifetimeMinutes": 30,
+    "maxInvalidMessages": 5,
+    "turnstile": {
+      "enabled": false,
+      "siteKey": "",
+      "hostname": "",
+      "action": "create-lobby"
+    }
+  },
+  "feedback": {
+    "enabled": false,
+    "serverUrl": ""
+  },
+  "mapTools": {
+    "shortcuts": {
+      "ruler": "r",
+      "pencil": "p",
+      "zone": "z",
+      "polygon": "g",
+      "eraser": "e",
+      "marker": "m",
+      "coordinateSearch": "f",
+      "layers": "l",
+      "clearTool": "escape",
+      "undo": "ctrl+z",
+      "redo": "ctrl+y",
+      "redoAlt": "ctrl+shift+z"
+    }
+  },
+  "site": {
+    "lastModified": "2026-09-18",
+    "footer": {
+      "disclaimer": "Проект сообщества WARDOGS / RUBEZH. Не связан с разработчиками игры.",
+      "productName": "RUBEZH Artillery Calculator",
+      "authorLabel": "для",
+      "authorName": "WARDOGS RUBEZH",
+      "authorUrl": "",
+      "version": "local"
+    }
+  },
+  "map": {
+    "camera": {
+      "maxZoom": 100,
+      "mobileMaxZoom": 40,
+      "panSpeed": 800
+    }
+  }
+}

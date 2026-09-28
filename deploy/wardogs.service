@@ -1,0 +1,38 @@
+[Unit]
+Description=WARDOGS RCON panel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=wardogs
+Group=wardogs
+WorkingDirectory=/opt/wardogs-site
+EnvironmentFile=/etc/wardogs/wardogs.env
+ExecStart=/opt/wardogs-site/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8236 --proxy-headers --forwarded-allow-ips=127.0.0.1 --no-server-header
+Restart=always
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/wardogs
+
+[Install]
+WantedBy=multi-user.target

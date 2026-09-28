@@ -1,0 +1,26 @@
+[Unit]
+Description=Backup WARDOGS SQLite database
+
+[Service]
+Type=oneshot
+User=wardogs
+Group=wardogs
+ExecStart=/opt/wardogs-site/deploy/backup-site-db.sh
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=true
+PrivateNetwork=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+ReadWritePaths=/var/backups/wardogs

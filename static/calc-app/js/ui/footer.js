@@ -1,0 +1,809 @@
+/* =========================
+   FOOTER
+   ========================= */
+
+const FOOTER_PARTNERS = [];
+
+const DONATION_LINKS = [];
+
+const DONATION_PARAGRAPH_KEYS = [
+    'supportStatementGrowth',
+    'supportStatementFree',
+    'supportStatementInvite',
+    'supportStatementCosts',
+    'supportStatementContinuity'
+];
+
+let donationDialog = null;
+
+function appendDonationRichText(
+    element,
+    value
+) {
+    const parts =
+        String(value || '')
+            .split(/(\*\*[^*]+\*\*)/g)
+            .filter(Boolean);
+
+    parts.forEach(part => {
+        if (
+            part.startsWith('**') &&
+            part.endsWith('**')
+        ) {
+            const strong =
+                document.createElement(
+                    'strong'
+                );
+
+            strong.textContent =
+                part.slice(2, -2);
+
+            element.appendChild(
+                strong
+            );
+            return;
+        }
+
+        element.appendChild(
+            document.createTextNode(
+                part
+            )
+        );
+    });
+}
+
+function createDonationLink(
+    donation,
+    placement
+) {
+    const link =
+        document.createElement(
+            'a'
+        );
+
+    const label =
+        typeof tr === 'function'
+            ? tr(donation.labelKey)
+            : donation.id;
+
+    link.className =
+        `donation-provider-link donation-provider-link-${donation.id}`;
+
+    link.href =
+        donation.url;
+
+    link.target =
+        '_blank';
+
+    link.rel =
+        'noopener noreferrer';
+
+    link.setAttribute(
+        'aria-label',
+        label
+    );
+
+    const icon =
+        document.createElement(
+            'span'
+        );
+
+    icon.className =
+        'donation-provider-icon';
+
+    icon.innerHTML =
+        donation.icon;
+
+    const labelElement =
+        document.createElement(
+            'span'
+        );
+
+    labelElement.className =
+        'donation-provider-label';
+
+    labelElement.textContent =
+        label;
+
+    link.append(
+        icon,
+        labelElement
+    );
+
+    link.addEventListener(
+        'click',
+        () => {
+            if (
+                typeof trackAnalytics ===
+                'function'
+            ) {
+                const currentPlacement =
+                    link
+                        .closest(
+                            '.donation-dialog'
+                        )
+                        ?.dataset
+                        .donationPlacement ||
+                    placement;
+
+                trackAnalytics(
+                    'donation-click',
+                    {
+                        service:
+                            donation.id,
+
+                        placement:
+                            currentPlacement
+                    }
+                );
+            }
+        }
+    );
+
+    return link;
+}
+
+function ensureDonationDialog(
+    placement = 'footer'
+) {
+    if (donationDialog?.isConnected) {
+        donationDialog.dataset
+            .donationPlacement =
+            placement;
+        return donationDialog;
+    }
+
+    const dialog =
+        document.createElement(
+            'dialog'
+        );
+
+    dialog.className =
+        'donation-dialog';
+
+    dialog.dataset
+        .donationPlacement =
+        placement;
+
+    dialog.setAttribute(
+        'aria-labelledby',
+        'donationDialogTitle'
+    );
+
+    const shell =
+        document.createElement(
+            'div'
+        );
+
+    shell.className =
+        'donation-dialog-shell';
+
+    const header =
+        document.createElement(
+            'div'
+        );
+
+    header.className =
+        'donation-dialog-header';
+
+    const title =
+        document.createElement(
+            'h2'
+        );
+
+    title.id =
+        'donationDialogTitle';
+
+    title.textContent =
+        typeof tr === 'function'
+            ? tr('supportDialogTitle')
+            : 'Support the project';
+
+    const closeButton =
+        document.createElement(
+            'button'
+        );
+
+    const closeLabel =
+        typeof tr === 'function'
+            ? tr('supportDialogClose')
+            : 'Close';
+
+    closeButton.type =
+        'button';
+
+    closeButton.className =
+        'donation-dialog-close';
+
+    closeButton.textContent =
+        '×';
+
+    closeButton.title =
+        closeLabel;
+
+    closeButton.setAttribute(
+        'aria-label',
+        closeLabel
+    );
+
+    header.append(
+        title,
+        closeButton
+    );
+
+    const body =
+        document.createElement(
+            'div'
+        );
+
+    body.className =
+        'donation-dialog-body';
+
+    DONATION_PARAGRAPH_KEYS.forEach(
+        key => {
+            const paragraph =
+                document.createElement(
+                    'p'
+                );
+
+            paragraph.className =
+                `donation-dialog-paragraph donation-dialog-paragraph-${key.replace('supportStatement', '').toLowerCase()}`;
+
+            appendDonationRichText(
+                paragraph,
+                typeof tr === 'function'
+                    ? tr(key)
+                    : key
+            );
+
+            body.appendChild(
+                paragraph
+            );
+        }
+    );
+
+    const contact =
+        document.createElement(
+            'p'
+        );
+
+    contact.className =
+        'donation-dialog-contact';
+
+    contact.textContent =
+        typeof tr === 'function'
+            ? tr('supportStatementPayments')
+            : 'Payments are handled by third-party payment providers. If you are unable to make a payment or have any other questions, please contact me at:';
+
+    const email =
+        document.createElement(
+            'a'
+        );
+
+    email.href =
+        '';
+
+    email.textContent =
+        '';
+
+    contact.append(
+        document.createElement('br'),
+        email
+    );
+
+    const signature =
+        document.createElement(
+            'p'
+        );
+
+    signature.className =
+        'donation-dialog-signature';
+
+    signature.textContent =
+        '— WARDOGS RUBEZH';
+
+    body.append(
+        contact,
+        signature
+    );
+
+    const actions =
+        document.createElement(
+            'div'
+        );
+
+    actions.className =
+        'donation-dialog-actions';
+
+    DONATION_LINKS.forEach(
+        donation => {
+            actions.appendChild(
+                createDonationLink(
+                    donation,
+                    placement
+                )
+            );
+        }
+    );
+
+    shell.append(
+        header,
+        body,
+        actions
+    );
+
+    dialog.appendChild(
+        shell
+    );
+
+    closeButton.addEventListener(
+        'click',
+        () => {
+            dialog.close();
+        }
+    );
+
+    dialog.addEventListener(
+        'click',
+        event => {
+            if (event.target === dialog) {
+                dialog.close();
+            }
+        }
+    );
+
+    document.body.appendChild(
+        dialog
+    );
+
+    donationDialog =
+        dialog;
+
+    return dialog;
+}
+
+function openDonationDialog(
+    placement = 'footer'
+) {
+    const dialog =
+        ensureDonationDialog(
+            placement
+        );
+
+    if (dialog.open) {
+        return;
+    }
+
+    if (
+        typeof trackAnalytics ===
+        'function'
+    ) {
+        trackAnalytics(
+            'donation-dialog-opened',
+            {
+                placement
+            }
+        );
+    }
+
+    dialog.showModal();
+
+    dialog
+        .querySelector(
+            '.donation-dialog-close'
+        )
+        ?.focus();
+}
+
+function createDonationLinks(
+    placement = 'footer'
+) {
+    if (!DONATION_LINKS.length) {
+        return document.createElement('span');
+    }
+
+    const links =
+        document.createElement(
+            'span'
+        );
+
+    links.className =
+        `donation-links donation-links-${placement}`;
+
+    const button =
+        document.createElement(
+            'button'
+        );
+
+    button.type =
+        'button';
+
+    // Keep the legacy donation-link class so existing mobile-menu
+    // close handling continues to work without duplicating listeners.
+    button.className =
+        'donation-link donation-support-button';
+
+    button.textContent =
+        typeof tr === 'function'
+            ? tr('supportProject')
+            : 'Support the project';
+
+    button.addEventListener(
+        'click',
+        () => {
+            openDonationDialog(
+                placement
+            );
+        }
+    );
+
+    links.appendChild(
+        button
+    );
+
+    return links;
+}
+
+function createFooterPartner(partner) {
+    const item =
+        document.createElement(
+            'span'
+        );
+
+    item.className =
+        'footer-partner';
+
+    const label =
+        document.createElement(
+            'span'
+        );
+
+    label.className =
+        'footer-partner-label';
+
+    const partnerLabel =
+        typeof tr === 'function' &&
+        partner.id === 'wardogs-hub'
+            ? tr('communityPartner')
+            : partner.label;
+
+    label.textContent =
+        `${partnerLabel}:`;
+
+    const link =
+        document.createElement(
+            'a'
+        );
+
+    link.className =
+        'footer-partner-link';
+
+    link.href =
+        partner.url;
+
+    link.target =
+        '_blank';
+
+    link.rel =
+        'noopener noreferrer';
+
+    link.textContent =
+        partner.name;
+
+    link.addEventListener(
+        'click',
+        () => {
+            if (
+                typeof trackAnalytics ===
+                'function'
+            ) {
+                trackAnalytics(
+                    'partner-click',
+                    {
+                        partner:
+                            partner.id,
+
+                        placement:
+                            'footer'
+                    }
+                );
+            }
+        }
+    );
+
+    item.append(
+        label,
+        link
+    );
+
+    return item;
+}
+
+const FEEDBACK_LAUNCHER_LABELS = {
+    en: 'Feedback',
+    ru: 'Обратная связь',
+    uk: 'Зворотний зв’язок',
+    de: 'Feedback',
+    fr: 'Feedback',
+    es: 'Comentarios',
+    pl: 'Opinie',
+    pt: 'Feedback',
+    'zh-cn': '反馈',
+    ko: '피드백',
+    ja: 'フィードバック',
+    cs: 'Zpětná vazba',
+    cat: 'Meowback'
+};
+
+let feedbackRuntimePromise = null;
+
+function feedbackFeatureEnabled() {
+    return APP_CONFIG?.feedback?.enabled === true &&
+        Boolean(String(APP_CONFIG?.feedback?.serverUrl || '').trim());
+}
+
+function feedbackLauncherLabel() {
+    return FEEDBACK_LAUNCHER_LABELS[
+        typeof LANG === 'string' ? LANG : 'en'
+    ] || FEEDBACK_LAUNCHER_LABELS.en;
+}
+
+function loadFeedbackRuntime() {
+    if (typeof openFeedbackDialog === 'function') {
+        return Promise.resolve();
+    }
+
+    if (feedbackRuntimePromise) {
+        return feedbackRuntimePromise;
+    }
+
+    feedbackRuntimePromise = new Promise((resolve, reject) => {
+        const existing = document.querySelector(
+            'script[data-feedback-runtime]'
+        );
+
+        if (existing) {
+            existing.addEventListener('load', resolve, { once: true });
+            existing.addEventListener(
+                'error',
+                () => reject(new Error('feedback-runtime')),
+                { once: true }
+            );
+            return;
+        }
+
+        const script = document.createElement('script');
+        const runtimeUrl = new URL(
+            'js/ui/feedback.js',
+            typeof BASE_PATH !== 'undefined'
+                ? BASE_PATH
+                : document.baseURI
+        ).href;
+
+        script.src = typeof versionRuntimeAsset === 'function'
+            ? versionRuntimeAsset(runtimeUrl)
+            : runtimeUrl;
+        script.dataset.feedbackRuntime = '1';
+        script.onload = resolve;
+        script.onerror = () => reject(new Error('feedback-runtime'));
+        document.head.appendChild(script);
+    }).catch(error => {
+        feedbackRuntimePromise = null;
+        document.querySelector('script[data-feedback-runtime]')?.remove();
+        throw error;
+    });
+
+    return feedbackRuntimePromise;
+}
+
+function createFeedbackLauncher() {
+    const button = document.createElement('button');
+    const label = feedbackLauncherLabel();
+
+    button.type = 'button';
+    button.className = 'footer-feedback-button';
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    button.innerHTML = `
+        <span class="footer-feedback-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 5h14v10H9l-4 4V5Z"></path>
+                <path d="M8 9h8"></path>
+                <path d="M8 12h5"></path>
+            </svg>
+        </span>
+        <span class="footer-feedback-label"></span>
+    `;
+
+    button.querySelector('.footer-feedback-label').textContent = label;
+
+    button.addEventListener('click', async () => {
+        if (button.disabled) return;
+
+        button.disabled = true;
+
+        try {
+            await loadFeedbackRuntime();
+
+            if (typeof openFeedbackDialog !== 'function') {
+                throw new Error('feedback-runtime');
+            }
+
+            if (typeof trackAnalytics === 'function') {
+                trackAnalytics('feedback-opened', {});
+            }
+
+            openFeedbackDialog();
+        } catch (error) {
+            console.warn('Feedback form could not load:', error);
+        } finally {
+            button.disabled = false;
+        }
+    });
+
+    return button;
+}
+
+function renderFooter() {
+    const footer =
+        $('siteFooter') ||
+        document.querySelector('footer');
+
+    if (!footer) {
+        return;
+    }
+
+    const config =
+        APP_CONFIG
+            ?.site
+            ?.footer || {};
+
+    footer.innerHTML = '';
+
+    const disclaimer =
+        document.createElement(
+            'span'
+        );
+
+    disclaimer.className =
+        'footer-disclaimer';
+
+    disclaimer.textContent =
+        typeof tr === 'function'
+            ? tr('footerDisclaimer')
+            : (config.disclaimer || '');
+
+    const meta =
+        document.createElement(
+            'span'
+        );
+
+    meta.className =
+        'footer-meta';
+
+    if (FOOTER_PARTNERS.length) {
+        const partners =
+            document.createElement(
+                'span'
+            );
+
+        partners.className =
+            'footer-partners';
+
+        FOOTER_PARTNERS.forEach(
+            partner => {
+                partners.appendChild(
+                    createFooterPartner(
+                        partner
+                    )
+                );
+            }
+        );
+
+        meta.appendChild(
+            partners
+        );
+    }
+
+    if (feedbackFeatureEnabled()) {
+        meta.appendChild(
+            createFeedbackLauncher()
+        );
+    }
+
+    meta.appendChild(
+        createDonationLinks(
+            'footer'
+        )
+    );
+
+    const author =
+        document.createElement(
+            'span'
+        );
+
+    author.className =
+        'footer-author';
+
+    const productName =
+        String(
+            config.productName ||
+            'WARDOGS Artillery Calculator'
+        );
+
+    const authorLabel =
+        String(
+            typeof tr === 'function'
+                ? tr('authorLabel')
+                : (config.authorLabel || 'by')
+        );
+
+    author.append(
+        document.createTextNode(
+            `${productName} ${authorLabel} `
+        )
+    );
+
+    const link =
+        document.createElement(
+            'a'
+        );
+
+    link.href =
+        config.authorUrl || '#';
+
+    link.target =
+        '_blank';
+
+    link.rel =
+        'noopener noreferrer';
+
+    const strong =
+        document.createElement(
+            'strong'
+        );
+
+    strong.textContent =
+        config.authorName ||
+        'WARDOGS RUBEZH';
+
+    link.appendChild(
+        strong
+    );
+
+    author.appendChild(
+        link
+    );
+
+    if (config.version) {
+        const version =
+            document.createElement(
+                'span'
+            );
+
+        version.className =
+            'footer-version';
+
+        version.textContent =
+            `(${config.version})`;
+
+        author.appendChild(
+            version
+        );
+    }
+
+    meta.appendChild(
+        author
+    );
+
+    if (disclaimer.textContent) {
+        footer.appendChild(
+            disclaimer
+        );
+    }
+
+    footer.appendChild(
+        meta
+    );
+}

@@ -1,0 +1,1 @@
+"""RCON Panel RUBEZH application package."""

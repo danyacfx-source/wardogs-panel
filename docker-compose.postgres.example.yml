@@ -1,0 +1,36 @@
+# Local PostgreSQL smoke environment.
+# Do not use this file as a production secret-management solution.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-wardogs}
+      POSTGRES_USER: ${POSTGRES_USER:-wardogs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - wardogs-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - wardogs-private
+
+  wardogs:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      WARDOGS_DATABASE_URL: postgresql://${POSTGRES_USER:-wardogs}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-wardogs}
+    networks:
+      - default
+      - wardogs-private
+
+volumes:
+  wardogs-postgres-data:
+
+networks:
+  wardogs-private:
+    internal: true

@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>probe-before</title></head>
+<body>
+<div id="probe">blank</div>
+<script>
+document.title = "probe-after-exec";
+document.getElementById("probe").textContent = "script ran";
+window.__probeRan = true;
+</script>
+<script src="/static/app.js"></script>
+<script>
+document.title += "|vueTest:" + (typeof window.Vue);
+</script>
+</body>
+</html>

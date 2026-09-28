@@ -1,0 +1,30 @@
+[Unit]
+Description=Backup WARDOGS PostgreSQL database
+
+[Service]
+Type=oneshot
+User=wardogs
+Group=wardogs
+EnvironmentFile=/etc/wardogs/wardogs.env
+ExecStart=/opt/wardogs-site/deploy/backup-postgres.sh
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=true
+PrivateNetwork=false
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+ReadWritePaths=/var/backups/wardogs

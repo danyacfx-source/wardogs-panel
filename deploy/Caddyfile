@@ -1,0 +1,15 @@
+example.org {
+    reverse_proxy 127.0.0.1:8236
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+        Cross-Origin-Opener-Policy same-origin
+        Cross-Origin-Resource-Policy same-origin
+        X-Permitted-Cross-Domain-Policies none
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        Content-Security-Policy "default-src 'self'; object-src 'none'; connect-src 'self'; img-src 'self' https: data:; style-src 'self'; style-src-attr 'unsafe-inline'; script-src 'self'; font-src 'self' data:; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://steamcommunity.com https://discord.com"
+    }
+}
