@@ -21,7 +21,10 @@ _load_dotenv(BASE_DIR / ".env")
 
 ENVIRONMENT = (os.environ.get("WARDOGS_ENV") or "development").strip().lower()
 PUBLIC_URL = (os.environ.get("WARDOGS_PUBLIC_URL") or "http://127.0.0.1:8236").rstrip("/")
-HOST = os.environ.get("WARDOGS_HOST") or "127.0.0.1"
+# When a managed platform supplies PORT it runs behind a reverse proxy and
+# needs the application to listen on the container interface.  Local runs
+# retain the safer loopback default.
+HOST = os.environ.get("WARDOGS_HOST") or ("0.0.0.0" if os.environ.get("PORT") else "127.0.0.1")
 # Bothost supplies the internal web port through PORT.  Keep the WARDOGS_*
 # variant for local and VPS deployments.
 PORT = int(os.environ.get("PORT") or os.environ.get("WARDOGS_PORT") or 8236)

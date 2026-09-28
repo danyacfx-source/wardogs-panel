@@ -12,7 +12,10 @@ COPY static ./static
 COPY migrations ./migrations
 COPY servers.example.json .
 RUN mkdir -p /app/data && chown -R wardogs:wardogs /app
-USER wardogs
+# Bothost mounts /app/data as a persistent volume at runtime.  Such a volume
+# is created after the image build and is owned by root, so a fixed unprivileged
+# image user cannot create the SQLite file there.  Run under the platform's
+# default container user to keep the persistent database writable.
 
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=8s --start-period=15s --retries=3 \
