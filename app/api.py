@@ -703,6 +703,21 @@ async def _can_view_players(request: Request):
     return bool(PLAYER_ACTION_PERMS.intersection(me["permissions"]))
 
 
+async def _require_view_players(request: Request):
+    """Список игроков: сначала 401 (нет входа), затем 403 (нет права).
+
+    Проверка прав до проверки сессии светила анонимному клиенту 403 и
+    раскрывала, какие эндпоинты закрыты ролями. Без входа отвечаем 401.
+    """
+    user = await _current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="нужен вход через Steam")
+    me = await _user_status(user)
+    if not PLAYER_ACTION_PERMS.intersection(me["permissions"]):
+        raise HTTPException(status_code=403, detail="список игроков доступен только разрешённым ролям")
+    return user
+
+
 @router.get("/server/{sid}/overview")
 async def server_overview(sid: str, request: Request):
     srv = _get_server(sid)
@@ -815,8 +830,7 @@ async def stats_population(hours: int = 24):
 
 @router.get("/stats/players")
 async def stats_players(request: Request, limit: int = 100, sort: str = "kills"):
-    if not await _can_view_players(request):
-        raise HTTPException(status_code=403, detail="рейтинг игроков доступен только разрешённым ролям")
+    await _require_view_players(request)
     normalized_sort = sort if sort in {"kills", "kd", "playtime", "sessions", "recent"} else "kills"
     return {
         "ok": True,
@@ -1441,8 +1455,7 @@ async def ticket_delete(ticket_id: str, request: Request):
 
 @router.get("/server/{sid}/players")
 async def server_players(sid: str, request: Request):
-    if not await _can_view_players(request):
-        raise HTTPException(status_code=403, detail="список игроков доступен только разрешённым ролям")
+    await _require_view_players(request)
     srv = _get_server(sid)
     if not srv:
         return _not_found(sid)
@@ -1460,7 +1473,9 @@ async def server_players(sid: str, request: Request):
 @router.get("/server/{sid}/rotation")
 async def server_rotation(sid: str, request: Request):
     user = await _current_user(request)
-    if not user or not (await _user_status(user)).get("permissions"):
+    if not user:
+        raise HTTPException(status_code=401, detail="нужен вход через Steam")
+    if not (await _user_status(user)).get("permissions"):
         raise HTTPException(status_code=403, detail="ротация доступна только разрешённым ролям")
     srv = _get_server(sid)
     if not srv:

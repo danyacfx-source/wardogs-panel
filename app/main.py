@@ -85,7 +85,16 @@ async def lifespan(app):
     await db.close()
 
 
-app = FastAPI(title="WARDOGS control panel", lifespan=lifespan)
+app = FastAPI(
+    title="WARDOGS control panel",
+    lifespan=lifespan,
+    # Автодокументация отдаёт полную карту API без авторизации — это
+    # разведывательная утечка. В production выключаем полностью; в dev
+    # остаётся для отладки.
+    docs_url=None if config.ENVIRONMENT == "production" else "/docs",
+    redoc_url=None if config.ENVIRONMENT == "production" else "/redoc",
+    openapi_url=None if config.ENVIRONMENT == "production" else "/openapi.json",
+)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=config.ALLOWED_HOSTS)
 
 _rate_windows = defaultdict(deque)
