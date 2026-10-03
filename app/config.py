@@ -2,6 +2,8 @@ import json
 import ipaddress
 import os
 import re
+import sys
+import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -31,6 +33,45 @@ PORT = int(os.environ.get("PORT") or os.environ.get("WARDOGS_PORT") or 8236)
 COOKIE_SECURE = PUBLIC_URL.lower().startswith("https://")
 DEV_AUTH = (os.environ.get("WARDOGS_DEV_AUTH") or "").strip().lower() in {"1", "true", "yes", "on"}
 DB_PATH = BASE_DIR / (os.environ.get("WARDOGS_DB") or "site.db")
+
+
+def _pick_writable_db_path(path):
+    """Возвращает путь к sqlite-файлу в каталоге, доступном для записи.
+
+    Платформы вроде Bothost монтируют /app/data томом с правами, которые
+    не позволяют текущему пользователю контейнера писать файлы. Падать
+    из-за этого нельзя — пробуем запасные каталоги и громко пишем в лог.
+    """
+    candidates = [
+        path,
+        BASE_DIR / path.name,
+        Path(tempfile.gettempdir()) / "wardogs" / path.name,
+    ]
+    for candidate in candidates:
+        try:
+            candidate.parent.mkdir(parents=True, exist_ok=True)
+            probe = candidate.parent / ".wardogs-write-probe"
+            probe.touch(exist_ok=True)
+            probe.unlink()
+            if candidate != path:
+                print(
+                    f"WARNING: каталог базы {path.parent} недоступен для записи; "
+                    f"используется {candidate.parent}",
+                    file=sys.stderr,
+                )
+            return candidate
+        except OSError:
+            continue
+    print(
+        f"ERROR: нет записываемого каталога для базы {path}; "
+        "приложение упадёт при первом обращении к БД",
+        file=sys.stderr,
+    )
+    return path
+
+
+if not (os.environ.get("WARDOGS_DATABASE_URL") or os.environ.get("DATABASE_URL")):
+    DB_PATH = _pick_writable_db_path(DB_PATH)
 DATABASE_URL = (
     os.environ.get("WARDOGS_DATABASE_URL")
     or os.environ.get("DATABASE_URL")

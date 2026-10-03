@@ -11,7 +11,7 @@ COPY app ./app
 COPY static ./static
 COPY migrations ./migrations
 COPY servers.example.json .
-RUN mkdir -p /app/data && chown -R wardogs:wardogs /app
+RUN mkdir -p /app/data && chmod 0777 /app/data && chown -R wardogs:wardogs /app
 # Bothost mounts /app/data as a persistent volume at runtime.  Such a volume
 # is created after the image build and is owned by root, so a fixed unprivileged
 # image user cannot create the SQLite file there.  Run under the platform's
