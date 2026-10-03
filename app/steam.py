@@ -1,5 +1,6 @@
 """Сервисная часть Steam OpenID (вход через Steam) и Steam Web API (ник)."""
 
+import logging
 import re
 from urllib.parse import parse_qs, urlencode, urlsplit
 
@@ -9,6 +10,8 @@ try:
     from . import config
 except ImportError:
     import config
+
+log = logging.getLogger("steam")
 
 OPENID_NS = "http://specs.openid.net/auth/2.0"
 OPENID_SERVER = "https://steamcommunity.com/openid/login"
@@ -39,10 +42,13 @@ async def validate_callback(params, expected_state=""):
     """Проверяет ответ Steam и возвращает steamId64 (или None)."""
     claimed = params.get("openid.claimed_id")
     if params.get("openid.mode") != "id_res" or not claimed:
+        log.warning("steam verify: нет id_res/claimed_id (mode=%r)", params.get("openid.mode"))
         return None
     if not claimed.startswith("http://steamcommunity.com/openid/id/"):
+        log.warning("steam verify: неожиданный claimed_id %r", claimed)
         return None
     if params.get("openid.op_endpoint") != OPENID_SERVER:
+        log.warning("steam verify: неожиданный op_endpoint %r", params.get("openid.op_endpoint"))
         return None
     return_to = params.get("openid.return_to") or ""
     return_parts = urlsplit(return_to)
@@ -52,9 +58,15 @@ async def validate_callback(params, expected_state=""):
         or return_parts.netloc.lower() != public_parts.netloc.lower()
         or return_parts.path != "/api/auth/steam/callback"
     ):
+        log.warning(
+            "steam verify: return_to не совпал: %r != %r",
+            return_to,
+            config.PUBLIC_URL,
+        )
         return None
     returned_state = (parse_qs(return_parts.query).get("state") or [""])[0]
     if not expected_state or returned_state != expected_state:
+        log.warning("steam verify: state не совпал (returned=%r expected=%r)", returned_state, expected_state)
         return None
     verify = dict(params)
     verify["openid.mode"] = "check_authentication"
@@ -63,9 +75,11 @@ async def validate_callback(params, expected_state=""):
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(OPENID_SERVER, data=verify, allow_redirects=True) as resp:
                 body = await resp.text()
-    except (aiohttp.ClientError, OSError, TimeoutError):
+    except (aiohttp.ClientError, OSError, TimeoutError) as e:
+        log.warning("steam verify: сбой запроса к steamcommunity: %r", e)
         return None
     if not any(line.strip() == "is_valid:true" for line in body.splitlines()):
+        log.warning("steam verify: rejected: status=%s body=%r", resp.status, body[:300])
         return None
     steam_id = claimed.rsplit("/", 1)[-1]
     return steam_id if re.fullmatch(r"\d{17}", steam_id) else None
