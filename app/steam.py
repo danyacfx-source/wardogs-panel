@@ -44,7 +44,8 @@ async def validate_callback(params, expected_state=""):
     if params.get("openid.mode") != "id_res" or not claimed:
         log.warning("steam verify: нет id_res/claimed_id (mode=%r)", params.get("openid.mode"))
         return None
-    if not claimed.startswith("http://steamcommunity.com/openid/id/"):
+    claimed_parts = urlsplit(claimed)
+    if claimed_parts.netloc.lower() != "steamcommunity.com" or not claimed_parts.path.startswith("/openid/id/"):
         log.warning("steam verify: неожиданный claimed_id %r", claimed)
         return None
     if params.get("openid.op_endpoint") != OPENID_SERVER:
