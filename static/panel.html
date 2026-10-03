@@ -924,7 +924,7 @@
                 <div><b>{{ bot.name }}</b><small>{{ bot.bot_id }} · {{ bot.guild_id || 'гильдия не указана' }}</small></div>
                 <div class="bot-health"><span class="badge">{{ bot.online ? 'онлайн' : (bot.status || 'ожидание') }}</span><small>{{ bot.last_seen_utc ? fmtDate(bot.last_seen_utc * 1000) : 'ещё не подключался' }}</small></div>
                 <div class="bot-scopes"><span v-for="scope in bot.scopes" :key="scope" class="badge">{{ scope }}</span></div>
-                <div class="toolbar-actions"><button class="mini-btn" @click="showBotEvents(bot)">События</button><button class="mini-btn" @click="rotateBotToken(bot)">Новый ключ</button><button class="mini-btn" :class="{danger:bot.enabled}" @click="toggleBotIntegration(bot)">{{ bot.enabled ? 'Отключить' : 'Включить' }}</button></div>
+                <div class="toolbar-actions"><button class="mini-btn" @click="showBotEvents(bot)">События</button><button class="mini-btn" @click="rotateBotToken(bot)">Новый ключ</button><button class="mini-btn" :class="{danger:bot.enabled}" @click="toggleBotIntegration(bot)">{{ bot.enabled ? 'Отключить' : 'Включить' }}</button><button class="mini-btn danger" @click="deleteBotIntegration(bot)">Удалить</button></div>
               </article>
               <div v-if="!(discordAdmin.bots || []).length" class="empty">Боты ещё не подключены. Начните с кнопки «Подключить бота».</div>
             </div>
@@ -1305,7 +1305,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/panel.render.js?v=20260927-12"></script>
-<script src="/static/app.js?v=20260927-12"></script>
+<script src="/static/panel.render.js?v=20261003-2"></script>
+<script src="/static/app.js?v=20261003-2"></script>
 </body>
 </html>

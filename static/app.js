@@ -424,7 +424,7 @@ const app = createApp({
     };
     document.addEventListener("keydown", this.handleGlobalKeydown);
     this._clock = setInterval(()=>{this.clockNow=Date.now();},1000);
-    this._attentionTimer=setInterval(()=>{if(this.booted && !this.noAccess && MODE==='panel') {if(this.state.tab==='status') this.loadAttention();if(this.state.tab==='discord' && !this.discordAdmin.loading) this.loadDiscordAdmin();}},30000);
+      this._attentionTimer=setInterval(()=>{if(this.booted && !this.noAccess && MODE==='panel') {if(this.state.tab==='status') this.loadAttention();if(this.state.tab==='discord' && !this.discordAdmin.loading) this.loadDiscordAdmin(true);}},30000);
     this.init();
   },
   beforeUnmount() {
@@ -1399,8 +1399,8 @@ const app = createApp({
         this.staff.loading = false;
       }
     },
-    async loadDiscordAdmin() {
-      this.discordAdmin.loading = true;
+    async loadDiscordAdmin(silent = false) {
+      if (!silent) this.discordAdmin.loading = true;
       this.discordAdmin.error = "";
       try {
         const { status, data } = await this.api.request("GET", "/api/discord/overview");
@@ -1429,6 +1429,12 @@ const app = createApp({
       const { status, data } = await this.api.request("PATCH", `/api/discord/bots/${encodeURIComponent(bot.bot_id)}`, { enabled: enabling });
       if (status === 200 && data?.ok) { this.toast(enabling ? "Бот включён" : "Бот отключён", "ok"); await this.loadDiscordAdmin(); }
       else this.toast(data?.detail || "Не удалось изменить состояние", "err");
+    },
+    async deleteBotIntegration(bot) {
+      if (!await this.confirmAction("Удалить бота", `${bot.name} будет удалён из реестра вместе с историей событий. Действие необратимо.`, "Удалить")) return;
+      const { status, data } = await this.api.request("DELETE", `/api/discord/bots/${encodeURIComponent(bot.bot_id)}`, {});
+      if (status === 200 && data?.ok) { this.toast("Бот удалён", "ok"); await this.loadDiscordAdmin(true); }
+      else this.toast(data?.detail || "Не удалось удалить бота", "err");
     },
     async rotateBotToken(bot) {
       if (!await this.confirmAction("Обновить ключ бота", `Старый ключ ${bot.name} сразу перестанет работать.`, "Обновить ключ")) return;

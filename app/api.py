@@ -1677,6 +1677,18 @@ async def discord_bot_rotate_token(bot_id: str, request: Request):
     return {"ok": True, "token": token, "token_notice": "Старый токен уже недействителен"}
 
 
+@router.delete("/discord/bots/{bot_id}")
+async def discord_bots_delete(bot_id: str, request: Request):
+    user = await _require_perm(request, "roles")
+    if not BOT_ID_RE.fullmatch(bot_id):
+        raise HTTPException(status_code=400, detail="Некорректный ID бота")
+    if not await db.get_bot_integration(bot_id):
+        raise HTTPException(status_code=404, detail="Бот не найден")
+    await db.delete_bot_integration(bot_id)
+    await db.log_site_audit(user["steam_id"], None, "discord.bot.delete", bot_id)
+    return {"ok": True}
+
+
 @router.get("/discord/bots/{bot_id}/events")
 async def discord_bot_events(bot_id: str, request: Request, limit: int = 100):
     await _require_perm(request, "roles")

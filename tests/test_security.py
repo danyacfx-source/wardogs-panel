@@ -48,6 +48,7 @@ def test_sensitive_server_data_is_not_public():
         assert client.get("/api/discord/overview").status_code == 401
         assert client.get("/api/discord/bots").status_code == 401
         assert client.post("/api/discord/bots", json={"name": "x"}).status_code == 401
+        assert client.delete("/api/discord/bots/some-bot").status_code == 401
         assert client.post("/api/bot/v1/heartbeat", json={}).status_code == 401
         assert client.get("/api/server/ru1/bans/export").status_code == 401
         assert client.get("/api/players/76561190000000001/history/export").status_code == 401

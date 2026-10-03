@@ -1960,6 +1960,13 @@ async def update_bot_integration(bot_id, **changes):
     return await get_bot_integration(bot_id)
 
 
+async def delete_bot_integration(bot_id):
+    async with _conn() as database:
+        await database.execute("DELETE FROM bot_events WHERE bot_id = ?", (bot_id,))
+        await database.execute("DELETE FROM bot_integrations WHERE bot_id = ?", (bot_id,))
+        await database.commit()
+
+
 async def append_bot_event(bot_id, event_id, event_type, payload):
     try:
         async with _conn() as database:

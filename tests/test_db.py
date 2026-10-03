@@ -411,5 +411,8 @@ def test_bot_registry_and_idempotent_events(tmp_path, monkeypatch):
         events = await db.list_bot_events(item["bot_id"])
         assert len(events) == 1
         assert events[0]["payload"] == {"id": "42"}
+        await db.delete_bot_integration(item["bot_id"])
+        assert await db.get_bot_integration(item["bot_id"]) is None
+        assert await db.list_bot_events(item["bot_id"]) == []
 
     asyncio.run(run())
