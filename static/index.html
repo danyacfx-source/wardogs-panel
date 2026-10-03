@@ -77,7 +77,7 @@
           </div>
           <div class="server-card-map" v-else>Нет соединения с сервером</div>
           <div class="public-server-live" v-if="state.ovById[s.id]?.status">
-            <span class="server-live-chip"><i></i>Сид — {{ plCount(s.id) || '—' }}</span>
+            <span class="server-live-chip"><i></i>{{ livePhase(s.id) }} — {{ plCount(s.id) || '—' }}</span>
           </div>
           <div class="public-faction-list" v-if="state.ovById[s.id]?.status?.factionScores?.length">
             <div v-for="f in state.ovById[s.id].status.factionScores" :key="f.name"><span :style="{color:f.colorHex}">● {{ f.name }}</span><i><b :style="{width:pctScore(f)+'%',background:f.colorHex}"></b></i><strong>{{ f.score || 0 }}</strong></div>
@@ -226,7 +226,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/index.render.js?v=20261003-2"></script>
-<script src="/static/app.js?v=20261003-2"></script>
+<script src="/static/index.render.js?v=20261003-3"></script>
+<script src="/static/app.js?v=20261003-3"></script>
 </body>
 </html>

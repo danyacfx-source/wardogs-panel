@@ -635,6 +635,11 @@ const app = createApp({
       const p = o.status.players || {};
       return `${p.current}/${p.max}`;
     },
+    livePhase(sid) {
+      const o = this.state.ovById[sid];
+      const current = Number(o?.status?.players?.current || 0);
+      return current >= 20 ? "Идёт матч" : "Сид";
+    },
     totalPlayers() {
       return Object.values(this.state.ovById).reduce((sum, o) => {
         if (!o || o.error || !o.status) return sum;

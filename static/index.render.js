@@ -236,7 +236,7 @@ return function render(_ctx, _cache) {
             ? (_openBlock(), _createElementBlock("div", _hoisted_25, _toDisplayString(mapLabel(state.ovById[s.id].status.map)) + " · " + _toDisplayString(modeLabel(state.ovById[s.id].status.experiences)), 1))
             : (_openBlock(), _createElementBlock("div", _hoisted_26, "Нет соединения с сервером")),
           (state.ovById[s.id]?.status)
-            ? (_openBlock(), _createElementBlock("div", _hoisted_27, [_createElementVNode("span", _hoisted_28, [_cache[13] || (_cache[13] = _createElementVNode("i", null, null, -1)), _createTextVNode("Сид — " + _toDisplayString(plCount(s.id) || '—'), 1)])]))
+            ? (_openBlock(), _createElementBlock("div", _hoisted_27, [_createElementVNode("span", _hoisted_28, [_cache[13] || (_cache[13] = _createElementVNode("i", null, null, -1)), _createTextVNode(_toDisplayString(livePhase(s.id)) + " — " + _toDisplayString(plCount(s.id) || '—'), 1)])]))
             : _createCommentVNode("", true),
           (state.ovById[s.id]?.status?.factionScores?.length)
             ? (_openBlock(), _createElementBlock("div", _hoisted_29, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(state.ovById[s.id].status.factionScores, (f) => {
