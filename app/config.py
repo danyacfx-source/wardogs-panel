@@ -32,6 +32,17 @@ HOST = os.environ.get("WARDOGS_HOST") or ("0.0.0.0" if os.environ.get("PORT") el
 PORT = int(os.environ.get("PORT") or os.environ.get("WARDOGS_PORT") or 8236)
 COOKIE_SECURE = PUBLIC_URL.lower().startswith("https://")
 DEV_AUTH = (os.environ.get("WARDOGS_DEV_AUTH") or "").strip().lower() in {"1", "true", "yes", "on"}
+# Allowlist for the admin API surface (_require_perm/_require_any_perm).
+# Plain IPs and CIDR networks are accepted; empty value disables the check.
+ADMIN_IPS = []
+for _token in re.split(r"[,;\s]+", os.environ.get("WARDOGS_ADMIN_IPS") or ""):
+    _token = _token.strip()
+    if not _token:
+        continue
+    try:
+        ADMIN_IPS.append(ipaddress.ip_network(_token, strict=False))
+    except ValueError:
+        print(f"WARNING: WARDOGS_ADMIN_IPS: skipped invalid entry {_token!r}", file=sys.stderr)
 DB_PATH = BASE_DIR / (os.environ.get("WARDOGS_DB") or "site.db")
 
 

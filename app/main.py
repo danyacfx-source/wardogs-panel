@@ -93,7 +93,7 @@ _rate_windows = defaultdict(deque)
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
     """Security headers, bounded request size, rate limit and double-submit CSRF."""
-    client = request.client.host if request.client else "unknown"
+    client = api.client_ip(request.headers, request.client.host if request.client else "")
     supplied_request_id = request.headers.get("X-Request-ID") or ""
     request_id = (
         supplied_request_id

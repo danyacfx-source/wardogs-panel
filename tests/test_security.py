@@ -1,9 +1,47 @@
 import asyncio
+import ipaddress
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 from app import api, config, steam
 from app.main import app
+
+
+def test_client_ip_trusts_proxy_headers():
+    # Приватный пир (reverse proxy) — берём реального клиента из X-Forwarded-For.
+    assert api.client_ip({"x-forwarded-for": "203.0.113.7, 10.0.0.2"}, "10.0.0.1") == "203.0.113.7"
+    # Публичный пир — поддельный заголовок игнорируется, берём пира.
+    assert api.client_ip({"x-forwarded-for": "198.51.100.99"}, "198.51.100.1") == "198.51.100.1"
+    # Приватные hop'ы внутри пропускаем, мусор не роняет проверку.
+    assert api.client_ip({"x-forwarded-for": "garbage, 203.0.113.8"}, "172.16.0.5") == "203.0.113.8"
+    # Заголовка нет — пир.
+    assert api.client_ip({}, "172.16.0.5") == "172.16.0.5"
+    # Нечитаемый пир возвращаем как есть.
+    assert api.client_ip({}, "testclient") == "testclient"
+
+
+def test_admin_ip_allowlist(monkeypatch):
+    def request_factory(xff, peer):
+        return SimpleNamespace(
+            headers={"x-forwarded-for": xff} if xff else {},
+            client=SimpleNamespace(host=peer),
+        )
+
+    monkeypatch.setattr(config, "ADMIN_IPS", [ipaddress.ip_network("203.0.113.0/24")])
+    assert api.admin_ip_allowed(request_factory("203.0.113.4", "10.0.0.9")) is True
+    assert api.admin_ip_allowed(request_factory("198.51.100.4", "10.0.0.9")) is False
+    assert api.admin_ip_allowed(request_factory("", "10.0.0.9")) is False
+    monkeypatch.setattr(config, "ADMIN_IPS", [])
+    assert api.admin_ip_allowed(request_factory("198.51.100.4", "10.0.0.9")) is True
+
+
+def test_admin_endpoints_reject_foreign_ip(monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_IPS", [ipaddress.ip_network("203.0.113.0/24")])
+    with TestClient(app) as client:
+        assert client.get("/api/discord/overview").status_code == 403
+        assert client.get("/api/roles").status_code == 403
+        assert client.delete("/api/discord/bots/some-bot").status_code == 403
 
 
 def test_health_is_available():

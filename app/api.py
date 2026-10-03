@@ -136,6 +136,59 @@ def _dev_auth_allowed(request: Request):
     except ValueError:
         return False
 
+
+# Trusted reverse-proxy ranges. Explicit list: ipaddress.is_private semantics
+# differ across Python versions (documentation ranges became "private" in 3.13).
+_INTERNAL_NETS = [
+    ipaddress.ip_network(net)
+    for net in (
+        "127.0.0.0/8", "::1/128",
+        "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+        "100.64.0.0/10", "169.254.0.0/16",
+        "fc00::/7", "fe80::/10", "0.0.0.0/8",
+    )
+]
+
+
+def _is_internal(addr) -> bool:
+    return any(addr in net for net in _INTERNAL_NETS)
+
+
+def client_ip(headers, peer):
+    """Реальный IP клиента.
+
+    Заголовок X-Forwarded-For доверяем только от приватного/loopback-пира —
+    это наш reverse proxy. Прямое подключение к origin подделать заголовок не
+    позволяет: публичный пир игнорируется и берётся как есть.
+    """
+    try:
+        peer_ip = ipaddress.ip_address(str(peer or ""))
+    except ValueError:
+        return str(peer or "")
+    if not _is_internal(peer_ip):
+        return str(peer_ip)
+    hops = [hop.strip() for hop in (headers.get("x-forwarded-for") or "").split(",") if hop.strip()]
+    for hop in reversed(hops):
+        try:
+            hop_ip = ipaddress.ip_address(hop)
+        except ValueError:
+            continue
+        if _is_internal(hop_ip):
+            continue
+        return str(hop_ip)
+    return str(peer_ip)
+
+
+def admin_ip_allowed(request: Request) -> bool:
+    if not config.ADMIN_IPS:
+        return True
+    ip = client_ip(request.headers, request.client.host if request.client else "")
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return any(addr in net for net in config.ADMIN_IPS)
+
 # ---------- RCON-пул ----------
 
 class Server:
@@ -300,6 +353,8 @@ def _validate_steam_id(value):
 
 
 async def _require_any_perm(request: Request, permissions):
+    if not admin_ip_allowed(request):
+        raise HTTPException(status_code=403, detail="IP не в списке разрешённых (WARDOGS_ADMIN_IPS)")
     user = await _current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="нужен вход через Steam")
@@ -1525,6 +1580,8 @@ async def server_catalog(sid: str, request: Request):
 
 async def _require_perm(request: Request, perm: str):
     """Требует: вход через Steam + привязку Discord + право perm у роли."""
+    if not admin_ip_allowed(request):
+        raise HTTPException(status_code=403, detail="IP не в списке разрешённых (WARDOGS_ADMIN_IPS)")
     user = await _current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="нужен вход через Steam")

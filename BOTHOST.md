@@ -30,16 +30,17 @@ DISCORD_CLIENT_SECRET=
 DISCORD_BOT_TOKEN=
 WARDOGS_GUILD_ID=
 WARDOGS_ADMIN_ROLES=
+# Allowlist действий админки: IP/CIDR через запятую. Пусто = без ограничений.
+WARDOGS_ADMIN_IPS=
 RCON_TOKEN_RU1=
 ```
 
 `WARDOGS_ALLOW_INSECURE_RCON=1` нужен только пока игровой RCON доступен по
 обычному HTTP. Когда у RCON появится HTTPS, поставьте `0`.
 
-Для конфигурации серверов есть два варианта:
-
-* загрузить закрытый `servers.json` в корень проекта;
-* безопаснее — создать секрет `WARDOGS_SERVERS_JSON` с содержимым `servers.json`.
+Для конфигурации серверов используйте `servers.json` из корня репозитория.
+Секрет `WARDOGS_SERVERS_JSON` не применяйте: Bothost обрезает длинные значения
+переменных окружения и JSON ломается.
 
 Токен в JSON не нужен: для сервера `ru1` он берётся из `RCON_TOKEN_RU1`.
 
