@@ -8,7 +8,7 @@ Bothost запускает приложение в одном Docker-конте�
 
 1. Создайте Python-проект из Git-репозитория с этой папкой в корне.
 2. Включите «Использовать свой Dockerfile».
-3. В настройке домена укажите `panel.ваш-домен.ru` и внутренний порт `8000`.
+3. В настройке домена укажите `panel.dendich.online` и внутренний порт `8000`.
    Если Bothost подставит другое значение, приложение получит его через `PORT`.
 4. В DNS домена создайте запись по подсказке Bothost и дождитесь выпуска HTTPS.
 
@@ -18,8 +18,8 @@ Bothost запускает приложение в одном Docker-конте�
 
 ```dotenv
 WARDOGS_ENV=production
-WARDOGS_PUBLIC_URL=https://panel.ваш-домен.ru
-WARDOGS_ALLOWED_HOSTS=panel.ваш-домен.ru
+WARDOGS_PUBLIC_URL=https://panel.dendich.online
+WARDOGS_ALLOWED_HOSTS=panel.dendich.online
 WARDOGS_DB=/app/data/site.db
 WARDOGS_ALLOW_SQLITE_PRODUCTION=1
 WARDOGS_ALLOW_INSECURE_RCON=1
@@ -45,10 +45,10 @@ RCON_TOKEN_RU1=
 
 ## После первого запуска
 
-Проверьте адрес `https://panel.ваш-домен.ru/api/ready`. В Discord Developer
+Проверьте адрес `https://panel.dendich.online/api/ready`. В Discord Developer
 Portal добавьте redirect URI:
 
-`https://panel.ваш-домен.ru/api/auth/discord/callback`
+`https://panel.dendich.online/api/auth/discord/callback`
 
 SQLite лежит в `/app/data/site.db`, поэтому сохраняется между обновлениями
 проекта. Не запускайте вторую копию панели с той же SQLite-базой.

@@ -1,4 +1,4 @@
-example.org {
+panel.dendich.online {
     reverse_proxy 127.0.0.1:8236
     header {
         -Server
