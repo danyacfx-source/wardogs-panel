@@ -1,6 +1,5 @@
 # Local secrets and runtime data
 .env
-servers.json
 site.db
 *.db
 *.db-shm

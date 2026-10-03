@@ -1,0 +1,25 @@
+{
+  "refresh_seconds": 5,
+  "servers": [
+    {
+      "id": "ru1",
+      "name": "WARDOGS RU #1",
+      "scheme": "http",
+      "host": "54.38.128.147",
+      "port": 7839,
+      "token": "",
+      "timeout": 45,
+      "connect_url": ""
+    },
+    {
+      "id": "ru2",
+      "name": "WARDOGS RU #2",
+      "scheme": "http",
+      "host": "216.144.249.92",
+      "port": 7789,
+      "token": "",
+      "timeout": 45,
+      "connect_url": ""
+    }
+  ]
+}
