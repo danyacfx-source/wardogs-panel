@@ -27,12 +27,14 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 try:
     from . import config, db
     from . import discord as dmod
+    from . import donate
     from . import steam as steam_mod
     from .rcon_client import RCONError, WardogsRCON
 except ImportError:
     import config
     import db
     import discord as dmod
+    import donate
     import steam as steam_mod
     from rcon_client import RCONError, WardogsRCON
 
@@ -483,6 +485,38 @@ async def api_session(request: Request):
         "steam_configured": True,
         "dev_auth_enabled": _dev_auth_allowed(request),
     }
+
+
+@router.post("/donate/checkout")
+async def donate_checkout(request: Request):
+    """Создаёт подписанный заказ на личный VIP для входившего пользователя.
+
+    Заказ подписывается тем же секретом, что и заказы донат-бота, поэтому
+    после оплаты оба бота работают с ним как с обычным: сидер проверяет
+    подпись и выдаёт слот, донат-бот разбирает заказ в /donation-admin review
+    (он не создавал его сам, поэтому автоподтверждения ролей нет).
+    """
+    user = _require_user(await _current_user(request))
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    product = str((body or {}).get("product") or "")
+    if product not in donate.SITE_PRODUCTS:
+        raise HTTPException(status_code=400, detail="неизвестный тариф")
+    binding = await db.get_binding(user["steam_id"])
+    discord_id = str((binding or {}).get("discord_id") or "")
+    if not re.fullmatch(r"\d{17,20}", discord_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Привяжите Discord-аккаунт: оплаченные роли выдаются на него",
+        )
+    try:
+        token = donate.create_site_order(product, discord_id)
+    except ValueError:
+        raise HTTPException(status_code=503, detail="оплата временно не настроена")
+    await db.log_site_audit(user["steam_id"], None, "donate.checkout", product)
+    return {"url": f"/donate/index.php?o={token}"}
 
 
 @router.get("/system/status")

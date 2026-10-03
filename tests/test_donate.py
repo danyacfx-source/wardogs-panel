@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -8,7 +9,7 @@ from urllib.parse import quote, unquote
 
 from fastapi.testclient import TestClient
 
-from app import config, donate
+from app import api, config, db, donate
 from app.main import app
 
 CHECKOUT_SECRET = "checkout-secret-test-0123456789abcdef"
@@ -294,3 +295,75 @@ def test_feed_paging_stays_monotonic(monkeypatch, tmp_path):
         assert len(second["events"]) == 5
         assert second["nextOffset"] == donate.FEED_PAGE_LIMIT + 5
         assert second["nextOffset"] >= donate.FEED_PAGE_LIMIT
+
+
+def test_site_checkout_creates_signed_order(monkeypatch, tmp_path):
+    _configure(monkeypatch, tmp_path)
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "checkout.db")
+    steam_id = "76561190000000001"
+    discord_id = "1553944475926269982"
+
+    async def seed():
+        await db.init()
+        await db.upsert_user(steam_id, "Buyer")
+        token = await db.create_session(steam_id)
+        await db.upsert_binding(steam_id, discord_id, "Buyer", ["role-1"], True)
+        await db.close()
+        return token
+
+    session_token = asyncio.run(seed())
+    with TestClient(app) as client:
+        # Без входа — 401.
+        assert client.post("/api/donate/checkout", json={"product": "personal_1"}).status_code == 401
+
+        client.cookies.set(api.SESSION_COOKIE, session_token)
+        client.get("/api/session")  # ставит wds_csrf
+        headers = {"X-CSRF-Token": client.cookies.get("wds_csrf") or ""}
+
+        # Неизвестный тариф — 400.
+        bad = client.post("/api/donate/checkout", json={"product": "clan_10"}, headers=headers)
+        assert bad.status_code == 400
+
+        response = client.post("/api/donate/checkout", json={"product": "personal_1"}, headers=headers)
+        assert response.status_code == 200
+        url = response.json()["url"]
+        assert url.startswith("/donate/index.php?o=")
+
+        # Заказ подписан секретом бота и лежит в хранилище.
+        payload = donate.verify_checkout_token(url.split("?o=", 1)[1])
+        assert payload is not None
+        assert payload["kind"] == "personal"
+        assert payload["productId"] == "personal_1"
+        assert payload["amountKopecks"] == 50000
+        assert payload["buyerId"] == discord_id
+        assert payload["recipients"] == [discord_id]
+        assert (tmp_path / "orders" / f"{payload['id']}.json").exists()
+
+        # Страница перевода открывается по выданной ссылке.
+        page = client.get(url)
+        assert page.status_code == 200
+        assert "yoomoney.ru/quickpay/confirm" in page.text
+
+
+def test_site_checkout_requires_discord_binding(monkeypatch, tmp_path):
+    _configure(monkeypatch, tmp_path)
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "unbound.db")
+    steam_id = "76561190000000002"
+
+    async def seed():
+        await db.init()
+        await db.upsert_user(steam_id, "NoDiscord")
+        token = await db.create_session(steam_id)
+        await db.close()
+        return token
+
+    session_token = asyncio.run(seed())
+    with TestClient(app) as client:
+        client.cookies.set(api.SESSION_COOKIE, session_token)
+        client.get("/api/session")
+        headers = {"X-CSRF-Token": client.cookies.get("wds_csrf") or ""}
+        response = client.post(
+            "/api/donate/checkout", json={"product": "personal_1"}, headers=headers
+        )
+        assert response.status_code == 409
+        assert "Discord" in response.json()["detail"]

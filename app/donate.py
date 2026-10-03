@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -60,6 +61,14 @@ PRODUCTS = {
     "clan_20": "VIP для клана · 20 мест · 1 месяц",
     "clan_30": "VIP для клана · 30 мест · 1 месяц",
 }
+# Тарифы, доступные для покупки с сайта. Клановый VIP здесь не продаётся:
+# для него нужны Discord-идентификаторы получателей, их выбирают в боте.
+SITE_PRODUCTS = {
+    "personal_1": ("personal", 50000),
+    "personal_3": ("personal", 120000),
+    "personal_12": ("personal", 480000),
+}
+ORDER_LIFETIME_MS = 7200 * 1000
 _LOCK = threading.Lock()
 _MSK = timezone(timedelta(hours=3))
 
@@ -215,6 +224,43 @@ def verify_checkout_token(token: str) -> Optional[dict]:
     except (ValueError, UnicodeDecodeError):
         return None
     return payload if _payload_valid(payload) else None
+
+
+def sign_checkout_order(order: dict) -> str:
+    """Собирает токен заказа ровно так, как checkoutToken() в боте."""
+    if not config.DONATE_CHECKOUT_SECRET:
+        raise ValueError("DONATE_CHECKOUT_SECRET не задан")
+    keys = ("id", "buyerId", "kind", "productId", "recipients", "amountKopecks", "createdAt", "expiresAt")
+    payload = {key: order[key] for key in keys if key in order}
+    base = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode("utf-8")).decode("ascii")
+    base = base.rstrip("=")
+    signature = hmac.new(
+        config.DONATE_CHECKOUT_SECRET.encode("utf-8"), base.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+    return f"{base}.{signature}"
+
+
+def create_site_order(product_id: str, buyer_discord_id: str) -> str:
+    """Заказ, созданный самим сайтом, с подписью бота. Возвращает токен o."""
+    if product_id not in SITE_PRODUCTS:
+        raise ValueError("неизвестный тариф")
+    if not BUYER_ID_RE.fullmatch(buyer_discord_id or ""):
+        raise ValueError("некорректный Discord ID покупателя")
+    kind, amount = SITE_PRODUCTS[product_id]
+    now = int(time.time() * 1000)
+    order = {
+        "id": secrets.token_hex(16),
+        "buyerId": buyer_discord_id,
+        "kind": kind,
+        "productId": product_id,
+        "recipients": [buyer_discord_id],
+        "amountKopecks": amount,
+        "createdAt": now,
+        "expiresAt": now + ORDER_LIFETIME_MS,
+    }
+    token = sign_checkout_order(order)
+    save_order(order, token)
+    return token
 
 
 def notification_sign_ok(params: dict, secret: str) -> bool:
