@@ -33,6 +33,12 @@ WARDOGS_ADMIN_ROLES=
 # Allowlist действий админки: IP/CIDR через запятую. Пусто = без ограничений.
 WARDOGS_ADMIN_IPS=
 RCON_TOKEN_RU1=
+
+# Донаты (сайт-часть донатилки)
+DONATE_CHECKOUT_SECRET=
+DONATE_FEED_TOKEN=
+YOOMONEY_WALLET=
+YOOMONEY_NOTIFICATION_SECRET=
 ```
 
 `WARDOGS_ALLOW_INSECURE_RCON=1` нужен только пока игровой RCON доступен по
@@ -53,3 +59,33 @@ Portal добавьте redirect URI:
 
 SQLite лежит в `/app/data/site.db`, поэтому сохраняется между обновлениями
 проекта. Не запускайте вторую копию панели с той же SQLite-базой.
+
+## Донаты (ЮMoney)
+
+Панель хранит сайт-часть донатилки:
+
+- `GET /donate/index.php?o=<подпись>` — страница перевода (ссылки формирует
+  донатный бот, секрет CHECKOUT_SECRET бота = `DONATE_CHECKOUT_SECRET` панели);
+- `POST /donate/webhook.php` — уведомления ЮMoney, проверка подписи `sign`;
+- `GET /donate/feed.php?offset=N` c заголовком `X-WD-Feed-Token` — закрытый
+  журнал операций для донатного бота и бота сидеров
+  (токен = `DONATE_FEED_TOKEN` панели = `FEED_TOKEN` бота).
+
+Данные (`orders/` и `events.jsonl`) лежат рядом с базой: `/app/data/donate/`.
+
+Порядок включения:
+
+1. Сгенерируйте две случайные строки от 32 символов — они станут
+   `DONATE_CHECKOUT_SECRET` и `DONATE_FEED_TOKEN` панели и одновременно
+   `CHECKOUT_SECRET`/`FEED_TOKEN` донатного бота (и `DONATION_CHECKOUT_SECRET`
+   / `DONATION_FEED_TOKEN` бота сидеров).
+2. Пропишите все четыре переменные в настройках Bothost и у ботов.
+3. В настройках ЮMoney укажите адрес HTTP-уведомлений
+   `https://panel.dendich.online/donate/webhook.php` и перенесите
+   полученный секретный ключ в `YOOMONEY_NOTIFICATION_SECRET`.
+4. `YOOMONEY_WALLET` — номер кошелька, на который идут переводы.
+5. В настройках донатного бота: `SITE_BASE_URL=https://panel.dendich.online`.
+
+Форма оплаты — classic quickpay ЮMoney с меткой `WD2-<id заказа>`; метка
+попадает в уведомление и связывает платёж с сохранённым заказом. Тестовые
+уведомления (`test_notification=true`) принимаются и не записываются в журнал.

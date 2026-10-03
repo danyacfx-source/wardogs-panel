@@ -18,11 +18,12 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 import aiohttp
 
 try:
-    from . import api, config, db, monitor
+    from . import api, config, db, donate, monitor
 except ImportError:  # Поддержка прямого запуска: python app/main.py
     import api
     import config
     import db
+    import donate
     import monitor
 
 log = logging.getLogger("main")
@@ -111,7 +112,7 @@ async def security_middleware(request: Request, call_next):
             "style-src-attr 'unsafe-inline'; "
             f"{script_src}; font-src 'self' data:; "
             "base-uri 'self'; frame-ancestors 'self'; "
-            "form-action 'self' https://steamcommunity.com https://discord.com"
+            "form-action 'self' https://steamcommunity.com https://discord.com https://yoomoney.ru"
         )
         response.headers.setdefault("X-Request-ID", request_id)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -224,6 +225,7 @@ async def security_middleware(request: Request, call_next):
     return finish(response)
 
 app.include_router(api.router)
+app.include_router(donate.router)
 
 
 

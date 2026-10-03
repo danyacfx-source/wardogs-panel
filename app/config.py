@@ -89,6 +89,18 @@ DATABASE_URL = (
     or ""
 ).strip()
 DB_BACKEND = "postgres" if DATABASE_URL else "sqlite"
+# Сайт-часть донатов (app/donate.py): секреты совпадают с CHECKOUT_SECRET и
+# FEED_TOKEN донатного бота, YOOMONEY_* берутся из настроек кошелька и
+# HTTP-уведомлений ЮMoney. Без них endpoints донатов отвечают отказом.
+DONATE_CHECKOUT_SECRET = (os.environ.get("DONATE_CHECKOUT_SECRET") or "").strip()
+DONATE_FEED_TOKEN = (os.environ.get("DONATE_FEED_TOKEN") or "").strip()
+YOOMONEY_WALLET = (os.environ.get("YOOMONEY_WALLET") or "").strip()
+YOOMONEY_NOTIFICATION_SECRET = (os.environ.get("YOOMONEY_NOTIFICATION_SECRET") or "").strip()
+DONATE_DIR = (
+    Path(os.environ.get("WARDOGS_DONATE_DIR"))
+    if os.environ.get("WARDOGS_DONATE_DIR")
+    else DB_PATH.parent / "donate"
+)
 ALLOW_SQLITE_PRODUCTION = (os.environ.get("WARDOGS_ALLOW_SQLITE_PRODUCTION") or "").strip().lower() in {
     "1", "true", "yes", "on"
 }

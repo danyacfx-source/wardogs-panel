@@ -1,0 +1,89 @@
+/* Страница перевода донатов — отдельная от SPA, тема панели. */
+.donate-body {
+  min-height: 100vh;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: #0d0e0f;
+  color: #f2f0eb;
+  font-family: "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+.donate-card {
+  width: 100%;
+  max-width: 420px;
+  background: #1b1c1d;
+  border: 1px solid #303132;
+  border-radius: 12px;
+  padding: 28px 26px;
+  text-align: center;
+}
+
+.donate-brand {
+  margin: 0 0 14px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  font-size: 13px;
+  color: #f6a817;
+  text-transform: uppercase;
+}
+
+.donate-card h1 {
+  margin: 0 0 10px;
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.donate-amount {
+  margin: 0 0 6px;
+  font-size: 34px;
+  font-weight: 800;
+  color: #f6a817;
+}
+
+.donate-meta {
+  margin: 0 0 4px;
+  color: #97938b;
+  font-size: 13px;
+}
+
+.donate-meta code {
+  color: #f2f0eb;
+  background: #151617;
+  border: 1px solid #303132;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.donate-form {
+  margin: 20px 0 8px;
+}
+
+.donate-button {
+  width: 100%;
+  padding: 13px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: #f6a817;
+  color: #0d0e0f;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.donate-button:hover {
+  filter: brightness(1.08);
+}
+
+.donate-note {
+  margin: 10px 0 0;
+  color: #97938b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.donate-note a {
+  color: #f6a817;
+}
