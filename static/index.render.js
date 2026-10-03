@@ -212,10 +212,13 @@ return function render(_ctx, _cache) {
         _cache[5] || (_cache[5] = _createElementVNode("div", { class: "eyebrow" }, "WARDOGS · РУССКОЯЗЫЧНОЕ СООБЩЕСТВО", -1)),
         _cache[6] || (_cache[6] = _createElementVNode("h1", null, [_createTextVNode("Русские серверы"), _createElementVNode("br"), _createElementVNode("span", null, "Wardogs")], -1)),
         _cache[7] || (_cache[7] = _createElementVNode("p", null, "Живой статус серверов, быстрый вход в сообщество и всё нужное для игры в одном месте.", -1)),
-        _createElementVNode("div", _hoisted_14, [_createElementVNode("button", {
-          class: "btn primary hero-btn",
-          onClick: loginSteam
-        }, "Войти через Steam", 8, _hoisted_15), _createElementVNode("span", _hoisted_16, [_cache[3] || (_cache[3] = _createElementVNode("i", null, null, -1)), _createElementVNode("b", null, _toDisplayString(totalPlayers()), 1), _cache[4] || (_cache[4] = _createTextVNode(" в игре прямо сейчас", -1))])])
+        _createElementVNode("div", _hoisted_14, [(!state.me || !state.me.authed)
+          ? (_openBlock(), _createElementBlock("button", {
+              key: 0,
+              class: "btn primary hero-btn",
+              onClick: loginSteam
+            }, "Войти через Steam", 8, _hoisted_15))
+          : _createCommentVNode("", true), _createElementVNode("span", _hoisted_16, [_cache[3] || (_cache[3] = _createElementVNode("i", null, null, -1)), _createElementVNode("b", null, _toDisplayString(totalPlayers()), 1), _cache[4] || (_cache[4] = _createTextVNode(" в игре прямо сейчас", -1))])])
       ])]),
       (state.me && state.me.authed && !hasPerms)
         ? (_openBlock(), _createElementBlock("div", _hoisted_17, [(!state.me.discord.bound)
@@ -267,10 +270,13 @@ return function render(_ctx, _cache) {
         href: "https://discord.gg/wdru-ru",
         target: "_blank",
         rel: "noopener noreferrer"
-      }, "Зайти в Discord", -1)), _createElementVNode("button", {
-        class: "btn ghost",
-        onClick: loginSteam
-      }, "Войти через Steam", 8, _hoisted_36)])])]),
+      }, "Зайти в Discord", -1)), (!state.me || !state.me.authed)
+        ? (_openBlock(), _createElementBlock("button", {
+            key: 0,
+            class: "btn ghost",
+            onClick: loginSteam
+          }, "Войти через Steam", 8, _hoisted_36))
+        : _createCommentVNode("", true)])])]),
       _createElementVNode("nav", _hoisted_37, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(tabs, (t) => {
         return (_openBlock(), _createElementBlock("button", {
           key: t.id,

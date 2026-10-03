@@ -52,7 +52,7 @@
         <h1>Русские серверы<br><span>Wardogs</span></h1>
         <p>Живой статус серверов, быстрый вход в сообщество и всё нужное для игры в одном месте.</p>
         <div class="hero-actions">
-          <button class="btn primary hero-btn" @click="loginSteam">Войти через Steam</button>
+          <button v-if="!state.me || !state.me.authed" class="btn primary hero-btn" @click="loginSteam">Войти через Steam</button>
           <span class="hero-online"><i></i><b>{{ totalPlayers() }}</b> в игре прямо сейчас</span>
         </div>
       </div>
@@ -100,7 +100,7 @@
       <div class="join-grid"><article><i>1</i><div><h3>Зайдите в Discord</h3><p>В канале сообщества всегда видно, где сейчас играют и с кем можно собрать команду.</p><a href="#support">Открыть сообщество →</a></div></article><article><i>2</i><div><h3>Выберите сервер</h3><p>Карточки выше показывают онлайн, карту и режим. Нажмите на нужный сервер, чтобы открыть мониторинг.</p><a href="#servers">К списку серверов →</a></div></article><article><i>3</i><div><h3>Найдите нас в игре</h3><p>Wardogs → Community Servers. Добавьте сервер в избранное по его ID, чтобы не искать снова.</p><a href="#servers">Показать ID серверов →</a></div></article></div>
     </section>
 
-    <section class="portal-welcome" id="support"><div><h2>Добро пожаловать в WARDOGS</h2><p>Мы создаём русскоязычное сообщество игроков Wardogs: собираем команды, обсуждаем обновления и помогаем новичкам освоиться в игре.</p><p>Главное для нас — спокойная игра, уважение друг к другу и желание возвращаться на сервер.</p></div><aside><h3>WARDOGS только начинает свой путь.</h3><p>Присоединяйся, приглашай друзей и становись частью сообщества.</p><div><a class="btn primary" href="https://discord.gg/wdru-ru" target="_blank" rel="noopener noreferrer">Зайти в Discord</a><button class="btn ghost" @click="loginSteam">Войти через Steam</button></div></aside></section>
+    <section class="portal-welcome" id="support"><div><h2>Добро пожаловать в WARDOGS</h2><p>Мы создаём русскоязычное сообщество игроков Wardogs: собираем команды, обсуждаем обновления и помогаем новичкам освоиться в игре.</p><p>Главное для нас — спокойная игра, уважение друг к другу и желание возвращаться на сервер.</p></div><aside><h3>WARDOGS только начинает свой путь.</h3><p>Присоединяйся, приглашай друзей и становись частью сообщества.</p><div><a class="btn primary" href="https://discord.gg/wdru-ru" target="_blank" rel="noopener noreferrer">Зайти в Discord</a><button v-if="!state.me || !state.me.authed" class="btn ghost" @click="loginSteam">Войти через Steam</button></div></aside></section>
 
     <nav class="tabs">
       <button v-for="t in tabs" :key="t.id" class="tab"
