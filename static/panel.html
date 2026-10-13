@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>WARDOGS // Панель управления</title>
 <link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
-<link rel="stylesheet" href="/static/style.css?v=20261013-2" />
+<link rel="stylesheet" href="/static/style.css?v=20261013-3" />
 </head>
 <body data-panel-mode="panel">
 <div id="app" v-cloak>
@@ -73,7 +73,7 @@
     <main class="content admin-content">
 
       <header class="admin-page-head">
-        <div><div class="admin-path">— /admin/{{ state.tab === 'server' ? `servers/${state.sid}` : state.tab }}</div><h1>{{ state.tab === 'server' ? (state.servers.find(s => s.id === state.sid)?.name || 'Сервер') : (tabs.find(t => t.id === state.tab)?.label || 'Панель') }}</h1></div>
+        <div><div class="admin-path">— /admin/{{ state.tab === 'server' ? `servers/${state.sid}` : state.tab }}</div><h1>{{ state.tab === 'server' ? (state.servers.find(s => s.id === state.sid)?.name || 'Сервер') : (state.tab === 'profile' ? 'Личный профиль' : (tabs.find(t => t.id === state.tab)?.label || 'Панель')) }}</h1></div>
         <div class="admin-head-actions"><span class="live-badge" :class="currentConnection.state" role="status"><i></i>{{ currentConnection.label }}</span><button class="btn ghost" @click="showOperations=!showOperations" :aria-expanded="showOperations">Действия · {{ operations.length }}</button><button class="btn ghost" @click="refreshAll(true); loadAttention()" :disabled="state.refreshing">Обновить</button></div>
       </header>
 
@@ -1375,7 +1375,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/panel.render.js?v=20261013-2"></script>
-<script src="/static/app.js?v=20261013-2"></script>
+<script src="/static/panel.render.js?v=20261013-3"></script>
+<script src="/static/app.js?v=20261013-3"></script>
 </body>
 </html>

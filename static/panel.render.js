@@ -1344,7 +1344,7 @@ return function render(_ctx, _cache) {
                 onClick: logout
               }, "Выйти", 8, _hoisted_23)])])
             ]), _createElementVNode("main", _hoisted_24, [
-              _createElementVNode("header", _hoisted_25, [_createElementVNode("div", null, [_createElementVNode("div", _hoisted_26, "— /admin/" + _toDisplayString(state.tab === 'server' ? `servers/${state.sid}` : state.tab), 1), _createElementVNode("h1", null, _toDisplayString(state.tab === 'server' ? (state.servers.find(s => s.id === state.sid)?.name || 'Сервер') : (tabs.find(t => t.id === state.tab)?.label || 'Панель')), 1)]), _createElementVNode("div", _hoisted_27, [_createElementVNode("span", {
+              _createElementVNode("header", _hoisted_25, [_createElementVNode("div", null, [_createElementVNode("div", _hoisted_26, "— /admin/" + _toDisplayString(state.tab === 'server' ? `servers/${state.sid}` : state.tab), 1), _createElementVNode("h1", null, _toDisplayString(state.tab === 'server' ? (state.servers.find(s => s.id === state.sid)?.name || 'Сервер') : (state.tab === 'profile' ? 'Личный профиль' : (tabs.find(t => t.id === state.tab)?.label || 'Панель'))), 1)]), _createElementVNode("div", _hoisted_27, [_createElementVNode("span", {
                 class: _normalizeClass(["live-badge", currentConnection.state]),
                 role: "status"
               }, [_cache[12] || (_cache[12] = _createElementVNode("i", null, null, -1)), _createTextVNode(_toDisplayString(currentConnection.label), 1)], 2), _createElementVNode("button", {

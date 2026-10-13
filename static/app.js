@@ -222,7 +222,6 @@ const app = createApp({
       if (this.perms.includes("roles")) t.push({ id: "discord", label: "Боты и Discord" });
       if (any("audit", "roles", "config_view")) t.push({ id: "system", label: "Состояние" });
       if (this.perms.includes("roles")) t.push({ id: "roles", label: "Права ролей" });
-      t.push({ id: "profile", label: "Личный профиль" });
       return t;
     },
     sortedFactions() {
