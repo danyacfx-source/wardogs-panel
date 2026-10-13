@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>WARDOGS // Панель управления</title>
 <link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
-<link rel="stylesheet" href="/static/style.css?v=20261013-1" />
+<link rel="stylesheet" href="/static/style.css?v=20261013-2" />
 </head>
 <body data-panel-mode="panel">
 <div id="app" v-cloak>
@@ -65,7 +65,7 @@
         </button>
       </div>
       <div class="admin-user">
-        <span class="user-chip admin"><b>{{ (state.me && (state.me.persona || state.me.steam_id)) || '?' }}</b></span>
+        <span class="user-chip admin profile-link" role="button" tabindex="0" title="Личный профиль" @click="state.tab='profile'" @keydown.enter="state.tab='profile'"><b>{{ (state.me && (state.me.persona || state.me.steam_id)) || '?' }}</b><small>мой профиль</small></span>
         <div><a class="btn ghost small" href="/">На сайт</a><button class="btn ghost small" @click="logout">Выйти</button></div>
       </div>
     </aside>
@@ -1375,7 +1375,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/panel.render.js?v=20261013-1"></script>
-<script src="/static/app.js?v=20261013-1"></script>
+<script src="/static/panel.render.js?v=20261013-2"></script>
+<script src="/static/app.js?v=20261013-2"></script>
 </body>
 </html>
