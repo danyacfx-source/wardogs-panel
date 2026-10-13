@@ -34,15 +34,19 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 try:
-    from . import config
+    from . import config, db
 except ImportError:  # Поддержка прямого запуска: python app/donate.py
     import config
+    import db
 
 log = logging.getLogger("donate")
 
 router = APIRouter(prefix="/donate")
 
 LABEL_PREFIX = "WD2-"
+# Метка заявки панели: WD-<16 hex> (см. db.get_vip_order). Отличается от
+# метки заказов донат-бота, поэтому обрабатывается отдельной веткой.
+PANEL_LABEL_PREFIX = "WD-"
 FEED_PAGE_LIMIT = 100
 MIN_DONATION_KOPECKS = 5000
 MAX_DONATION_KOPECKS = 10_000_000
@@ -364,6 +368,59 @@ def _checkout_html(order: dict, token: str) -> str:
     )
 
 
+def _vip_order_title(order: dict) -> str:
+    """Название тарифа заявки панели — берётся из тех же планов, что и в API."""
+    try:
+        from . import api as api_mod
+    except ImportError:
+        import api as api_mod
+    plan = next((p for p in api_mod.VIP_PLANS if p["id"] == order.get("plan_id")), None)
+    if plan:
+        return plan["name"]
+    return f"VIP-заявка {order.get('id')}"
+
+
+def _vip_order_html(order: dict) -> str:
+    """Форма quickpay для заявки панели: метка = идентификатор заявки."""
+    amount = int(order["amount"])
+    title = _vip_order_title(order)
+    wallet = html.escape(config.YOOMONEY_WALLET, quote=True)
+    label = html.escape(str(order["id"]), quote=True)
+    sum_value = f"{amount:.2f}"
+    success_url = html.escape(f"{config.PUBLIC_URL}/donate/success", quote=True)
+    escaped_title = html.escape(title, quote=True)
+    recipients = order.get("recipients") or []
+    details = (
+        f"<p class=\"donate-meta\">Получателей: {len(recipients)} из {order.get('seats') or len(recipients)}"
+        f" · срок {order.get('months') or 1} мес.</p>"
+        f"<p class=\"donate-meta\">Покупатель <code>{html.escape(str(order.get('buyer_steam_id') or ''))}</code></p>"
+    )
+    return _page(
+        f"<title>{escaped_title} — оплата · WARDOGS</title>"
+        "<link rel=\"stylesheet\" href=\"/static/donate.css\">"
+        "</head><body class=\"donate-body\"><main class=\"donate-card\">"
+        "<p class=\"donate-brand\">WARDOGS</p>"
+        f"<h1>{escaped_title}</h1>"
+        f"<p class=\"donate-amount\">{html.escape(_fmt_rub(amount * 100))}</p>"
+        f"<p class=\"donate-meta\">Заявка <code>{html.escape(str(order['id']))}</code></p>"
+        f"{details}"
+        "<form class=\"donate-form\" action=\"https://yoomoney.ru/quickpay/confirm\" method=\"post\" target=\"_top\">"
+        f"<input type=\"hidden\" name=\"receiver\" value=\"{wallet}\">"
+        f"<input type=\"hidden\" name=\"sum\" value=\"{sum_value}\">"
+        f"<input type=\"hidden\" name=\"label\" value=\"{label}\">"
+        f"<input type=\"hidden\" name=\"formcomment\" value=\"{escaped_title}\">"
+        f"<input type=\"hidden\" name=\"short-dest\" value=\"{escaped_title}\">"
+        "<input type=\"hidden\" name=\"quickpay-form\" value=\"shop\">"
+        f"<input type=\"hidden\" name=\"successURL\" value=\"{success_url}\">"
+        f"<button type=\"submit\" class=\"donate-button\">Перевести {html.escape(_fmt_rub(amount * 100))} через ЮMoney</button>"
+        "</form>"
+        "<p class=\"donate-note\">После поступления денег заявка закроется автоматически, "
+        "а VIP-слоты выдадутся получателям в течение минуты.</p>"
+        "<p class=\"donate-note\"><a href=\"/\">На главную</a></p>"
+        "</main></body>"
+    )
+
+
 # --------------------------------------------------------------------------
 # Endpoints
 # --------------------------------------------------------------------------
@@ -403,6 +460,74 @@ async def success_page():
     )
 
 
+@router.get("/vip/", response_class=HTMLResponse)
+async def vip_orders_index():
+    return _notice_page(
+        "Оплата VIP-заявок",
+        "Откройте ссылку оплаты из панели: раздел «VIP-слоты» → «Заявки и коды оплаты» → «Оплатить».",
+    )
+
+
+_VIP_ORDER_STATUS = {
+    "awaiting_payment": "ожидает оплаты",
+    "paid": "оплачен, слоты выдаются",
+    "fulfilled": "оплачен, слоты выданы",
+    "cancelled": "отменена",
+}
+
+
+@router.get("/vip/{order_id}", response_class=HTMLResponse)
+async def vip_order_checkout(order_id: str):
+    """Страница перевода по заявке панели: quickpay с меткой WD-<id>."""
+    if not config.YOOMONEY_WALLET:
+        return _notice_page(
+            "Оплата временно недоступна",
+            "Платёжная форма не настроена. Сообщите администратору.",
+            status=503,
+        )
+    order = await db.get_vip_order(order_id)
+    if order is None:
+        return _notice_page(
+            "Заявка не найдена",
+            "Проверьте код заявки в панели или запросите ссылку оплаты заново.",
+            status=404,
+        )
+    if order["status"] != "awaiting_payment":
+        return _notice_page(
+            "Заявка закрыта",
+            f"Статус заявки: {_VIP_ORDER_STATUS.get(order['status'], order['status'])}.",
+            status=409,
+        )
+    return HTMLResponse(_vip_order_html(order))
+
+
+async def _settle_panel_order(order: dict, kopecks: int, operation_id: str):
+    """Закрывает заявку панели после подтверждённого перевода ЮMoney.
+
+    Сумма сверяется с тарифом: расхождение не выдаёт VIP, заявка остаётся
+    ожидающей и попадает в лог. Идемпотентность даёт переход статуса
+    awaiting_payment -> paid внутри fulfill_vip_order, поэтому повторное
+    уведомление ничего не дублирует. Ошибка выдачи поднимается наружу —
+    ЮMoney повторит уведомление.
+    """
+    expected = int(order["amount"]) * 100
+    if kopecks != expected:
+        log.warning(
+            "Webhook ЮMoney: сумма заявки %s не совпала: получено %s коп., ожидалось %s — выдача отменена",
+            order["id"], kopecks, expected,
+        )
+        return PlainTextResponse("OK")
+    try:
+        from . import api as api_mod
+    except ImportError:
+        import api as api_mod
+    if not await api_mod.fulfill_vip_order(order, operation_id):
+        log.info("Webhook ЮMoney: заявка %s уже обработана", order["id"])
+        return PlainTextResponse("OK")
+    log.info("Webhook ЮMoney: заявка %s оплачена (операция %s) — слоты выданы", order["id"], operation_id)
+    return PlainTextResponse("OK")
+
+
 @router.post("/webhook.php")
 async def yoomoney_webhook(request: Request):
     # Тело — application/x-www-form-urlencoded; парсим сами, чтобы не тянуть
@@ -426,14 +551,21 @@ async def yoomoney_webhook(request: Request):
         return PlainTextResponse("OK")
 
     label = params.get("label") or ""
-    if not label.startswith(LABEL_PREFIX):
+    panel_order = None
+    if label.startswith(PANEL_LABEL_PREFIX):
+        panel_order = await db.get_vip_order(label)
+        if panel_order is None:
+            log.warning("Webhook ЮMoney: заявка %s не найдена — пропуск", label[:32])
+            return PlainTextResponse("OK")
+    elif not label.startswith(LABEL_PREFIX):
         log.info("Webhook ЮMoney: чужая метка %r — пропуск", label[:64])
         return PlainTextResponse("OK")
-    order_id = label[len(LABEL_PREFIX) :]
-    stored = load_order(order_id)
-    if stored is None:
-        log.warning("Webhook ЮMoney: заказ %s не сохранён на сайте — пропуск", order_id)
-        return PlainTextResponse("OK")
+    else:
+        order_id = label[len(LABEL_PREFIX) :]
+        stored = load_order(order_id)
+        if stored is None:
+            log.warning("Webhook ЮMoney: заказ %s не сохранён на сайте — пропуск", order_id)
+            return PlainTextResponse("OK")
 
     notification_type = params.get("notification_type") or ""
     if notification_type not in {"p2p-incoming", "card-incoming"}:
@@ -458,6 +590,9 @@ async def yoomoney_webhook(request: Request):
     if _operation_seen(operation_id):
         log.info("Webhook ЮMoney: операция %s уже в журнале", operation_id)
         return PlainTextResponse("OK")
+
+    if panel_order is not None:
+        return await _settle_panel_order(panel_order, kopecks, operation_id)
 
     # Сумму и время сайт не отбрасывает: несовпадения разбирает бот
     # (paymentProblem -> /donation-admin review), здесь важна подлинность

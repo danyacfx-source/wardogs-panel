@@ -47,6 +47,13 @@ input:-webkit-autofill { -webkit-text-fill-color: #eee9e6; box-shadow: 0 0 0 100
 .attention-card b { font-size:30px; }.attention-card span,.attention-card small,.plan-grid small { color:#b7a6ac; }
 .plan-grid strong { color:#ff7086;font-size:22px; }.payment-center { margin-bottom:24px; }
 .payment-center summary { padding:16px 0;cursor:pointer;font-weight:700; }.payment-center td small { display:block;color:#aa929a; }
+.payment-center .order-actions { display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end; }
+.profile-hero { display:flex;gap:20px;align-items:flex-start;padding:22px;margin-bottom:18px; }
+.profile-avatar { flex:0 0 84px;width:84px;height:84px;font-size:34px; }
+.profile-hero-body { display:flex;flex-direction:column;gap:10px;min-width:0; }
+.profile-hero-body h2 { font-size:24px; }
+.profile-chips { display:flex;flex-wrap:wrap;gap:6px; }
+.profile-perms { display:flex;flex-wrap:wrap;gap:6px; }
 .operation-log { margin-bottom:20px; }.operation-log article { display:grid;grid-template-columns:1fr 180px 1fr;gap:16px;padding:14px 0;border-bottom:1px solid #39292f; }
 .operation-log article small { display:block;color:#b3a5a9; }.operation-log .confirmed>span { color:#62dda0; }.operation-log :is(.error,.unknown)>span { color:#ff7488; }.operation-log :is(.pending,.sending)>span { color:#dfb76a; }
 .bot-wizard { padding:20px;margin:18px 0;border:1px solid #743040;border-radius:8px;background:#171013; }
@@ -61,6 +68,8 @@ input:-webkit-autofill { -webkit-text-fill-color: #eee9e6; box-shadow: 0 0 0 100
   .admin-head-actions { flex-wrap:wrap;gap:8px; }
   .bot-create-grid { grid-template-columns:1fr!important; }
   .connection-strip { gap:8px;font-size:11px; }
+  .profile-hero { flex-direction:column;gap:14px; }
+  .profile-avatar { flex:0 0 64px;width:64px;height:64px;font-size:26px; }
 }
 body { margin: 0; background: var(--bg); color: var(--text);
   font: 14px/1.5 "Segoe UI", Roboto, Arial, sans-serif; }

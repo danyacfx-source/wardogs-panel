@@ -102,7 +102,8 @@ const app = createApp({
       operations: [],
       showOperations: false,
       overviewAttention: { tickets: null, vips: [], error: '' },
-      payments: { plans: [], items: [], loading: false, error: '' },
+      payments: { plans: [], items: [], loading: false, error: '', provider_connected: false },
+      profile: { loading: false, error: "", data: null },
       botWizard: { open: false, step: 1, id: '', busy: false },
       botScopeChoices: [{id:'heartbeat',label:'Состояние подключения'}, {id:'events.write',label:'Отправка событий'}],
       botEvents: [],
@@ -221,6 +222,7 @@ const app = createApp({
       if (this.perms.includes("roles")) t.push({ id: "discord", label: "Боты и Discord" });
       if (any("audit", "roles", "config_view")) t.push({ id: "system", label: "Состояние" });
       if (this.perms.includes("roles")) t.push({ id: "roles", label: "Права ролей" });
+      t.push({ id: "profile", label: "Личный профиль" });
       return t;
     },
     sortedFactions() {
@@ -356,6 +358,7 @@ const app = createApp({
       if (t === "reserved") this.loadReserved();
       if (t === "vip") { this.loadVipSlots(); this.loadPayments(); }
       if (t === "tickets") this.loadTickets();
+      if (t === "profile") this.loadProfile();
     },
     "state.sid"() {
       this.ensureCatalog();
@@ -460,6 +463,7 @@ const app = createApp({
       setTimeout(() => this.toasts.shift(), 3500);
     },
     has(p) { return this.perms.includes(p); },
+    permLabel(p) { return PERM_LABELS[p] || p; },
     permLabel(p) { return PERM_LABELS[p] || p; },
     permHint(p) { return PERM_HINTS[p] || p; },
     handleGlobalKeydown(event) {
@@ -1147,8 +1151,20 @@ const app = createApp({
       else this.payments.error=r.data?.detail || 'Не удалось загрузить заявки';
       this.payments.loading=false;
     },
+    async loadProfile() {
+      if (this.profile.loading) return;
+      this.profile.loading = true;
+      this.profile.error = "";
+      const r = await this.api.request("GET", "/api/profile");
+      if (r.status === 200 && r.data?.ok) {
+        this.profile.data = r.data;
+      } else {
+        this.profile.error = r.data?.detail || "Не удалось загрузить профиль";
+      }
+      this.profile.loading = false;
+    },
     async createVipOrder() {
-      const values=await this.openActionDialog({title:'Заявка на VIP',message:'Черновой режим: заявка сохраняется, но оплата и выдача начнут работать после подключения Donatty.',confirmText:'Создать заявку',fields:[
+      const values=await this.openActionDialog({title:'Заявка на VIP',message:'Заявка сохраняется со статусом «ожидает оплаты». Ссылка на оплату появится в списке заявок: после перевода слоты выдадутся получателям автоматически.',confirmText:'Создать заявку',fields:[
         {key:'plan_id',label:'Тариф',type:'select',required:true,value:this.payments.plans[0]?.id,options:this.payments.plans.map(p=>({value:p.id,label:`${p.name} · ${p.amount} ₽`}))},
         {key:'buyer_steam_id',label:'SteamID покупателя',required:true,validator:'steam64'},
         {key:'recipients',label:'SteamID получателей (по одному в строке)',type:'textarea',maxLength:600,placeholder:'Для личного VIP можно оставить пустым — получит покупатель'},
@@ -1162,6 +1178,25 @@ const app = createApp({
       if(!await this.confirmAction('Отменить заявку',item.id,'Отменить заявку')) return;
       const r=await this.api.request('POST',`/api/vip/orders/${item.id}/cancel`,{});
       if(r.status===200) this.loadPayments(); else this.toast(r.data?.detail || 'Не удалось отменить','err');
+    },
+    orderStatusLabel(order) {
+      const labels={awaiting_payment:'Ожидает оплаты',paid:'Оплачен, выдаётся',fulfilled:'Оплачен, выдан',cancelled:'Отменена'};
+      return labels[order.status] || order.status;
+    },
+    orderStatusClass(order) {
+      if(order.status==='fulfilled') return 'success';
+      if(order.status==='paid') return 'warn';
+      if(order.status==='cancelled') return 'danger';
+      return '';
+    },
+    async copyPayUrl(order) {
+      if(!order.pay_url) return;
+      try {
+        await navigator.clipboard.writeText(order.pay_url);
+        this.toast('Ссылка оплаты скопирована','ok');
+      } catch (e) {
+        this.toast(order.pay_url,'warn');
+      }
     },
     async extendVip(item) {
       const values=await this.openActionDialog({title:'Продлить VIP',message:`${item.display_name || item.steam_id} · ${this.state.servers.find(s=>s.id===this.state.sid)?.name}`,confirmText:'Продлить',fields:[{key:'months',label:'Срок',type:'select',value:'1',options:[{value:'1',label:'1 месяц'},{value:'3',label:'3 месяца'},{value:'12',label:'12 месяцев'}]}]});

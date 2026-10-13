@@ -56,7 +56,62 @@ VIP_PLANS = [
 @router.get('/vip/orders')
 async def vip_orders(request: Request):
     await _require_any_perm(request, {'vip_view','vip_edit'})
-    return {'ok':True,'plans':VIP_PLANS,'items':await db.list_vip_orders(),'provider_connected':False}
+    items = await db.list_vip_orders()
+    for item in items:
+        item['pay_url'] = _vip_pay_url(item) if item['status'] == 'awaiting_payment' else ''
+    return {
+        'ok': True,
+        'plans': VIP_PLANS,
+        'items': items,
+        'provider_connected': bool(config.YOOMONEY_WALLET),
+        'pay_page': f'{config.PUBLIC_URL}/donate/vip/',
+    }
+
+
+def _vip_pay_url(order) -> str:
+    """Публичная страница оплаты заявки панели: quickpay с меткой WD-<id>."""
+    if not config.YOOMONEY_WALLET or not order:
+        return ''
+    return f'{config.PUBLIC_URL}/donate/vip/{order["id"]}'
+
+
+async def fulfill_vip_order(order, operation_id: str = ""):
+    """Помечает заявку оплаченной и выдаёт VIP-слоты её получателям.
+
+    Вызывается из webhook ЮMoney (app/donate.py). Каждый шаг ограничен
+    переходом статуса, поэтому повторное уведомление ничего не дублирует.
+    """
+    if not order or not await db.mark_vip_order(order['id'], 'paid', expected='awaiting_payment'):
+        return False
+    expires_utc = time.time() + float(order.get('months') or 1) * 30 * 86400
+    results = []
+    for steam_id in order.get('recipients') or []:
+        db_user = await db.get_user(steam_id)
+        item = await db.save_vip_slot(
+            order['server_id'],
+            steam_id,
+            (db_user or {}).get('persona') or '',
+            expires_utc,
+            f"заказ {order['id']}",
+            order.get('actor_steam_id') or '',
+        )
+        synced, error = await _sync_vip_record(item, add=True)
+        results.append({'steam_id': steam_id, 'synced': synced, 'error': error})
+        log.info(
+            "VIP-заказ %s: слот %s на %s — %s",
+            order['id'], steam_id, order['server_id'], 'выдан' if synced else error,
+        )
+    issued = all(item['synced'] for item in results)
+    if issued:
+        await db.mark_vip_order(order['id'], 'fulfilled', expected='paid')
+    detail = order['id'] + (f':{operation_id}' if operation_id else '')
+    if issued:
+        detail += f":{len(results)} выдано"
+    else:
+        failed = [item['steam_id'] for item in results if not item['synced']]
+        detail += ':sync_error ' + ','.join(failed)
+    await db.log_site_audit(order.get('actor_steam_id') or None, order['server_id'], 'vip.order.paid', detail)
+    return True
 
 
 @router.post('/vip/orders')
@@ -484,6 +539,59 @@ async def api_session(request: Request):
         ),
         "steam_configured": True,
         "dev_auth_enabled": _dev_auth_allowed(request),
+    }
+
+
+@router.get("/profile")
+async def my_profile(request: Request):
+    """Личный профиль: вход, права, свои VIP-слоты, тикеты и последние действия."""
+    user = _require_user(await _current_user(request))
+    steam_id = user["steam_id"]
+    me = await _user_status(user)
+    binding = await db.get_binding(steam_id)
+    activity = await db.get_player_profile(steam_id)
+    steam_profile = (await steam_mod.fetch_profiles([steam_id])).get(steam_id) or {}
+    now = time.time()
+    vip_slots = await db.list_player_vip_slots(steam_id)
+    server_names = {srv.id: srv.name for srv in POOL.values()}
+    for vip in vip_slots:
+        vip["active"] = vip["expires_utc"] is None or vip["expires_utc"] > now
+        vip["server_name"] = server_names.get(vip["server_id"], vip["server_id"])
+    tickets = [
+        ticket
+        for ticket in await db.list_tickets(limit=500)
+        if steam_id in (ticket.get("player_steam_id"), ticket.get("created_by"), ticket.get("assigned_to"))
+    ]
+    tickets.sort(key=lambda ticket: ticket.get("updated_utc") or 0, reverse=True)
+    audit = [
+        item
+        for item in await db.get_site_audit(limit=500)
+        if item.get("actor_steam_id") == steam_id
+    ][:20]
+    return {
+        "ok": True,
+        "me": me,
+        "binding": {
+            "discord_id": (binding or {}).get("discord_id"),
+            "discord_name": (binding or {}).get("discord_name"),
+            "guild_member": bool((binding or {}).get("guild_member")),
+            "roles": (binding or {}).get("roles") or [],
+            "updated_utc": (binding or {}).get("updated_utc") or 0,
+        }
+        if binding
+        else None,
+        "steam": {
+            "avatar_url": steam_profile.get("avatar_url") or "",
+            "profile_url": steam_profile.get("profile_url") or f"https://steamcommunity.com/profiles/{steam_id}",
+            "visibility": steam_profile.get("visibility", 0),
+            "time_created_utc": steam_profile.get("time_created_utc"),
+        },
+        "activity": activity,
+        "vip_slots": vip_slots,
+        "tickets": tickets[:20],
+        "tickets_total": len(tickets),
+        "audit": audit,
+        "server_names": server_names,
     }
 
 

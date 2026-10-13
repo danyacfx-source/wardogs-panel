@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>WARDOGS // Панель управления</title>
 <link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
-<link rel="stylesheet" href="/static/style.css?v=20260927-12" />
+<link rel="stylesheet" href="/static/style.css?v=20261013-1" />
 </head>
 <body data-panel-mode="panel">
 <div id="app" v-cloak>
@@ -304,6 +304,76 @@
         <div v-else class="panel empty">Загрузка…</div>
       </section>
 
+      <!-- ===== ЛИЧНЫЙ ПРОФИЛЬ ===== -->
+      <section v-if="state.tab === 'profile'">
+        <div v-if="profile.loading && !profile.data" class="panel empty">Загрузка профиля…</div>
+        <div v-else-if="profile.error" class="panel err-box"><b>Не удалось загрузить профиль.</b> {{ profile.error }} <button class="mini-btn" @click="loadProfile">Повторить</button></div>
+        <template v-else-if="profile.data">
+          <div class="panel profile-hero">
+            <img v-if="profile.data.steam?.avatar_url" class="player-avatar image profile-avatar" :src="profile.data.steam.avatar_url" alt="Аватар Steam">
+            <div v-else class="player-avatar profile-avatar">{{ (profile.data.me?.persona || profile.data.me?.steam_id || '?').slice(0, 1).toUpperCase() }}</div>
+            <div class="profile-hero-body">
+              <span class="admin-path">ЛИЧНЫЙ ПРОФИЛЬ</span>
+              <h2>{{ profile.data.me?.persona || 'Игрок' }}</h2>
+              <div class="mono muted">{{ profile.data.me?.steam_id }}</div>
+              <div class="profile-chips">
+                <span class="player-tag" :class="{green: !!profile.data.binding}">{{ profile.data.binding ? `Discord: ${profile.data.binding.discord_name || profile.data.binding.discord_id}` : 'Discord не привязан' }}</span>
+                <span v-if="profile.data.binding?.guild_member" class="player-tag">участник гильдии</span>
+                <span class="player-tag" :class="profile.data.me?.admin ? 'purple' : ''">{{ profile.data.me?.admin ? `прав: ${profile.data.me.permissions.length}` : 'без прав панели' }}</span>
+                <span v-for="vipItem in (profile.data.vip_slots || []).filter(v => v.active)" :key="vipItem.id" class="player-tag green">VIP · {{ vipItem.server_name }}</span>
+              </div>
+              <div class="toolbar-actions">
+                <a class="btn ghost" :href="profile.data.steam?.profile_url" target="_blank" rel="noopener">Профиль Steam ↗</a>
+                <a v-if="!profile.data.binding" class="btn primary" href="/api/auth/discord/start">Привязать Discord</a>
+                <button class="btn ghost" @click="loadProfile" :disabled="profile.loading">{{ profile.loading ? 'Обновление…' : 'Обновить' }}</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="cards">
+            <div class="card">
+              <div class="k">K / D всего</div><div class="v big">{{ profile.data.activity ? kd(profile.data.activity) : '—' }}</div>
+              <div class="k">Фраги / смерти</div><div class="v">{{ profile.data.activity?.kills || 0 }} / {{ profile.data.activity?.deaths || 0 }}</div>
+            </div>
+            <div class="card">
+              <div class="k">Времени у нас</div><div class="v big">{{ fmtPlaytime(profile.data.activity?.total_seconds || 0) }}</div>
+              <div class="k">Сессий</div><div class="v">{{ profile.data.activity?.session_count || 0 }}</div>
+            </div>
+            <div class="card">
+              <div class="k">Серверов</div><div class="v big">{{ profile.data.activity?.server_count || 0 }}</div>
+              <div class="k">Впервые был</div><div class="v">{{ profile.data.activity?.first_seen_utc ? fmtDate(profile.data.activity.first_seen_utc * 1000) : 'нет данных' }}</div>
+            </div>
+            <div class="card">
+              <div class="k">Обращений</div><div class="v big">{{ profile.data.tickets_total || 0 }}</div>
+              <div class="k">Действий в панели</div><div class="v">{{ (profile.data.audit || []).length }}</div>
+            </div>
+          </div>
+
+          <div class="panel" v-if="(profile.data.me?.permissions || []).length">
+            <div class="toolbar"><h2>Мои права в панели</h2><span class="muted">{{ profile.data.me.permissions.length }}</span></div>
+            <div class="profile-perms"><span v-for="p in profile.data.me.permissions" :key="p" class="player-tag">{{ permLabel(p) }}</span></div>
+          </div>
+
+          <div class="panel">
+            <div class="toolbar"><h2>VIP-слоты</h2><span class="muted">{{ (profile.data.vip_slots || []).length }}</span></div>
+            <div v-if="(profile.data.vip_slots || []).length" class="table-scroll"><table class="tbl"><thead><tr><th>Сервер</th><th>Истекает</th><th>Состояние</th></tr></thead><tbody><tr v-for="vipItem in profile.data.vip_slots" :key="vipItem.id"><td>{{ vipItem.server_name }}</td><td>{{ vipItem.expires_utc ? fmtDate(vipItem.expires_utc * 1000) : 'бессрочный' }}</td><td><span class="badge" :class="vipItem.active ? 'success' : ''">{{ vipItem.active ? 'активен' : 'истёк' }}</span></td></tr></tbody></table></div>
+            <p v-else class="empty">VIP-слотов нет. Раздел «VIP-слоты» покажет доступные тарифы.</p>
+          </div>
+
+          <div class="panel">
+            <div class="toolbar"><h2>Мои обращения</h2><span class="muted">{{ profile.data.tickets_total || 0 }}</span></div>
+            <div v-if="(profile.data.tickets || []).length" class="table-scroll"><table class="tbl"><thead><tr><th>Обращение</th><th>Статус</th><th>Приоритет</th><th>Обновлён</th></tr></thead><tbody><tr v-for="ticket in profile.data.tickets" :key="ticket.id"><td>{{ ticket.title }}</td><td>{{ ticketStatusLabel(ticket.status) }}</td><td>{{ ticketPriorityLabel(ticket.priority) }}</td><td>{{ fmtDate(ticket.updated_utc * 1000) }}</td></tr></tbody></table></div>
+            <p v-else class="empty">Обращений нет. Создать их можно в разделе «Тикеты».</p>
+          </div>
+
+          <div class="panel">
+            <div class="toolbar"><h2>Последние действия</h2><span class="muted">{{ (profile.data.audit || []).length }}</span></div>
+            <div v-if="(profile.data.audit || []).length" class="table-scroll"><table class="tbl"><thead><tr><th>Когда</th><th>Событие</th><th>Детали</th></tr></thead><tbody><tr v-for="(entry, i) in profile.data.audit" :key="i"><td>{{ fmtDate(entry.timestamp_utc * 1000) }}</td><td>{{ entry.event }}</td><td class="mono">{{ entry.detail }}</td></tr></tbody></table></div>
+            <p v-else class="empty">Действий пока не было.</p>
+          </div>
+        </template>
+      </section>
+
       <!-- ===== РОТАЦИЯ ===== -->
       <section v-if="state.tab === 'rotation'">
         <div v-if="ov && ov.error" class="panel err-box"><b>Сервер недоступен.</b> {{ ov.error.message }}</div>
@@ -599,12 +669,12 @@
       <!-- ===== VIP-СЛОТЫ ===== -->
       <section v-if="state.tab === 'vip'">
         <div class="panel payment-center">
-          <div class="toolbar"><div><h2>VIP и платежи</h2><p class="muted">Donatty ещё не подключён. Заявки сохраняются без списания денег и автоматической выдачи VIP.</p></div><button v-if="has('vip_edit')" class="btn primary" @click="createVipOrder" :disabled="!payments.plans.length">+ Заявка VIP</button></div>
+          <div class="toolbar"><div><h2>VIP и платежи</h2><p class="muted">{{ payments.provider_connected ? 'Оплата через ЮMoney: создайте заявку и отправьте покупателю ссылку — после поступления денег слоты выдадутся получателям автоматически.' : 'Кошелёк ЮMoney не подключён: заявки сохраняются, ссылка на оплату появится после настройки YOOMONEY_WALLET.' }}</p></div><button v-if="has('vip_edit')" class="btn primary" @click="createVipOrder" :disabled="!payments.plans.length">+ Заявка VIP</button></div>
           <div class="plan-grid"><article v-for="plan in payments.plans" :key="plan.id"><b>{{ plan.name }}</b><strong>{{ plan.amount.toLocaleString('ru-RU') }} ₽</strong><small>{{ plan.seats }} мест · {{ plan.months }} мес.</small></article></div>
           <div v-if="payments.error" class="err-box">{{ payments.error }} <button class="mini-btn" @click="loadPayments">Повторить</button></div>
-          <details><summary>Заявки и коды оплаты · {{ payments.items.length }}</summary>
-            <div class="table-scroll"><table class="tbl"><thead><tr><th>Код</th><th>Покупатель</th><th>Тариф / сервер</th><th>Состав</th><th>Состояние</th><th></th></tr></thead><tbody><tr v-for="order in payments.items" :key="order.id"><td class="mono">{{ order.id }}</td><td><button class="ticket-player-link" @click="openPlayerCard(order.buyer_steam_id)">{{ order.buyer_steam_id }}</button></td><td>{{ payments.plans.find(p=>p.id===order.plan_id)?.name }}<small>{{ order.server_id }} · {{ order.amount }} ₽</small></td><td :title="order.recipients.join(', ')">{{ order.recipients.length }}/{{ order.seats }}</td><td>{{ order.status==='cancelled'?'Отменена':'Ожидает оплаты' }}</td><td><button v-if="has('vip_edit') && order.status==='awaiting_payment'" class="mini-btn" @click="cancelVipOrder(order)">Отменить</button></td></tr></tbody></table></div>
-            <p v-if="!payments.items.length" class="empty">Заявок пока нет. Код будет создан автоматически.</p>
+          <details open><summary>Заявки и коды оплаты · {{ payments.items.length }}</summary>
+            <div class="table-scroll"><table class="tbl"><thead><tr><th>Код</th><th>Покупатель</th><th>Тариф / сервер</th><th>Состав</th><th>Состояние</th><th></th></tr></thead><tbody><tr v-for="order in payments.items" :key="order.id"><td class="mono">{{ order.id }}</td><td><button class="ticket-player-link" @click="openPlayerCard(order.buyer_steam_id)">{{ order.buyer_steam_id }}</button></td><td>{{ payments.plans.find(p=>p.id===order.plan_id)?.name }}<small>{{ order.server_id }} · {{ order.amount }} ₽</small></td><td :title="order.recipients.join(', ')">{{ order.recipients.length }}/{{ order.seats }}</td><td><span class="badge" :class="orderStatusClass(order)">{{ orderStatusLabel(order) }}</span></td><td class="order-actions"><template v-if="order.status==='awaiting_payment'"><a v-if="order.pay_url" class="mini-btn" :href="order.pay_url" target="_blank" rel="noopener">Оплатить</a><button v-if="order.pay_url" class="mini-btn" @click="copyPayUrl(order)">Скопировать ссылку</button><span v-else class="muted">кошелёк не настроен</span><button v-if="has('vip_edit')" class="mini-btn danger" @click="cancelVipOrder(order)">Отменить</button></template></td></tr></tbody></table></div>
+            <p v-if="!payments.items.length" class="empty">Заявок пока нет. Создайте первую кнопкой выше.</p>
           </details>
         </div>
         <header class="staff-page-head">
@@ -1305,7 +1375,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/panel.render.js?v=20261003-4"></script>
-<script src="/static/app.js?v=20261003-4"></script>
+<script src="/static/panel.render.js?v=20261013-1"></script>
+<script src="/static/app.js?v=20261013-1"></script>
 </body>
 </html>

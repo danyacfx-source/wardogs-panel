@@ -2012,6 +2012,41 @@ async def cancel_vip_order(order_id):
         return cur.rowcount > 0
 
 
+async def get_vip_order(order_id):
+    if not re.fullmatch(r"WD-[0-9A-F]{16}", str(order_id or "")):
+        return None
+    keys = ('id','buyer_steam_id','server_id','plan_id','amount','months','seats','recipients','status','created_utc','actor_steam_id')
+    async with _conn() as database:
+        cur = await database.execute('SELECT ' + ','.join(keys) + ' FROM vip_orders WHERE id=?', (order_id,))
+        row = await cur.fetchone()
+    if not row:
+        return None
+    item = dict(zip(keys, row))
+    item['recipients'] = json.loads(item['recipients'])
+    return item
+
+
+async def mark_vip_order(order_id, status, expected=None):
+    """Переводит заявку в новый статус. expected ограничивает переход.
+
+    Возвращает True, если статус реально изменился — это же делает
+    обработку платежа идемпотентной при повторных уведомлениях.
+    """
+    query = "UPDATE vip_orders SET status=? WHERE id=?"
+    params = [status, order_id]
+    if expected:
+        if isinstance(expected, (list, tuple, set)):
+            query += " AND status IN (" + ",".join("?" for _ in expected) + ")"
+            params.extend(expected)
+        else:
+            query += " AND status=?"
+            params.append(expected)
+    async with _conn() as database:
+        cur = await database.execute(query, tuple(params))
+        await database.commit()
+        return cur.rowcount > 0
+
+
 async def list_bot_events(bot_id, limit=100):
     async with _conn() as database:
         cur = await database.execute(
