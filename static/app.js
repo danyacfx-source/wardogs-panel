@@ -103,7 +103,7 @@ const app = createApp({
       showOperations: false,
       overviewAttention: { tickets: null, vips: [], error: '' },
       payments: { plans: [], items: [], loading: false, error: '', provider_connected: false },
-      profile: { loading: false, error: "", data: null },
+      profile: { loading: false, error: "", data: null, open: false },
       botWizard: { open: false, step: 1, id: '', busy: false },
       botScopeChoices: [{id:'heartbeat',label:'Состояние подключения'}, {id:'events.write',label:'Отправка событий'}],
       botEvents: [],
@@ -357,7 +357,6 @@ const app = createApp({
       if (t === "reserved") this.loadReserved();
       if (t === "vip") { this.loadVipSlots(); this.loadPayments(); }
       if (t === "tickets") this.loadTickets();
-      if (t === "profile") this.loadProfile();
     },
     "state.sid"() {
       this.ensureCatalog();
@@ -488,6 +487,7 @@ const app = createApp({
       if (event.key === "Escape") {
         if (this.actionDialog.open) this.cancelActionDialog();
         else if (this.playerCard.open) this.closePlayerCard();
+        else if (this.profile.open) this.closeProfileCard();
       }
     },
     openActionDialog({ title, message = "", confirmText = "Подтвердить", danger = false, fields = [] }) {
@@ -561,7 +561,10 @@ const app = createApp({
       else if (q.get("bind") === "discord") this.toast(`Привязка Discord не удалась (${q.get("fail") || "?"})`, "err");
       else if (q.get("auth") === "steam" && q.get("fail")) this.toast("Вход через Steam не удался", "err");
       if (MODE === "panel") this.loadRoles();
-      if (MODE === "panel" && location.hash === "#profile") this.state.tab = "profile";
+      if (location.hash === "#profile" && this.state.authed) {
+        if (MODE === "panel") this.openProfileCard();
+        else this.goProfile();
+      }
       if (MODE === "panel") {
         try { const saved=JSON.parse(sessionStorage.getItem('wardogs-view') || '{}'); for(const k of ['playersTableQuery','playersTableSort','bansQuery','bansSort','vipQuery','vipFilter','ticketQuery','ticketStatusFilter','ticketPriorityFilter']) if(typeof saved[k]==='string') this[k]=saved[k]; } catch {}
         this.$watch(()=>[this.playersTableQuery,this.playersTableSort,this.bansQuery,this.bansSort,this.vipQuery,this.vipFilter,this.ticketQuery,this.ticketStatusFilter,this.ticketPriorityFilter],()=>this.saveViewPreferences());
@@ -1163,6 +1166,13 @@ const app = createApp({
         this.profile.error = r.data?.detail || "Не удалось загрузить профиль";
       }
       this.profile.loading = false;
+    },
+    openProfileCard() {
+      this.profile.open = true;
+      this.loadProfile();
+    },
+    closeProfileCard() {
+      this.profile.open = false;
     },
     async createVipOrder() {
       const values=await this.openActionDialog({title:'Заявка на VIP',message:'Заявка сохраняется со статусом «ожидает оплаты». Ссылка на оплату появится в списке заявок: после перевода слоты выдадутся получателям автоматически.',confirmText:'Создать заявку',fields:[
