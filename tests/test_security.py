@@ -73,6 +73,45 @@ def test_session_sets_csrf_cookie():
     assert "wds_csrf" in response.cookies
 
 
+def test_csrf_rejects_cross_site_fetch_site():
+    with TestClient(app) as client:
+        client.cookies.set(api.SESSION_COOKIE, "invalid-session")
+        response = client.post(
+            "/api/auth/logout",
+            headers={"Sec-Fetch-Site": "cross-site", "X-CSRF-Token": "x"},
+        )
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "origin"
+
+
+def test_csrf_accepts_legacy_cookie_name():
+    with TestClient(app) as client:
+        client.get("/api/session")
+        legacy = client.cookies.get("wds_csrf")
+        client.cookies.set(api.SESSION_COOKIE, "invalid-session")
+        response = client.post(
+            "/api/auth/logout",
+            headers={"X-CSRF-Token": legacy or ""},
+        )
+    # Легаси-имя wds_csrf по-прежнему проходит проверку (fallback).
+    assert response.status_code == 200
+
+
+def test_logout_clears_csrf_cookie():
+    with TestClient(app) as client:
+        client.get("/api/session")
+        assert client.cookies.get("wds_csrf")
+        response = client.post("/api/auth/logout")
+    assert response.status_code == 200
+    # Set-Cookie при logout содержит удаление csrf-куки (Max-Age=0).
+    deleted = [
+        header
+        for header in response.headers.get_list("set-cookie")
+        if "wds_csrf=" in header and "Max-Age=0" in header
+    ]
+    assert deleted
+
+
 def test_sensitive_server_data_is_not_public():
     with TestClient(app) as client:
         assert client.get("/api/server/ru1/bans").status_code == 401
