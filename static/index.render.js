@@ -238,41 +238,41 @@ return function render(_ctx, _cache) {
     return (_openBlock(), _createElementBlock("div", _hoisted_1, [
       _createElementVNode("header", _hoisted_2, [_cache[2] || (_cache[2] = _createElementVNode("div", { class: "brand" }, [_createElementVNode("span", { class: "brand-mark" }, "W"), _createTextVNode(" WARDOGS "), _createElementVNode("small", null, "RUSSIAN COMMUNITY")], -1)), _cache[3] || (_cache[3] = _createElementVNode("nav", {
         class: "portal-nav public-nav",
-        "aria-label": "РќР°РІРёРіР°С†РёСЏ СЃР°Р№С‚Р°"
+        "aria-label": "Навигация сайта"
       }, [
         _createElementVNode("a", {
           class: "nav-link active",
           href: "/"
-        }, "Р“Р»Р°РІРЅР°СЏ"),
+        }, "Главная"),
         _createElementVNode("a", {
           class: "nav-link",
           href: "/stats"
-        }, "РЎС‚Р°С‚РёСЃС‚РёРєР°"),
+        }, "Статистика"),
         _createElementVNode("a", {
           class: "nav-link",
           href: "/calc"
-        }, "РљР°Р»СЊРєСѓР»СЏС‚РѕСЂ"),
+        }, "Калькулятор"),
         _createElementVNode("a", {
           class: "nav-link",
           href: "/activity"
-        }, "РђРєС‚РёРІРЅРѕСЃС‚СЊ"),
+        }, "Активность"),
         _createElementVNode("a", {
           class: "nav-link",
           href: "/clans"
-        }, "РљР»Р°РЅС‹"),
+        }, "Кланы"),
         _createElementVNode("a", {
           class: "nav-link",
           href: "#community"
-        }, "РЎРѕРѕР±С‰РµСЃС‚РІРѕ"),
+        }, "Сообщество"),
         _createElementVNode("a", {
           class: "nav-link support",
           href: "/support"
-        }, "РџРѕРґРґРµСЂР¶Р°С‚СЊ")
+        }, "Поддержать")
       ], -1)), _createElementVNode("div", _hoisted_3, [_createElementVNode("button", {
         class: "btn ghost",
         onClick: $event => (refreshAll(true)),
         disabled: state.refreshing
-      }, "РћР±РЅРѕРІРёС‚СЊ", 8, _hoisted_4), (state.me && state.me.authed)
+      }, "Обновить", 8, _hoisted_4), (state.me && state.me.authed)
         ? (_openBlock(), _createElementBlock(_Fragment, { key: 0 }, [
             hasPerms
               ? (_openBlock(), _createElementBlock("span", {
@@ -280,109 +280,109 @@ return function render(_ctx, _cache) {
                   class: "user-chip profile-link",
                   role: "button",
                   tabindex: "0",
-                  title: "Р›РёС‡РЅС‹Р№ РїСЂРѕС„РёР»СЊ",
+                  title: "Личный профиль",
                   onClick: openProfileCard,
                   onKeydown: _withKeys(openProfileCard, ["enter"])
-                }, [_createElementVNode("b", null, _toDisplayString(state.me.persona || state.me.steam_id), 1), _cache[0] || (_cache[0] = _createElementVNode("small", null, "РјРѕР№ РїСЂРѕС„РёР»СЊ", -1))], 40, _hoisted_5))
+                }, [_createElementVNode("b", null, _toDisplayString(state.me.persona || state.me.steam_id), 1), _cache[0] || (_cache[0] = _createElementVNode("small", null, "мой профиль", -1))], 40, _hoisted_5))
               : (_openBlock(), _createElementBlock("span", {
                   key: 1,
                   class: _normalizeClass(["user-chip", { admin: hasPerms }])
-                }, [_createElementVNode("b", null, _toDisplayString(state.me.persona || state.me.steam_id), 1), _cache[1] || (_cache[1] = _createElementVNode("span", { class: "muted" }, "В·", -1)), (state.me.discord.bound)
+                }, [_createElementVNode("b", null, _toDisplayString(state.me.persona || state.me.steam_id), 1), _cache[1] || (_cache[1] = _createElementVNode("span", { class: "muted" }, "·", -1)), (state.me.discord.bound)
                   ? (_openBlock(), _createElementBlock("span", _hoisted_6, _toDisplayString(state.me.discord.discord_name), 1))
-                  : (_openBlock(), _createElementBlock("span", _hoisted_7, "discord РЅРµ РїСЂРёРІСЏР·Р°РЅ"))], 2)),
+                  : (_openBlock(), _createElementBlock("span", _hoisted_7, "discord не привязан"))], 2)),
             (!state.me.discord.bound)
               ? (_openBlock(), _createElementBlock("button", {
                   key: 2,
                   class: "btn ghost",
                   onClick: bindDiscord,
                   disabled: !authConfigured
-                }, "РџСЂРёРІСЏР·Р°С‚СЊ Discord", 8, _hoisted_8))
+                }, "Привязать Discord", 8, _hoisted_8))
               : _createCommentVNode("", true),
             hasPerms
               ? (_openBlock(), _createElementBlock("button", {
                   key: 3,
                   class: "btn primary",
                   onClick: goPanel
-                }, "РџР°РЅРµР»СЊ СѓРїСЂР°РІР»РµРЅРёСЏ в†’", 8, _hoisted_9))
+                }, "Панель управления →", 8, _hoisted_9))
               : _createCommentVNode("", true),
             _createElementVNode("button", {
               class: "btn ghost",
               onClick: logout
-            }, "Р’С‹Р№С‚Рё", 8, _hoisted_10)
+            }, "Выйти", 8, _hoisted_10)
           ], 64))
         : (_openBlock(), _createElementBlock("button", {
             key: 1,
             class: "btn primary",
             onClick: loginSteam
-          }, "Р’РѕР№С‚Рё С‡РµСЂРµР· Steam", 8, _hoisted_11))])]),
+          }, "Войти через Steam", 8, _hoisted_11))])]),
       _createElementVNode("section", _hoisted_12, [_cache[9] || (_cache[9] = _createElementVNode("div", { class: "hero-noise" }, null, -1)), _createElementVNode("div", _hoisted_13, [
-        _cache[6] || (_cache[6] = _createElementVNode("div", { class: "eyebrow" }, "WARDOGS В· Р РЈРЎРЎРљРћРЇР—Р«Р§РќРћР• РЎРћРћР‘Р©Р•РЎРўР’Рћ", -1)),
-        _cache[7] || (_cache[7] = _createElementVNode("h1", null, [_createTextVNode("Р СѓСЃСЃРєРёРµ СЃРµСЂРІРµСЂС‹"), _createElementVNode("br"), _createElementVNode("span", null, "Wardogs")], -1)),
-        _cache[8] || (_cache[8] = _createElementVNode("p", null, "Р–РёРІРѕР№ СЃС‚Р°С‚СѓСЃ СЃРµСЂРІРµСЂРѕРІ, Р±С‹СЃС‚СЂС‹Р№ РІС…РѕРґ РІ СЃРѕРѕР±С‰РµСЃС‚РІРѕ Рё РІСЃС‘ РЅСѓР¶РЅРѕРµ РґР»СЏ РёРіСЂС‹ РІ РѕРґРЅРѕРј РјРµСЃС‚Рµ.", -1)),
+        _cache[6] || (_cache[6] = _createElementVNode("div", { class: "eyebrow" }, "WARDOGS · РУССКОЯЗЫЧНОЕ СООБЩЕСТВО", -1)),
+        _cache[7] || (_cache[7] = _createElementVNode("h1", null, [_createTextVNode("Русские серверы"), _createElementVNode("br"), _createElementVNode("span", null, "Wardogs")], -1)),
+        _cache[8] || (_cache[8] = _createElementVNode("p", null, "Живой статус серверов, быстрый вход в сообщество и всё нужное для игры в одном месте.", -1)),
         _createElementVNode("div", _hoisted_14, [(!state.me || !state.me.authed)
           ? (_openBlock(), _createElementBlock("button", {
               key: 0,
               class: "btn primary hero-btn",
               onClick: loginSteam
-            }, "Р’РѕР№С‚Рё С‡РµСЂРµР· Steam", 8, _hoisted_15))
-          : _createCommentVNode("", true), _createElementVNode("span", _hoisted_16, [_cache[4] || (_cache[4] = _createElementVNode("i", null, null, -1)), _createElementVNode("b", null, _toDisplayString(totalPlayers()), 1), _cache[5] || (_cache[5] = _createTextVNode(" РІ РёРіСЂРµ РїСЂСЏРјРѕ СЃРµР№С‡Р°СЃ", -1))])])
+            }, "Войти через Steam", 8, _hoisted_15))
+          : _createCommentVNode("", true), _createElementVNode("span", _hoisted_16, [_cache[4] || (_cache[4] = _createElementVNode("i", null, null, -1)), _createElementVNode("b", null, _toDisplayString(totalPlayers()), 1), _cache[5] || (_cache[5] = _createTextVNode(" в игре прямо сейчас", -1))])])
       ])]),
       (state.me && state.me.authed && !hasPerms)
         ? (_openBlock(), _createElementBlock("div", _hoisted_17, [(!state.me.discord.bound)
-            ? (_openBlock(), _createElementBlock(_Fragment, { key: 0 }, [_cache[10] || (_cache[10] = _createTextVNode("РџСЂРёРІСЏР¶РёС‚Рµ Discord, С‡С‚РѕР±С‹ РїРѕР»СѓС‡РёС‚СЊ РїСЂР°РІР°: ", -1)), _createElementVNode("a", { href: '/api/auth/discord/start' }, "РїСЂРёРІСЏР·Р°С‚СЊ Р°РєРєР°СѓРЅС‚", 8, _hoisted_18), _cache[11] || (_cache[11] = _createTextVNode(".", -1))], 64))
-            : (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [_createTextVNode("РњРѕРЅРёС‚РѕСЂРёРЅРі РґРѕСЃС‚СѓРїРµРЅ. РЎРїРёСЃРѕРє РёРіСЂРѕРєРѕРІ Рё СѓРїСЂР°РІР»РµРЅРёРµ СЃРєСЂС‹С‚С‹, РїРѕС‚РѕРјСѓ С‡С‚Рѕ Сѓ РІР°С€РµР№ СЂРѕР»Рё РЅРµС‚ СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РёС… РїСЂР°РІ.")], 64))]))
+            ? (_openBlock(), _createElementBlock(_Fragment, { key: 0 }, [_cache[10] || (_cache[10] = _createTextVNode("Привяжите Discord, чтобы получить права: ", -1)), _createElementVNode("a", { href: '/api/auth/discord/start' }, "привязать аккаунт", 8, _hoisted_18), _cache[11] || (_cache[11] = _createTextVNode(".", -1))], 64))
+            : (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [_createTextVNode("Мониторинг доступен. Список игроков и управление скрыты, потому что у вашей роли нет соответствующих прав.")], 64))]))
         : _createCommentVNode("", true),
-      _createElementVNode("section", _hoisted_19, [_createElementVNode("div", _hoisted_20, [_cache[13] || (_cache[13] = _createElementVNode("div", null, [_createElementVNode("h2", null, [_createTextVNode("РќР°С€Рё СЃРµСЂРІРµСЂС‹ "), _createElementVNode("small", null, "Р’ РёРіСЂРµ РїСЂСЏРјРѕ СЃРµР№С‡Р°СЃ")])], -1)), _createElementVNode("span", _hoisted_21, [_createElementVNode("b", null, _toDisplayString(totalPlayers()), 1), _cache[12] || (_cache[12] = _createTextVNode(" РІ РёРіСЂРµ РїСЂСЏРјРѕ СЃРµР№С‡Р°СЃ", -1))])]), _createElementVNode("div", _hoisted_22, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(state.servers, (s) => {
+      _createElementVNode("section", _hoisted_19, [_createElementVNode("div", _hoisted_20, [_cache[13] || (_cache[13] = _createElementVNode("div", null, [_createElementVNode("h2", null, [_createTextVNode("Наши серверы "), _createElementVNode("small", null, "В игре прямо сейчас")])], -1)), _createElementVNode("span", _hoisted_21, [_createElementVNode("b", null, _toDisplayString(totalPlayers()), 1), _cache[12] || (_cache[12] = _createTextVNode(" в игре прямо сейчас", -1))])]), _createElementVNode("div", _hoisted_22, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(state.servers, (s) => {
         return (_openBlock(), _createElementBlock("button", {
           key: s.id,
           class: _normalizeClass(["public-server-card", { active: s.id === state.sid, offline: isOffline(s.id) }]),
           onClick: $event => (selectServer(s.id))
         }, [
-          _createElementVNode("div", _hoisted_24, [_createElementVNode("strong", null, _toDisplayString(s.name), 1), _createElementVNode("span", null, _toDisplayString(plCount(s.id) || 'вЂ”'), 1)]),
+          _createElementVNode("div", _hoisted_24, [_createElementVNode("strong", null, _toDisplayString(s.name), 1), _createElementVNode("span", null, _toDisplayString(plCount(s.id) || '—'), 1)]),
           (state.ovById[s.id] && state.ovById[s.id].status)
-            ? (_openBlock(), _createElementBlock("div", _hoisted_25, _toDisplayString(mapLabel(state.ovById[s.id].status.map)) + " В· " + _toDisplayString(modeLabel(state.ovById[s.id].status.experiences)), 1))
-            : (_openBlock(), _createElementBlock("div", _hoisted_26, "РќРµС‚ СЃРѕРµРґРёРЅРµРЅРёСЏ СЃ СЃРµСЂРІРµСЂРѕРј")),
+            ? (_openBlock(), _createElementBlock("div", _hoisted_25, _toDisplayString(mapLabel(state.ovById[s.id].status.map)) + " · " + _toDisplayString(modeLabel(state.ovById[s.id].status.experiences)), 1))
+            : (_openBlock(), _createElementBlock("div", _hoisted_26, "Нет соединения с сервером")),
           (state.ovById[s.id]?.status)
-            ? (_openBlock(), _createElementBlock("div", _hoisted_27, [_createElementVNode("span", _hoisted_28, [_cache[14] || (_cache[14] = _createElementVNode("i", null, null, -1)), _createTextVNode(_toDisplayString(livePhase(s.id)) + " вЂ” " + _toDisplayString(plCount(s.id) || 'вЂ”'), 1)])]))
+            ? (_openBlock(), _createElementBlock("div", _hoisted_27, [_createElementVNode("span", _hoisted_28, [_cache[14] || (_cache[14] = _createElementVNode("i", null, null, -1)), _createTextVNode(_toDisplayString(livePhase(s.id)) + " — " + _toDisplayString(plCount(s.id) || '—'), 1)])]))
             : _createCommentVNode("", true),
           (state.ovById[s.id]?.status?.factionScores?.length)
             ? (_openBlock(), _createElementBlock("div", _hoisted_29, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(state.ovById[s.id].status.factionScores, (f) => {
-                return (_openBlock(), _createElementBlock("div", { key: f.name }, [_createElementVNode("span", { style: _normalizeStyle({color:f.colorHex}) }, "в—Џ " + _toDisplayString(f.name), 5), _createElementVNode("i", null, [_createElementVNode("b", { style: _normalizeStyle({width:pctScore(f)+'%',background:f.colorHex}) }, null, 4)]), _createElementVNode("strong", null, _toDisplayString(f.score || 0), 1)]))
+                return (_openBlock(), _createElementBlock("div", { key: f.name }, [_createElementVNode("span", { style: _normalizeStyle({color:f.colorHex}) }, "● " + _toDisplayString(f.name), 5), _createElementVNode("i", null, [_createElementVNode("b", { style: _normalizeStyle({width:pctScore(f)+'%',background:f.colorHex}) }, null, 4)]), _createElementVNode("strong", null, _toDisplayString(f.score || 0), 1)]))
               }), 128))]))
             : _createCommentVNode("", true),
           _createElementVNode("div", {
             class: "server-card-id",
-            title: state.ovById[s.id]?.server?.server_id || 'ID РЅРµРґРѕСЃС‚СѓРїРµРЅ'
-          }, [_cache[15] || (_cache[15] = _createTextVNode(" ID СЃРµСЂРІРµСЂР° ", -1)), _createElementVNode("span", null, _toDisplayString(state.ovById[s.id]?.server?.server_id || 'РЅРµРґРѕСЃС‚СѓРїРµРЅ'), 1), (state.ovById[s.id]?.server?.server_id)
+            title: state.ovById[s.id]?.server?.server_id || 'ID недоступен'
+          }, [_cache[15] || (_cache[15] = _createTextVNode(" ID сервера ", -1)), _createElementVNode("span", null, _toDisplayString(state.ovById[s.id]?.server?.server_id || 'недоступен'), 1), (state.ovById[s.id]?.server?.server_id)
             ? (_openBlock(), _createElementBlock("button", {
                 key: 0,
-                onClick: _withModifiers($event => (copyText(state.ovById[s.id].server.server_id,'ID СЃРµСЂРІРµСЂР°')), ["stop"])
-              }, "РєРѕРїРёСЂРѕРІР°С‚СЊ", 8, _hoisted_31))
+                onClick: _withModifiers($event => (copyText(state.ovById[s.id].server.server_id,'ID сервера')), ["stop"])
+              }, "копировать", 8, _hoisted_31))
             : _createCommentVNode("", true)], 8, _hoisted_30),
-          _createElementVNode("div", _hoisted_32, [_createElementVNode("span", { class: _normalizeClass(['dot', { on: !isOffline(s.id) }]) }, null, 2), _createTextVNode(_toDisplayString(isOffline(s.id) ? 'РќРµС‚ РїРѕРґРєР»СЋС‡РµРЅРёСЏ' : 'РџРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ Рє СЃРµСЂРІРµСЂСѓ'), 1)])
+          _createElementVNode("div", _hoisted_32, [_createElementVNode("span", { class: _normalizeClass(['dot', { on: !isOffline(s.id) }]) }, null, 2), _createTextVNode(_toDisplayString(isOffline(s.id) ? 'Нет подключения' : 'Подключиться к серверу'), 1)])
         ], 10, _hoisted_23))
       }), 128))])]),
-      _createElementVNode("section", _hoisted_33, [_cache[18] || (_cache[18] = _createElementVNode("div", { class: "section-heading" }, [_createElementVNode("div", null, [_createElementVNode("h2", null, [_createTextVNode("РџРѕР±РµРґС‹ РєРѕРјР°РЅРґ "), _createElementVNode("small", null, "РЎС‚Р°С‚РёСЃС‚РёРєР° РјР°С‚С‡РµР№ РїРѕСЏРІРёС‚СЃСЏ РїРѕСЃР»Рµ РїРµСЂРІС‹С… Р·Р°РІРµСЂС€С‘РЅРЅС‹С… РёРіСЂ")])]), _createElementVNode("div", { class: "period-switch" }, [_createElementVNode("button", { class: "active" }, "РјРµСЃСЏС†"), _createElementVNode("button", null, "3 РјРµСЃСЏС†Р°")])], -1)), _createElementVNode("div", _hoisted_34, [_cache[17] || (_cache[17] = _createElementVNode("article", { class: "win-card active" }, [_createElementVNode("b", null, "Р’СЃРµ СЃРµСЂРІРµСЂС‹"), _createElementVNode("span", null, "Р РµР·СѓР»СЊС‚Р°С‚РѕРІ РјР°С‚С‡РµР№ РїРѕРєР° РЅРµС‚")], -1)), (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(state.servers, (s) => {
+      _createElementVNode("section", _hoisted_33, [_cache[18] || (_cache[18] = _createElementVNode("div", { class: "section-heading" }, [_createElementVNode("div", null, [_createElementVNode("h2", null, [_createTextVNode("Победы команд "), _createElementVNode("small", null, "Статистика матчей появится после первых завершённых игр")])]), _createElementVNode("div", { class: "period-switch" }, [_createElementVNode("button", { class: "active" }, "месяц"), _createElementVNode("button", null, "3 месяца")])], -1)), _createElementVNode("div", _hoisted_34, [_cache[17] || (_cache[17] = _createElementVNode("article", { class: "win-card active" }, [_createElementVNode("b", null, "Все серверы"), _createElementVNode("span", null, "Результатов матчей пока нет")], -1)), (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(state.servers, (s) => {
         return (_openBlock(), _createElementBlock("article", {
           key: `wins-${s.id}`,
           class: "win-card"
-        }, [_createElementVNode("b", null, _toDisplayString(s.name), 1), _cache[16] || (_cache[16] = _createElementVNode("span", null, "Р•С‰С‘ РЅРµС‚ Р·Р°РІРµСЂС€С‘РЅРЅС‹С… РјР°С‚С‡РµР№", -1))]))
+        }, [_createElementVNode("b", null, _toDisplayString(s.name), 1), _cache[16] || (_cache[16] = _createElementVNode("span", null, "Ещё нет завершённых матчей", -1))]))
       }), 128))])]),
       _cache[42] || (_cache[42] = _createElementVNode("section", {
         class: "how-to-join",
         id: "community"
-      }, [_createElementVNode("div", { class: "section-heading" }, [_createElementVNode("div", null, [_createElementVNode("h2", null, [_createTextVNode("РљР°Рє РїРѕРїР°СЃС‚СЊ РЅР° СЃРµСЂРІРµСЂ "), _createElementVNode("small", null, "РўСЂРё С€Р°РіР° вЂ” Рё РІС‹ РІ РјР°С‚С‡Рµ СЃ СЂСѓСЃСЃРєРѕСЏР·С‹С‡РЅС‹РјРё РёРіСЂРѕРєР°РјРё")])])]), _createElementVNode("div", { class: "join-grid" }, [_createElementVNode("article", null, [_createElementVNode("i", null, "1"), _createElementVNode("div", null, [_createElementVNode("h3", null, "Р—Р°Р№РґРёС‚Рµ РІ Discord"), _createElementVNode("p", null, "Р’ РєР°РЅР°Р»Рµ СЃРѕРѕР±С‰РµСЃС‚РІР° РІСЃРµРіРґР° РІРёРґРЅРѕ, РіРґРµ СЃРµР№С‡Р°СЃ РёРіСЂР°СЋС‚ Рё СЃ РєРµРј РјРѕР¶РЅРѕ СЃРѕР±СЂР°С‚СЊ РєРѕРјР°РЅРґСѓ."), _createElementVNode("a", { href: "#support" }, "РћС‚РєСЂС‹С‚СЊ СЃРѕРѕР±С‰РµСЃС‚РІРѕ в†’")])]), _createElementVNode("article", null, [_createElementVNode("i", null, "2"), _createElementVNode("div", null, [_createElementVNode("h3", null, "Р’С‹Р±РµСЂРёС‚Рµ СЃРµСЂРІРµСЂ"), _createElementVNode("p", null, "РљР°СЂС‚РѕС‡РєРё РІС‹С€Рµ РїРѕРєР°Р·С‹РІР°СЋС‚ РѕРЅР»Р°Р№РЅ, РєР°СЂС‚Сѓ Рё СЂРµР¶РёРј. РќР°Р¶РјРёС‚Рµ РЅР° РЅСѓР¶РЅС‹Р№ СЃРµСЂРІРµСЂ, С‡С‚РѕР±С‹ РѕС‚РєСЂС‹С‚СЊ РјРѕРЅРёС‚РѕСЂРёРЅРі."), _createElementVNode("a", { href: "#servers" }, "Рљ СЃРїРёСЃРєСѓ СЃРµСЂРІРµСЂРѕРІ в†’")])]), _createElementVNode("article", null, [_createElementVNode("i", null, "3"), _createElementVNode("div", null, [_createElementVNode("h3", null, "РќР°Р№РґРёС‚Рµ РЅР°СЃ РІ РёРіСЂРµ"), _createElementVNode("p", null, "Wardogs в†’ Community Servers. Р”РѕР±Р°РІСЊС‚Рµ СЃРµСЂРІРµСЂ РІ РёР·Р±СЂР°РЅРЅРѕРµ РїРѕ РµРіРѕ ID, С‡С‚РѕР±С‹ РЅРµ РёСЃРєР°С‚СЊ СЃРЅРѕРІР°."), _createElementVNode("a", { href: "#servers" }, "РџРѕРєР°Р·Р°С‚СЊ ID СЃРµСЂРІРµСЂРѕРІ в†’")])])])], -1)),
-      _createElementVNode("section", _hoisted_35, [_cache[22] || (_cache[22] = _createElementVNode("div", null, [_createElementVNode("h2", null, "Р”РѕР±СЂРѕ РїРѕР¶Р°Р»РѕРІР°С‚СЊ РІ WARDOGS"), _createElementVNode("p", null, "РњС‹ СЃРѕР·РґР°С‘Рј СЂСѓСЃСЃРєРѕСЏР·С‹С‡РЅРѕРµ СЃРѕРѕР±С‰РµСЃС‚РІРѕ РёРіСЂРѕРєРѕРІ Wardogs: СЃРѕР±РёСЂР°РµРј РєРѕРјР°РЅРґС‹, РѕР±СЃСѓР¶РґР°РµРј РѕР±РЅРѕРІР»РµРЅРёСЏ Рё РїРѕРјРѕРіР°РµРј РЅРѕРІРёС‡РєР°Рј РѕСЃРІРѕРёС‚СЊСЃСЏ РІ РёРіСЂРµ."), _createElementVNode("p", null, "Р“Р»Р°РІРЅРѕРµ РґР»СЏ РЅР°СЃ вЂ” СЃРїРѕРєРѕР№РЅР°СЏ РёРіСЂР°, СѓРІР°Р¶РµРЅРёРµ РґСЂСѓРі Рє РґСЂСѓРіСѓ Рё Р¶РµР»Р°РЅРёРµ РІРѕР·РІСЂР°С‰Р°С‚СЊСЃСЏ РЅР° СЃРµСЂРІРµСЂ.")], -1)), _createElementVNode("aside", null, [_cache[20] || (_cache[20] = _createElementVNode("h3", null, "WARDOGS С‚РѕР»СЊРєРѕ РЅР°С‡РёРЅР°РµС‚ СЃРІРѕР№ РїСѓС‚СЊ.", -1)), _cache[21] || (_cache[21] = _createElementVNode("p", null, "РџСЂРёСЃРѕРµРґРёРЅСЏР№СЃСЏ, РїСЂРёРіР»Р°С€Р°Р№ РґСЂСѓР·РµР№ Рё СЃС‚Р°РЅРѕРІРёСЃСЊ С‡Р°СЃС‚СЊСЋ СЃРѕРѕР±С‰РµСЃС‚РІР°.", -1)), _createElementVNode("div", null, [_cache[19] || (_cache[19] = _createElementVNode("a", {
+      }, [_createElementVNode("div", { class: "section-heading" }, [_createElementVNode("div", null, [_createElementVNode("h2", null, [_createTextVNode("Как попасть на сервер "), _createElementVNode("small", null, "Три шага — и вы в матче с русскоязычными игроками")])])]), _createElementVNode("div", { class: "join-grid" }, [_createElementVNode("article", null, [_createElementVNode("i", null, "1"), _createElementVNode("div", null, [_createElementVNode("h3", null, "Зайдите в Discord"), _createElementVNode("p", null, "В канале сообщества всегда видно, где сейчас играют и с кем можно собрать команду."), _createElementVNode("a", { href: "#support" }, "Открыть сообщество →")])]), _createElementVNode("article", null, [_createElementVNode("i", null, "2"), _createElementVNode("div", null, [_createElementVNode("h3", null, "Выберите сервер"), _createElementVNode("p", null, "Карточки выше показывают онлайн, карту и режим. Нажмите на нужный сервер, чтобы открыть мониторинг."), _createElementVNode("a", { href: "#servers" }, "К списку серверов →")])]), _createElementVNode("article", null, [_createElementVNode("i", null, "3"), _createElementVNode("div", null, [_createElementVNode("h3", null, "Найдите нас в игре"), _createElementVNode("p", null, "Wardogs → Community Servers. Добавьте сервер в избранное по его ID, чтобы не искать снова."), _createElementVNode("a", { href: "#servers" }, "Показать ID серверов →")])])])], -1)),
+      _createElementVNode("section", _hoisted_35, [_cache[22] || (_cache[22] = _createElementVNode("div", null, [_createElementVNode("h2", null, "Добро пожаловать в WARDOGS"), _createElementVNode("p", null, "Мы создаём русскоязычное сообщество игроков Wardogs: собираем команды, обсуждаем обновления и помогаем новичкам освоиться в игре."), _createElementVNode("p", null, "Главное для нас — спокойная игра, уважение друг к другу и желание возвращаться на сервер.")], -1)), _createElementVNode("aside", null, [_cache[20] || (_cache[20] = _createElementVNode("h3", null, "WARDOGS только начинает свой путь.", -1)), _cache[21] || (_cache[21] = _createElementVNode("p", null, "Присоединяйся, приглашай друзей и становись частью сообщества.", -1)), _createElementVNode("div", null, [_cache[19] || (_cache[19] = _createElementVNode("a", {
         class: "btn primary",
         href: "https://discord.gg/wdru-ru",
         target: "_blank",
         rel: "noopener noreferrer"
-      }, "Р—Р°Р№С‚Рё РІ Discord", -1)), (!state.me || !state.me.authed)
+      }, "Зайти в Discord", -1)), (!state.me || !state.me.authed)
         ? (_openBlock(), _createElementBlock("button", {
             key: 0,
             class: "btn ghost",
             onClick: loginSteam
-          }, "Р’РѕР№С‚Рё С‡РµСЂРµР· Steam", 8, _hoisted_36))
+          }, "Войти через Steam", 8, _hoisted_36))
         : _createCommentVNode("", true)])])]),
       _createElementVNode("nav", _hoisted_37, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(tabs, (t) => {
         return (_openBlock(), _createElementBlock("button", {
@@ -397,17 +397,17 @@ return function render(_ctx, _cache) {
           : _createCommentVNode("", true),
         (state.tab === 'status')
           ? (_openBlock(), _createElementBlock("section", _hoisted_41, [(overview && overview.error)
-              ? (_openBlock(), _createElementBlock("div", _hoisted_42, [_cache[23] || (_cache[23] = _createElementVNode("b", null, "РЎРµСЂРІРµСЂ РЅРµРґРѕСЃС‚СѓРїРµРЅ.", -1)), _createTextVNode(" " + _toDisplayString(overview.error.message) + " (" + _toDisplayString(overview.error.code) + ") ", 1)]))
+              ? (_openBlock(), _createElementBlock("div", _hoisted_42, [_cache[23] || (_cache[23] = _createElementVNode("b", null, "Сервер недоступен.", -1)), _createTextVNode(" " + _toDisplayString(overview.error.message) + " (" + _toDisplayString(overview.error.code) + ") ", 1)]))
               : ov
                 ? (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [_createElementVNode("div", _hoisted_43, [_createElementVNode("div", _hoisted_44, [
-                    _cache[24] || (_cache[24] = _createElementVNode("div", { class: "k" }, "РЎРµСЂРІРµСЂ", -1)),
+                    _cache[24] || (_cache[24] = _createElementVNode("div", { class: "k" }, "Сервер", -1)),
                     _createElementVNode("div", _hoisted_45, _toDisplayString(ov.status.serverName), 1),
-                    _cache[25] || (_cache[25] = _createElementVNode("div", { class: "k" }, "РљР°СЂС‚Р°", -1)),
+                    _cache[25] || (_cache[25] = _createElementVNode("div", { class: "k" }, "Карта", -1)),
                     _createElementVNode("div", _hoisted_46, _toDisplayString(mapLabel(ov.status.map)), 1),
-                    _cache[26] || (_cache[26] = _createElementVNode("div", { class: "k" }, "РЎРІРµС‚", -1)),
+                    _cache[26] || (_cache[26] = _createElementVNode("div", { class: "k" }, "Свет", -1)),
                     _createElementVNode("div", _hoisted_47, _toDisplayString(lightLabel(ov.status.lighting)), 1)
                   ]), _createElementVNode("div", _hoisted_48, [
-                    _cache[27] || (_cache[27] = _createElementVNode("div", { class: "k" }, "РРіСЂРѕРєРё", -1)),
+                    _cache[27] || (_cache[27] = _createElementVNode("div", { class: "k" }, "Ргроки", -1)),
                     _createElementVNode("div", _hoisted_49, _toDisplayString(ov.status.players.current) + " / " + _toDisplayString(ov.status.players.max), 1),
                     _createElementVNode("div", _hoisted_50, [_createElementVNode("div", {
                       class: "bar-fill",
@@ -415,7 +415,7 @@ return function render(_ctx, _cache) {
                     }, null, 4)]),
                     _createElementVNode("div", _hoisted_51, _toDisplayString(modeLabel(ov.status.experiences)), 1),
                     _createElementVNode("div", _hoisted_52, _toDisplayString(ov.server.build), 1)
-                  ]), _createElementVNode("div", _hoisted_53, [_cache[28] || (_cache[28] = _createElementVNode("div", { class: "k" }, "РњР°С‚С‡", -1)), _createElementVNode("div", _hoisted_54, _toDisplayString(fmtClock(ov.status.matchSeconds)), 1)])]), _createElementVNode("div", _hoisted_55, [_cache[29] || (_cache[29] = _createElementVNode("h2", null, "РЎС‡С‘С‚ С„СЂР°РєС†РёР№", -1)), _createElementVNode("div", _hoisted_56, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(sortedFactions, (f) => {
+                  ]), _createElementVNode("div", _hoisted_53, [_cache[28] || (_cache[28] = _createElementVNode("div", { class: "k" }, "Матч", -1)), _createElementVNode("div", _hoisted_54, _toDisplayString(fmtClock(ov.status.matchSeconds)), 1)])]), _createElementVNode("div", _hoisted_55, [_cache[29] || (_cache[29] = _createElementVNode("h2", null, "Счёт фракций", -1)), _createElementVNode("div", _hoisted_56, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(sortedFactions, (f) => {
                     return (_openBlock(), _createElementBlock("div", {
                       key: f.name,
                       class: "faction-row"
@@ -432,21 +432,21 @@ return function render(_ctx, _cache) {
                       _createElementVNode("span", _hoisted_59, _toDisplayString(f.score), 1)
                     ]))
                   }), 128))])])], 64))
-                : (_openBlock(), _createElementBlock("div", _hoisted_60, "Р—Р°РіСЂСѓР·РєР°вЂ¦"))]))
+                : (_openBlock(), _createElementBlock("div", _hoisted_60, "Загрузка…"))]))
           : _createCommentVNode("", true),
         (state.tab === 'players')
           ? (_openBlock(), _createElementBlock("section", _hoisted_61, [(ov && ov.error)
-              ? (_openBlock(), _createElementBlock("div", _hoisted_62, [_cache[30] || (_cache[30] = _createElementVNode("b", null, "РЎРµСЂРІРµСЂ РЅРµРґРѕСЃС‚СѓРїРµРЅ.", -1)), _createTextVNode(" " + _toDisplayString(ov.error.message), 1)]))
+              ? (_openBlock(), _createElementBlock("div", _hoisted_62, [_cache[30] || (_cache[30] = _createElementVNode("b", null, "Сервер недоступен.", -1)), _createTextVNode(" " + _toDisplayString(ov.error.message), 1)]))
               : ov
-                ? (_openBlock(), _createElementBlock("div", _hoisted_63, [_createElementVNode("div", _hoisted_64, [_createElementVNode("h2", null, "РРіСЂРѕРєРё РЅР° СЃРµСЂРІРµСЂРµ вЂ” " + _toDisplayString(ov.players ? ov.players.count : 0), 1)]), _createElementVNode("div", _hoisted_65, [_createElementVNode("table", _hoisted_66, [_cache[31] || (_cache[31] = _createElementVNode("thead", null, [_createElementVNode("tr", null, [
+                ? (_openBlock(), _createElementBlock("div", _hoisted_63, [_createElementVNode("div", _hoisted_64, [_createElementVNode("h2", null, "Ргроки на сервере — " + _toDisplayString(ov.players ? ov.players.count : 0), 1)]), _createElementVNode("div", _hoisted_65, [_createElementVNode("table", _hoisted_66, [_cache[31] || (_cache[31] = _createElementVNode("thead", null, [_createElementVNode("tr", null, [
                     _createElementVNode("th", null, "#"),
-                    _createElementVNode("th", null, "РРіСЂРѕРє"),
-                    _createElementVNode("th", null, "РљРѕРјР°РЅРґР°"),
+                    _createElementVNode("th", null, "Ргрок"),
+                    _createElementVNode("th", null, "Команда"),
                     _createElementVNode("th", { class: "num" }, "K"),
                     _createElementVNode("th", { class: "num" }, "D"),
                     _createElementVNode("th", { class: "num" }, "KD"),
-                    _createElementVNode("th", { class: "num" }, "РљР°СЃСЃР°"),
-                    _createElementVNode("th", { class: "num" }, "РџРёРЅРі")
+                    _createElementVNode("th", { class: "num" }, "Касса"),
+                    _createElementVNode("th", { class: "num" }, "Пинг")
                   ])], -1)), _createElementVNode("tbody", null, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(sortedPlayers, (p, i) => {
                     return (_openBlock(), _createElementBlock("tr", { key: p.steamId }, [
                       _createElementVNode("td", null, _toDisplayString(i + 1), 1),
@@ -459,34 +459,34 @@ return function render(_ctx, _cache) {
                       _createElementVNode("td", _hoisted_72, _toDisplayString(p.pingMs), 1)
                     ]))
                   }), 128))])])]), (!ov.players || !ov.players.players.length)
-                    ? (_openBlock(), _createElementBlock("div", _hoisted_73, "РЎРµСЂРІРµСЂ РїСѓСЃС‚."))
+                    ? (_openBlock(), _createElementBlock("div", _hoisted_73, "Сервер пуст."))
                     : _createCommentVNode("", true)]))
-                : (_openBlock(), _createElementBlock("div", _hoisted_74, "Р—Р°РіСЂСѓР·РєР°вЂ¦"))]))
+                : (_openBlock(), _createElementBlock("div", _hoisted_74, "Загрузка…"))]))
           : _createCommentVNode("", true),
         (state.tab === 'bans')
-          ? (_openBlock(), _createElementBlock("section", _hoisted_75, [_createElementVNode("div", _hoisted_76, [_createElementVNode("div", _hoisted_77, [_createElementVNode("h2", null, "Р‘Р°РЅС‹ вЂ” " + _toDisplayString(ov && ov.bans_count != null ? ov.bans_count : (ov && ov.bans ? ov.bans.count : 0)), 1)]), _createElementVNode("div", _hoisted_78, [_createElementVNode("table", _hoisted_79, [_cache[34] || (_cache[34] = _createElementVNode("thead", null, [_createElementVNode("tr", null, [
+          ? (_openBlock(), _createElementBlock("section", _hoisted_75, [_createElementVNode("div", _hoisted_76, [_createElementVNode("div", _hoisted_77, [_createElementVNode("h2", null, "Баны — " + _toDisplayString(ov && ov.bans_count != null ? ov.bans_count : (ov && ov.bans ? ov.bans.count : 0)), 1)]), _createElementVNode("div", _hoisted_78, [_createElementVNode("table", _hoisted_79, [_cache[34] || (_cache[34] = _createElementVNode("thead", null, [_createElementVNode("tr", null, [
               _createElementVNode("th", null, "Steam64"),
-              _createElementVNode("th", null, "РџСЂРёС‡РёРЅР°"),
-              _createElementVNode("th", null, "РљРµРј"),
-              _createElementVNode("th", null, "РљРѕРіРґР°")
+              _createElementVNode("th", null, "Причина"),
+              _createElementVNode("th", null, "Кем"),
+              _createElementVNode("th", null, "Когда")
             ])], -1)), (ov && ov.bans)
               ? (_openBlock(), _createElementBlock("tbody", _hoisted_80, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(ov.bans.bans || [], (b) => {
                   return (_openBlock(), _createElementBlock("tr", { key: b.steamId }, [
                     _createElementVNode("td", null, _toDisplayString(b.steamId), 1),
-                    _createElementVNode("td", null, _toDisplayString(b.reason || 'вЂ”'), 1),
-                    _createElementVNode("td", null, _toDisplayString(b.bannedBy || 'вЂ”'), 1),
+                    _createElementVNode("td", null, _toDisplayString(b.reason || '—'), 1),
+                    _createElementVNode("td", null, _toDisplayString(b.bannedBy || '—'), 1),
                     _createElementVNode("td", null, _toDisplayString(fmtDate(b.bannedAtUtc)), 1)
                   ]))
                 }), 128)), (!ov.bans.bans || !ov.bans.bans.length)
                   ? (_openBlock(), _createElementBlock("tr", _hoisted_81, [...(_cache[32] || (_cache[32] = [_createElementVNode("td", {
                       colspan: "4",
                       class: "muted"
-                    }, "Р‘Р°РЅ-Р»РёСЃС‚ РїСѓСЃС‚.", -1)]))]))
+                    }, "Бан-лист пуст.", -1)]))]))
                   : _createCommentVNode("", true)]))
               : (_openBlock(), _createElementBlock("tbody", _hoisted_82, [...(_cache[33] || (_cache[33] = [_createElementVNode("tr", null, [_createElementVNode("td", {
                   colspan: "4",
                   class: "muted"
-                }, "Р—Р°РіСЂСѓР·РєР°вЂ¦")], -1)]))]))])])])]))
+                }, "Загрузка…")], -1)]))]))])])])]))
           : _createCommentVNode("", true)
       ]),
       (profile.open)

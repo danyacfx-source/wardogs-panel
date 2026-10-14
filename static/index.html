@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>WARDOGS // РњРѕРЅРёС‚РѕСЂРёРЅРі</title>
+<title>WARDOGS // Мониторинг</title>
 <link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
 <link rel="preload" href="/static/wardogs-theme/wardogs-battlefield-v2.webp" as="image" type="image/webp" fetchpriority="high" />
 <link rel="stylesheet" href="/static/style.css?v=20261015-1" />
@@ -12,39 +12,39 @@
 <div id="app" v-cloak>
 <!-- WARDOGS_APP_TEMPLATE_START -->
 
-  <!-- ======= РњРћРќРРўРћР РРќР“ ======= -->
+  <!-- ======= МОНРТОРРНГ ======= -->
   <div class="app-wrap">
     <header class="topbar public-topbar">
       <div class="brand"><span class="brand-mark">W</span> WARDOGS <small>RUSSIAN COMMUNITY</small></div>
-      <nav class="portal-nav public-nav" aria-label="РќР°РІРёРіР°С†РёСЏ СЃР°Р№С‚Р°">
-        <a class="nav-link active" href="/">Р“Р»Р°РІРЅР°СЏ</a>
-        <a class="nav-link" href="/stats">РЎС‚Р°С‚РёСЃС‚РёРєР°</a>
-        <a class="nav-link" href="/calc">РљР°Р»СЊРєСѓР»СЏС‚РѕСЂ</a>
-        <a class="nav-link" href="/activity">РђРєС‚РёРІРЅРѕСЃС‚СЊ</a>
-        <a class="nav-link" href="/clans">РљР»Р°РЅС‹</a>
-        <a class="nav-link" href="#community">РЎРѕРѕР±С‰РµСЃС‚РІРѕ</a>
-        <a class="nav-link support" href="/support">РџРѕРґРґРµСЂР¶Р°С‚СЊ</a>
+      <nav class="portal-nav public-nav" aria-label="Навигация сайта">
+        <a class="nav-link active" href="/">Главная</a>
+        <a class="nav-link" href="/stats">Статистика</a>
+        <a class="nav-link" href="/calc">Калькулятор</a>
+        <a class="nav-link" href="/activity">Активность</a>
+        <a class="nav-link" href="/clans">Кланы</a>
+        <a class="nav-link" href="#community">Сообщество</a>
+        <a class="nav-link support" href="/support">Поддержать</a>
       </nav>
       <div class="top-actions">
-        <button class="btn ghost" @click="refreshAll(true)" :disabled="state.refreshing">РћР±РЅРѕРІРёС‚СЊ</button>
+        <button class="btn ghost" @click="refreshAll(true)" :disabled="state.refreshing">Обновить</button>
 
         <template v-if="state.me && state.me.authed">
-          <span v-if="hasPerms" class="user-chip profile-link" role="button" tabindex="0" title="Р›РёС‡РЅС‹Р№ РїСЂРѕС„РёР»СЊ" @click="openProfileCard" @keydown.enter="openProfileCard">
+          <span v-if="hasPerms" class="user-chip profile-link" role="button" tabindex="0" title="Личный профиль" @click="openProfileCard" @keydown.enter="openProfileCard">
             <b>{{ state.me.persona || state.me.steam_id }}</b>
-            <small>РјРѕР№ РїСЂРѕС„РёР»СЊ</small>
+            <small>мой профиль</small>
           </span>
           <span v-else class="user-chip" :class="{ admin: hasPerms }">
             <b>{{ state.me.persona || state.me.steam_id }}</b>
-            <span class="muted">В·</span>
+            <span class="muted">·</span>
             <span v-if="state.me.discord.bound">{{ state.me.discord.discord_name }}</span>
-            <span v-else class="muted">discord РЅРµ РїСЂРёРІСЏР·Р°РЅ</span>
+            <span v-else class="muted">discord не привязан</span>
           </span>
-          <button v-if="!state.me.discord.bound" class="btn ghost" @click="bindDiscord" :disabled="!authConfigured">РџСЂРёРІСЏР·Р°С‚СЊ Discord</button>
-          <button class="btn primary" v-if="hasPerms" @click="goPanel">РџР°РЅРµР»СЊ СѓРїСЂР°РІР»РµРЅРёСЏ в†’</button>
-          <button class="btn ghost" @click="logout">Р’С‹Р№С‚Рё</button>
+          <button v-if="!state.me.discord.bound" class="btn ghost" @click="bindDiscord" :disabled="!authConfigured">Привязать Discord</button>
+          <button class="btn primary" v-if="hasPerms" @click="goPanel">Панель управления →</button>
+          <button class="btn ghost" @click="logout">Выйти</button>
         </template>
         <template v-else>
-          <button class="btn primary" @click="loginSteam">Р’РѕР№С‚Рё С‡РµСЂРµР· Steam</button>
+          <button class="btn primary" @click="loginSteam">Войти через Steam</button>
         </template>
       </div>
     </header>
@@ -52,59 +52,59 @@
     <section class="hero portal-hero">
       <div class="hero-noise"></div>
       <div class="hero-content">
-        <div class="eyebrow">WARDOGS В· Р РЈРЎРЎРљРћРЇР—Р«Р§РќРћР• РЎРћРћР‘Р©Р•РЎРўР’Рћ</div>
-        <h1>Р СѓСЃСЃРєРёРµ СЃРµСЂРІРµСЂС‹<br><span>Wardogs</span></h1>
-        <p>Р–РёРІРѕР№ СЃС‚Р°С‚СѓСЃ СЃРµСЂРІРµСЂРѕРІ, Р±С‹СЃС‚СЂС‹Р№ РІС…РѕРґ РІ СЃРѕРѕР±С‰РµСЃС‚РІРѕ Рё РІСЃС‘ РЅСѓР¶РЅРѕРµ РґР»СЏ РёРіСЂС‹ РІ РѕРґРЅРѕРј РјРµСЃС‚Рµ.</p>
+        <div class="eyebrow">WARDOGS · РУССКОЯЗЫЧНОЕ СООБЩЕСТВО</div>
+        <h1>Русские серверы<br><span>Wardogs</span></h1>
+        <p>Живой статус серверов, быстрый вход в сообщество и всё нужное для игры в одном месте.</p>
         <div class="hero-actions">
-          <button v-if="!state.me || !state.me.authed" class="btn primary hero-btn" @click="loginSteam">Р’РѕР№С‚Рё С‡РµСЂРµР· Steam</button>
-          <span class="hero-online"><i></i><b>{{ totalPlayers() }}</b> РІ РёРіСЂРµ РїСЂСЏРјРѕ СЃРµР№С‡Р°СЃ</span>
+          <button v-if="!state.me || !state.me.authed" class="btn primary hero-btn" @click="loginSteam">Войти через Steam</button>
+          <span class="hero-online"><i></i><b>{{ totalPlayers() }}</b> в игре прямо сейчас</span>
         </div>
       </div>
     </section>
 
     <div v-if="state.me && state.me.authed && !hasPerms" class="strip info-strip">
-      <template v-if="!state.me.discord.bound">РџСЂРёРІСЏР¶РёС‚Рµ Discord, С‡С‚РѕР±С‹ РїРѕР»СѓС‡РёС‚СЊ РїСЂР°РІР°: <a :href="'/api/auth/discord/start'">РїСЂРёРІСЏР·Р°С‚СЊ Р°РєРєР°СѓРЅС‚</a>.</template>
-      <template v-else>РњРѕРЅРёС‚РѕСЂРёРЅРі РґРѕСЃС‚СѓРїРµРЅ. РЎРїРёСЃРѕРє РёРіСЂРѕРєРѕРІ Рё СѓРїСЂР°РІР»РµРЅРёРµ СЃРєСЂС‹С‚С‹, РїРѕС‚РѕРјСѓ С‡С‚Рѕ Сѓ РІР°С€РµР№ СЂРѕР»Рё РЅРµС‚ СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РёС… РїСЂР°РІ.</template>
+      <template v-if="!state.me.discord.bound">Привяжите Discord, чтобы получить права: <a :href="'/api/auth/discord/start'">привязать аккаунт</a>.</template>
+      <template v-else>Мониторинг доступен. Список игроков и управление скрыты, потому что у вашей роли нет соответствующих прав.</template>
     </div>
 
     <section class="server-showcase" id="servers">
       <div class="section-heading">
-        <div><h2>РќР°С€Рё СЃРµСЂРІРµСЂС‹ <small>Р’ РёРіСЂРµ РїСЂСЏРјРѕ СЃРµР№С‡Р°СЃ</small></h2></div>
-        <span class="muted"><b>{{ totalPlayers() }}</b> РІ РёРіСЂРµ РїСЂСЏРјРѕ СЃРµР№С‡Р°СЃ</span>
+        <div><h2>Наши серверы <small>В игре прямо сейчас</small></h2></div>
+        <span class="muted"><b>{{ totalPlayers() }}</b> в игре прямо сейчас</span>
       </div>
       <div class="public-server-grid">
         <button v-for="s in state.servers" :key="s.id" class="public-server-card"
                 :class="{ active: s.id === state.sid, offline: isOffline(s.id) }" @click="selectServer(s.id)">
-          <div class="server-card-head"><strong>{{ s.name }}</strong><span>{{ plCount(s.id) || 'вЂ”' }}</span></div>
+          <div class="server-card-head"><strong>{{ s.name }}</strong><span>{{ plCount(s.id) || '—' }}</span></div>
           <div class="server-card-map" v-if="state.ovById[s.id] && state.ovById[s.id].status">
-            {{ mapLabel(state.ovById[s.id].status.map) }} В· {{ modeLabel(state.ovById[s.id].status.experiences) }}
+            {{ mapLabel(state.ovById[s.id].status.map) }} · {{ modeLabel(state.ovById[s.id].status.experiences) }}
           </div>
-          <div class="server-card-map" v-else>РќРµС‚ СЃРѕРµРґРёРЅРµРЅРёСЏ СЃ СЃРµСЂРІРµСЂРѕРј</div>
+          <div class="server-card-map" v-else>Нет соединения с сервером</div>
           <div class="public-server-live" v-if="state.ovById[s.id]?.status">
-            <span class="server-live-chip"><i></i>{{ livePhase(s.id) }} вЂ” {{ plCount(s.id) || 'вЂ”' }}</span>
+            <span class="server-live-chip"><i></i>{{ livePhase(s.id) }} — {{ plCount(s.id) || '—' }}</span>
           </div>
           <div class="public-faction-list" v-if="state.ovById[s.id]?.status?.factionScores?.length">
-            <div v-for="f in state.ovById[s.id].status.factionScores" :key="f.name"><span :style="{color:f.colorHex}">в—Џ {{ f.name }}</span><i><b :style="{width:pctScore(f)+'%',background:f.colorHex}"></b></i><strong>{{ f.score || 0 }}</strong></div>
+            <div v-for="f in state.ovById[s.id].status.factionScores" :key="f.name"><span :style="{color:f.colorHex}">● {{ f.name }}</span><i><b :style="{width:pctScore(f)+'%',background:f.colorHex}"></b></i><strong>{{ f.score || 0 }}</strong></div>
           </div>
-          <div class="server-card-id" :title="state.ovById[s.id]?.server?.server_id || 'ID РЅРµРґРѕСЃС‚СѓРїРµРЅ'">
-            ID СЃРµСЂРІРµСЂР° <span>{{ state.ovById[s.id]?.server?.server_id || 'РЅРµРґРѕСЃС‚СѓРїРµРЅ' }}</span><button v-if="state.ovById[s.id]?.server?.server_id" @click.stop="copyText(state.ovById[s.id].server.server_id,'ID СЃРµСЂРІРµСЂР°')">РєРѕРїРёСЂРѕРІР°С‚СЊ</button>
+          <div class="server-card-id" :title="state.ovById[s.id]?.server?.server_id || 'ID недоступен'">
+            ID сервера <span>{{ state.ovById[s.id]?.server?.server_id || 'недоступен' }}</span><button v-if="state.ovById[s.id]?.server?.server_id" @click.stop="copyText(state.ovById[s.id].server.server_id,'ID сервера')">копировать</button>
           </div>
-          <div class="server-line"><span :class="['dot', { on: !isOffline(s.id) }]"></span>{{ isOffline(s.id) ? 'РќРµС‚ РїРѕРґРєР»СЋС‡РµРЅРёСЏ' : 'РџРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ Рє СЃРµСЂРІРµСЂСѓ' }}</div>
+          <div class="server-line"><span :class="['dot', { on: !isOffline(s.id) }]"></span>{{ isOffline(s.id) ? 'Нет подключения' : 'Подключиться к серверу' }}</div>
         </button>
       </div>
     </section>
 
     <section class="portal-wins">
-      <div class="section-heading"><div><h2>РџРѕР±РµРґС‹ РєРѕРјР°РЅРґ <small>РЎС‚Р°С‚РёСЃС‚РёРєР° РјР°С‚С‡РµР№ РїРѕСЏРІРёС‚СЃСЏ РїРѕСЃР»Рµ РїРµСЂРІС‹С… Р·Р°РІРµСЂС€С‘РЅРЅС‹С… РёРіСЂ</small></h2></div><div class="period-switch"><button class="active">РјРµСЃСЏС†</button><button>3 РјРµСЃСЏС†Р°</button></div></div>
-      <div class="win-grid"><article class="win-card active"><b>Р’СЃРµ СЃРµСЂРІРµСЂС‹</b><span>Р РµР·СѓР»СЊС‚Р°С‚РѕРІ РјР°С‚С‡РµР№ РїРѕРєР° РЅРµС‚</span></article><article v-for="s in state.servers" :key="`wins-${s.id}`" class="win-card"><b>{{ s.name }}</b><span>Р•С‰С‘ РЅРµС‚ Р·Р°РІРµСЂС€С‘РЅРЅС‹С… РјР°С‚С‡РµР№</span></article></div>
+      <div class="section-heading"><div><h2>Победы команд <small>Статистика матчей появится после первых завершённых игр</small></h2></div><div class="period-switch"><button class="active">месяц</button><button>3 месяца</button></div></div>
+      <div class="win-grid"><article class="win-card active"><b>Все серверы</b><span>Результатов матчей пока нет</span></article><article v-for="s in state.servers" :key="`wins-${s.id}`" class="win-card"><b>{{ s.name }}</b><span>Ещё нет завершённых матчей</span></article></div>
     </section>
 
     <section class="how-to-join" id="community">
-      <div class="section-heading"><div><h2>РљР°Рє РїРѕРїР°СЃС‚СЊ РЅР° СЃРµСЂРІРµСЂ <small>РўСЂРё С€Р°РіР° вЂ” Рё РІС‹ РІ РјР°С‚С‡Рµ СЃ СЂСѓСЃСЃРєРѕСЏР·С‹С‡РЅС‹РјРё РёРіСЂРѕРєР°РјРё</small></h2></div></div>
-      <div class="join-grid"><article><i>1</i><div><h3>Р—Р°Р№РґРёС‚Рµ РІ Discord</h3><p>Р’ РєР°РЅР°Р»Рµ СЃРѕРѕР±С‰РµСЃС‚РІР° РІСЃРµРіРґР° РІРёРґРЅРѕ, РіРґРµ СЃРµР№С‡Р°СЃ РёРіСЂР°СЋС‚ Рё СЃ РєРµРј РјРѕР¶РЅРѕ СЃРѕР±СЂР°С‚СЊ РєРѕРјР°РЅРґСѓ.</p><a href="#support">РћС‚РєСЂС‹С‚СЊ СЃРѕРѕР±С‰РµСЃС‚РІРѕ в†’</a></div></article><article><i>2</i><div><h3>Р’С‹Р±РµСЂРёС‚Рµ СЃРµСЂРІРµСЂ</h3><p>РљР°СЂС‚РѕС‡РєРё РІС‹С€Рµ РїРѕРєР°Р·С‹РІР°СЋС‚ РѕРЅР»Р°Р№РЅ, РєР°СЂС‚Сѓ Рё СЂРµР¶РёРј. РќР°Р¶РјРёС‚Рµ РЅР° РЅСѓР¶РЅС‹Р№ СЃРµСЂРІРµСЂ, С‡С‚РѕР±С‹ РѕС‚РєСЂС‹С‚СЊ РјРѕРЅРёС‚РѕСЂРёРЅРі.</p><a href="#servers">Рљ СЃРїРёСЃРєСѓ СЃРµСЂРІРµСЂРѕРІ в†’</a></div></article><article><i>3</i><div><h3>РќР°Р№РґРёС‚Рµ РЅР°СЃ РІ РёРіСЂРµ</h3><p>Wardogs в†’ Community Servers. Р”РѕР±Р°РІСЊС‚Рµ СЃРµСЂРІРµСЂ РІ РёР·Р±СЂР°РЅРЅРѕРµ РїРѕ РµРіРѕ ID, С‡С‚РѕР±С‹ РЅРµ РёСЃРєР°С‚СЊ СЃРЅРѕРІР°.</p><a href="#servers">РџРѕРєР°Р·Р°С‚СЊ ID СЃРµСЂРІРµСЂРѕРІ в†’</a></div></article></div>
+      <div class="section-heading"><div><h2>Как попасть на сервер <small>Три шага — и вы в матче с русскоязычными игроками</small></h2></div></div>
+      <div class="join-grid"><article><i>1</i><div><h3>Зайдите в Discord</h3><p>В канале сообщества всегда видно, где сейчас играют и с кем можно собрать команду.</p><a href="#support">Открыть сообщество →</a></div></article><article><i>2</i><div><h3>Выберите сервер</h3><p>Карточки выше показывают онлайн, карту и режим. Нажмите на нужный сервер, чтобы открыть мониторинг.</p><a href="#servers">К списку серверов →</a></div></article><article><i>3</i><div><h3>Найдите нас в игре</h3><p>Wardogs → Community Servers. Добавьте сервер в избранное по его ID, чтобы не искать снова.</p><a href="#servers">Показать ID серверов →</a></div></article></div>
     </section>
 
-    <section class="portal-welcome" id="support"><div><h2>Р”РѕР±СЂРѕ РїРѕР¶Р°Р»РѕРІР°С‚СЊ РІ WARDOGS</h2><p>РњС‹ СЃРѕР·РґР°С‘Рј СЂСѓСЃСЃРєРѕСЏР·С‹С‡РЅРѕРµ СЃРѕРѕР±С‰РµСЃС‚РІРѕ РёРіСЂРѕРєРѕРІ Wardogs: СЃРѕР±РёСЂР°РµРј РєРѕРјР°РЅРґС‹, РѕР±СЃСѓР¶РґР°РµРј РѕР±РЅРѕРІР»РµРЅРёСЏ Рё РїРѕРјРѕРіР°РµРј РЅРѕРІРёС‡РєР°Рј РѕСЃРІРѕРёС‚СЊСЃСЏ РІ РёРіСЂРµ.</p><p>Р“Р»Р°РІРЅРѕРµ РґР»СЏ РЅР°СЃ вЂ” СЃРїРѕРєРѕР№РЅР°СЏ РёРіСЂР°, СѓРІР°Р¶РµРЅРёРµ РґСЂСѓРі Рє РґСЂСѓРіСѓ Рё Р¶РµР»Р°РЅРёРµ РІРѕР·РІСЂР°С‰Р°С‚СЊСЃСЏ РЅР° СЃРµСЂРІРµСЂ.</p></div><aside><h3>WARDOGS С‚РѕР»СЊРєРѕ РЅР°С‡РёРЅР°РµС‚ СЃРІРѕР№ РїСѓС‚СЊ.</h3><p>РџСЂРёСЃРѕРµРґРёРЅСЏР№СЃСЏ, РїСЂРёРіР»Р°С€Р°Р№ РґСЂСѓР·РµР№ Рё СЃС‚Р°РЅРѕРІРёСЃСЊ С‡Р°СЃС‚СЊСЋ СЃРѕРѕР±С‰РµСЃС‚РІР°.</p><div><a class="btn primary" href="https://discord.gg/wdru-ru" target="_blank" rel="noopener noreferrer">Р—Р°Р№С‚Рё РІ Discord</a><button v-if="!state.me || !state.me.authed" class="btn ghost" @click="loginSteam">Р’РѕР№С‚Рё С‡РµСЂРµР· Steam</button></div></aside></section>
+    <section class="portal-welcome" id="support"><div><h2>Добро пожаловать в WARDOGS</h2><p>Мы создаём русскоязычное сообщество игроков Wardogs: собираем команды, обсуждаем обновления и помогаем новичкам освоиться в игре.</p><p>Главное для нас — спокойная игра, уважение друг к другу и желание возвращаться на сервер.</p></div><aside><h3>WARDOGS только начинает свой путь.</h3><p>Присоединяйся, приглашай друзей и становись частью сообщества.</p><div><a class="btn primary" href="https://discord.gg/wdru-ru" target="_blank" rel="noopener noreferrer">Зайти в Discord</a><button v-if="!state.me || !state.me.authed" class="btn ghost" @click="loginSteam">Войти через Steam</button></div></aside></section>
 
     <nav class="tabs">
       <button v-for="t in tabs" :key="t.id" class="tab"
@@ -113,39 +113,39 @@
 
     <main class="content">
 
-      <!-- РїРѕСЃР»РµРґРЅРµРµ РѕР±РЅРѕРІР»РµРЅРёРµ -->
+      <!-- последнее обновление -->
       <div class="last-upd" v-if="lastUpdate">{{ lastUpdate }}</div>
 
-      <!-- ===== РЎРўРђРўРЈРЎ ===== -->
+      <!-- ===== СТАТУС ===== -->
       <section v-if="state.tab === 'status'">
         <div v-if="overview && overview.error" class="panel err-box">
-          <b>РЎРµСЂРІРµСЂ РЅРµРґРѕСЃС‚СѓРїРµРЅ.</b> {{ overview.error.message }} ({{ overview.error.code }})
+          <b>Сервер недоступен.</b> {{ overview.error.message }} ({{ overview.error.code }})
         </div>
         <template v-else-if="ov">
           <div class="cards">
             <div class="card">
-              <div class="k">РЎРµСЂРІРµСЂ</div>
+              <div class="k">Сервер</div>
               <div class="v big">{{ ov.status.serverName }}</div>
-              <div class="k">РљР°СЂС‚Р°</div>
+              <div class="k">Карта</div>
               <div class="v">{{ mapLabel(ov.status.map) }}</div>
-              <div class="k">РЎРІРµС‚</div>
+              <div class="k">Свет</div>
               <div class="v">{{ lightLabel(ov.status.lighting) }}</div>
             </div>
             <div class="card">
-              <div class="k">РРіСЂРѕРєРё</div>
+              <div class="k">Ргроки</div>
               <div class="v big">{{ ov.status.players.current }} / {{ ov.status.players.max }}</div>
               <div class="bar"><div class="bar-fill" :style="{ width: pct(ov.status.players) + '%' }"></div></div>
               <div class="k">{{ modeLabel(ov.status.experiences) }}</div>
               <div class="v">{{ ov.server.build }}</div>
             </div>
             <div class="card">
-              <div class="k">РњР°С‚С‡</div>
+              <div class="k">Матч</div>
               <div class="v big">{{ fmtClock(ov.status.matchSeconds) }}</div>
             </div>
           </div>
 
           <div class="panel">
-            <h2>РЎС‡С‘С‚ С„СЂР°РєС†РёР№</h2>
+            <h2>Счёт фракций</h2>
             <div class="factions">
               <div v-for="f in sortedFactions" :key="f.name" class="faction-row">
                 <span class="faction-dot" :style="{ background: f.colorHex }"></span>
@@ -157,24 +157,24 @@
           </div>
 
         </template>
-        <div v-else class="panel empty">Р—Р°РіСЂСѓР·РєР°вЂ¦</div>
+        <div v-else class="panel empty">Загрузка…</div>
       </section>
 
-      <!-- ===== РР“Р РћРљР (С‚РѕР»СЊРєРѕ РїСЂРѕСЃРјРѕС‚СЂ) ===== -->
+      <!-- ===== РГРОКР (только просмотр) ===== -->
       <section v-if="state.tab === 'players'">
-        <div v-if="ov && ov.error" class="panel err-box"><b>РЎРµСЂРІРµСЂ РЅРµРґРѕСЃС‚СѓРїРµРЅ.</b> {{ ov.error.message }}</div>
+        <div v-if="ov && ov.error" class="panel err-box"><b>Сервер недоступен.</b> {{ ov.error.message }}</div>
         <template v-else-if="ov">
           <div class="panel">
             <div class="toolbar">
-              <h2>РРіСЂРѕРєРё РЅР° СЃРµСЂРІРµСЂРµ вЂ” {{ ov.players ? ov.players.count : 0 }}</h2>
+              <h2>Ргроки на сервере — {{ ov.players ? ov.players.count : 0 }}</h2>
             </div>
             <div class="table-scroll">
               <table class="tbl">
                 <thead>
                   <tr>
-                    <th>#</th><th>РРіСЂРѕРє</th><th>РљРѕРјР°РЅРґР°</th><th class="num">K</th>
-                    <th class="num">D</th><th class="num">KD</th><th class="num">РљР°СЃСЃР°</th>
-                    <th class="num">РџРёРЅРі</th>
+                    <th>#</th><th>Ргрок</th><th>Команда</th><th class="num">K</th>
+                    <th class="num">D</th><th class="num">KD</th><th class="num">Касса</th>
+                    <th class="num">Пинг</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -191,31 +191,31 @@
                 </tbody>
               </table>
             </div>
-            <div v-if="!ov.players || !ov.players.players.length" class="muted">РЎРµСЂРІРµСЂ РїСѓСЃС‚.</div>
+            <div v-if="!ov.players || !ov.players.players.length" class="muted">Сервер пуст.</div>
           </div>
         </template>
-        <div v-else class="panel empty">Р—Р°РіСЂСѓР·РєР°вЂ¦</div>
+        <div v-else class="panel empty">Загрузка…</div>
       </section>
 
-      <!-- ===== Р‘РђРќР« (С‚РѕР»СЊРєРѕ РїСЂРѕСЃРјРѕС‚СЂ) ===== -->
+      <!-- ===== БАНЫ (только просмотр) ===== -->
       <section v-if="state.tab === 'bans'">
         <div class="panel">
           <div class="toolbar">
-            <h2>Р‘Р°РЅС‹ вЂ” {{ ov && ov.bans_count != null ? ov.bans_count : (ov && ov.bans ? ov.bans.count : 0) }}</h2>
+            <h2>Баны — {{ ov && ov.bans_count != null ? ov.bans_count : (ov && ov.bans ? ov.bans.count : 0) }}</h2>
           </div>
           <div class="table-scroll">
             <table class="tbl">
-              <thead><tr><th>Steam64</th><th>РџСЂРёС‡РёРЅР°</th><th>РљРµРј</th><th>РљРѕРіРґР°</th></tr></thead>
+              <thead><tr><th>Steam64</th><th>Причина</th><th>Кем</th><th>Когда</th></tr></thead>
               <tbody v-if="ov && ov.bans">
                 <tr v-for="b in ov.bans.bans || []" :key="b.steamId">
                   <td>{{ b.steamId }}</td>
-                  <td>{{ b.reason || 'вЂ”' }}</td>
-                  <td>{{ b.bannedBy || 'вЂ”' }}</td>
+                  <td>{{ b.reason || '—' }}</td>
+                  <td>{{ b.bannedBy || '—' }}</td>
                   <td>{{ fmtDate(b.bannedAtUtc) }}</td>
                 </tr>
-                <tr v-if="!ov.bans.bans || !ov.bans.bans.length"><td colspan="4" class="muted">Р‘Р°РЅ-Р»РёСЃС‚ РїСѓСЃС‚.</td></tr>
+                <tr v-if="!ov.bans.bans || !ov.bans.bans.length"><td colspan="4" class="muted">Бан-лист пуст.</td></tr>
               </tbody>
-              <tbody v-else><tr><td colspan="4" class="muted">Р—Р°РіСЂСѓР·РєР°вЂ¦</td></tr></tbody>
+              <tbody v-else><tr><td colspan="4" class="muted">Загрузка…</td></tr></tbody>
             </table>
           </div>
         </div>
