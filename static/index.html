@@ -6,7 +6,7 @@
 <title>WARDOGS // Мониторинг</title>
 <link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
 <link rel="preload" href="/static/wardogs-theme/wardogs-battlefield-v2.webp" as="image" type="image/webp" fetchpriority="high" />
-<link rel="stylesheet" href="/static/style.css?v=20261014-1" />
+<link rel="stylesheet" href="/static/style.css?v=20261014-2" />
 </head>
 <body data-panel-mode="monitor">
 <div id="app" v-cloak>
@@ -29,10 +29,14 @@
         <button class="btn ghost" @click="refreshAll(true)" :disabled="state.refreshing">Обновить</button>
 
         <template v-if="state.me && state.me.authed">
-          <span class="user-chip" :class="{ admin: hasPerms }">
+          <span v-if="hasPerms" class="user-chip profile-link" role="button" tabindex="0" title="Личный профиль" @click="goProfile" @keydown.enter="goProfile">
+            <b>{{ state.me.persona || state.me.steam_id }}</b>
+            <small>мой профиль</small>
+          </span>
+          <span v-else class="user-chip" :class="{ admin: hasPerms }">
             <b>{{ state.me.persona || state.me.steam_id }}</b>
             <span class="muted">·</span>
-            <span v-if="state.me.discord.bound">{{ state.me.discord.discord_name }}<span v-if="hasPerms"> ★</span></span>
+            <span v-if="state.me.discord.bound">{{ state.me.discord.discord_name }}</span>
             <span v-else class="muted">discord не привязан</span>
           </span>
           <button v-if="!state.me.discord.bound" class="btn ghost" @click="bindDiscord" :disabled="!authConfigured">Привязать Discord</button>
@@ -226,7 +230,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/index.render.js?v=20261014-1"></script>
-<script src="/static/app.js?v=20261014-1"></script>
+<script src="/static/index.render.js?v=20261014-2"></script>
+<script src="/static/app.js?v=20261014-2"></script>
 </body>
 </html>

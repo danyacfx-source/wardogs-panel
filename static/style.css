@@ -563,6 +563,8 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 .public-login-link { padding:9px 13px;border:1px solid #332e2f;border-radius:8px;background:#151415; }
 .public-login-link:hover,.public-panel-link:hover,.public-logout:hover { color:#fff; }
 .public-user-chip { max-width:150px;overflow:hidden;text-overflow:ellipsis;color:#f2ece7;font:700 12px Arial,sans-serif; }
+a.public-user-chip { cursor:pointer;text-decoration:none; }
+a.public-user-chip:hover { color:#fff;text-decoration:underline; }
 .public-page-actions form { margin:0; }.public-logout { display:grid;place-items:center;width:30px;height:30px;padding:0;border:0;background:transparent;cursor:pointer;font-size:18px;transform:rotate(180deg); }
 .calculator-shell .public-topbar,body[data-page] .public-topbar { position:sticky; top:0; inset:auto; z-index:80; background:#070708; }
 .brand { display:flex; align-items:center; color:#fff; font-size:18px; letter-spacing:.13em; }

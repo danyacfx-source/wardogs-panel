@@ -7,7 +7,7 @@ const _hoisted_1 = { class: "app-wrap" }
 const _hoisted_2 = { class: "topbar public-topbar" }
 const _hoisted_3 = { class: "top-actions" }
 const _hoisted_4 = ["onClick", "disabled"]
-const _hoisted_5 = { key: 0 }
+const _hoisted_5 = ["onClick", "onKeydown"]
 const _hoisted_6 = { key: 0 }
 const _hoisted_7 = {
   key: 1,
@@ -137,10 +137,10 @@ const _hoisted_83 = {
 
 return function render(_ctx, _cache) {
   with (_ctx) {
-    const { createElementVNode: _createElementVNode, createTextVNode: _createTextVNode, toDisplayString: _toDisplayString, openBlock: _openBlock, createElementBlock: _createElementBlock, createCommentVNode: _createCommentVNode, normalizeClass: _normalizeClass, Fragment: _Fragment, renderList: _renderList, normalizeStyle: _normalizeStyle, withModifiers: _withModifiers } = _Vue
+    const { createElementVNode: _createElementVNode, createTextVNode: _createTextVNode, toDisplayString: _toDisplayString, withKeys: _withKeys, openBlock: _openBlock, createElementBlock: _createElementBlock, createCommentVNode: _createCommentVNode, normalizeClass: _normalizeClass, Fragment: _Fragment, renderList: _renderList, normalizeStyle: _normalizeStyle, withModifiers: _withModifiers } = _Vue
 
     return (_openBlock(), _createElementBlock("div", _hoisted_1, [
-      _createElementVNode("header", _hoisted_2, [_cache[1] || (_cache[1] = _createElementVNode("div", { class: "brand" }, [_createElementVNode("span", { class: "brand-mark" }, "W"), _createTextVNode(" WARDOGS "), _createElementVNode("small", null, "RUSSIAN COMMUNITY")], -1)), _cache[2] || (_cache[2] = _createElementVNode("nav", {
+      _createElementVNode("header", _hoisted_2, [_cache[2] || (_cache[2] = _createElementVNode("div", { class: "brand" }, [_createElementVNode("span", { class: "brand-mark" }, "W"), _createTextVNode(" WARDOGS "), _createElementVNode("small", null, "RUSSIAN COMMUNITY")], -1)), _cache[3] || (_cache[3] = _createElementVNode("nav", {
         class: "portal-nav public-nav",
         "aria-label": "Навигация сайта"
       }, [
@@ -178,14 +178,25 @@ return function render(_ctx, _cache) {
         disabled: state.refreshing
       }, "Обновить", 8, _hoisted_4), (state.me && state.me.authed)
         ? (_openBlock(), _createElementBlock(_Fragment, { key: 0 }, [
-            _createElementVNode("span", { class: _normalizeClass(["user-chip", { admin: hasPerms }]) }, [_createElementVNode("b", null, _toDisplayString(state.me.persona || state.me.steam_id), 1), _cache[0] || (_cache[0] = _createElementVNode("span", { class: "muted" }, "·", -1)), (state.me.discord.bound)
-              ? (_openBlock(), _createElementBlock("span", _hoisted_5, [_createTextVNode(_toDisplayString(state.me.discord.discord_name), 1), hasPerms
-                  ? (_openBlock(), _createElementBlock("span", _hoisted_6, " ★"))
-                  : _createCommentVNode("", true)]))
-              : (_openBlock(), _createElementBlock("span", _hoisted_7, "discord не привязан"))], 2),
+            hasPerms
+              ? (_openBlock(), _createElementBlock("span", {
+                  key: 0,
+                  class: "user-chip profile-link",
+                  role: "button",
+                  tabindex: "0",
+                  title: "Личный профиль",
+                  onClick: goProfile,
+                  onKeydown: _withKeys(goProfile, ["enter"])
+                }, [_createElementVNode("b", null, _toDisplayString(state.me.persona || state.me.steam_id), 1), _cache[0] || (_cache[0] = _createElementVNode("small", null, "мой профиль", -1))], 40, _hoisted_5))
+              : (_openBlock(), _createElementBlock("span", {
+                  key: 1,
+                  class: _normalizeClass(["user-chip", { admin: hasPerms }])
+                }, [_createElementVNode("b", null, _toDisplayString(state.me.persona || state.me.steam_id), 1), _cache[1] || (_cache[1] = _createElementVNode("span", { class: "muted" }, "·", -1)), (state.me.discord.bound)
+                  ? (_openBlock(), _createElementBlock("span", _hoisted_6, _toDisplayString(state.me.discord.discord_name), 1))
+                  : (_openBlock(), _createElementBlock("span", _hoisted_7, "discord не привязан"))], 2)),
             (!state.me.discord.bound)
               ? (_openBlock(), _createElementBlock("button", {
-                  key: 0,
+                  key: 2,
                   class: "btn ghost",
                   onClick: bindDiscord,
                   disabled: !authConfigured
@@ -193,7 +204,7 @@ return function render(_ctx, _cache) {
               : _createCommentVNode("", true),
             hasPerms
               ? (_openBlock(), _createElementBlock("button", {
-                  key: 1,
+                  key: 3,
                   class: "btn primary",
                   onClick: goPanel
                 }, "Панель управления →", 8, _hoisted_9))
@@ -208,24 +219,24 @@ return function render(_ctx, _cache) {
             class: "btn primary",
             onClick: loginSteam
           }, "Войти через Steam", 8, _hoisted_11))])]),
-      _createElementVNode("section", _hoisted_12, [_cache[8] || (_cache[8] = _createElementVNode("div", { class: "hero-noise" }, null, -1)), _createElementVNode("div", _hoisted_13, [
-        _cache[5] || (_cache[5] = _createElementVNode("div", { class: "eyebrow" }, "WARDOGS · РУССКОЯЗЫЧНОЕ СООБЩЕСТВО", -1)),
-        _cache[6] || (_cache[6] = _createElementVNode("h1", null, [_createTextVNode("Русские серверы"), _createElementVNode("br"), _createElementVNode("span", null, "Wardogs")], -1)),
-        _cache[7] || (_cache[7] = _createElementVNode("p", null, "Живой статус серверов, быстрый вход в сообщество и всё нужное для игры в одном месте.", -1)),
+      _createElementVNode("section", _hoisted_12, [_cache[9] || (_cache[9] = _createElementVNode("div", { class: "hero-noise" }, null, -1)), _createElementVNode("div", _hoisted_13, [
+        _cache[6] || (_cache[6] = _createElementVNode("div", { class: "eyebrow" }, "WARDOGS · РУССКОЯЗЫЧНОЕ СООБЩЕСТВО", -1)),
+        _cache[7] || (_cache[7] = _createElementVNode("h1", null, [_createTextVNode("Русские серверы"), _createElementVNode("br"), _createElementVNode("span", null, "Wardogs")], -1)),
+        _cache[8] || (_cache[8] = _createElementVNode("p", null, "Живой статус серверов, быстрый вход в сообщество и всё нужное для игры в одном месте.", -1)),
         _createElementVNode("div", _hoisted_14, [(!state.me || !state.me.authed)
           ? (_openBlock(), _createElementBlock("button", {
               key: 0,
               class: "btn primary hero-btn",
               onClick: loginSteam
             }, "Войти через Steam", 8, _hoisted_15))
-          : _createCommentVNode("", true), _createElementVNode("span", _hoisted_16, [_cache[3] || (_cache[3] = _createElementVNode("i", null, null, -1)), _createElementVNode("b", null, _toDisplayString(totalPlayers()), 1), _cache[4] || (_cache[4] = _createTextVNode(" в игре прямо сейчас", -1))])])
+          : _createCommentVNode("", true), _createElementVNode("span", _hoisted_16, [_cache[4] || (_cache[4] = _createElementVNode("i", null, null, -1)), _createElementVNode("b", null, _toDisplayString(totalPlayers()), 1), _cache[5] || (_cache[5] = _createTextVNode(" в игре прямо сейчас", -1))])])
       ])]),
       (state.me && state.me.authed && !hasPerms)
         ? (_openBlock(), _createElementBlock("div", _hoisted_17, [(!state.me.discord.bound)
-            ? (_openBlock(), _createElementBlock(_Fragment, { key: 0 }, [_cache[9] || (_cache[9] = _createTextVNode("Привяжите Discord, чтобы получить права: ", -1)), _createElementVNode("a", { href: '/api/auth/discord/start' }, "привязать аккаунт", 8, _hoisted_18), _cache[10] || (_cache[10] = _createTextVNode(".", -1))], 64))
+            ? (_openBlock(), _createElementBlock(_Fragment, { key: 0 }, [_cache[10] || (_cache[10] = _createTextVNode("Привяжите Discord, чтобы получить права: ", -1)), _createElementVNode("a", { href: '/api/auth/discord/start' }, "привязать аккаунт", 8, _hoisted_18), _cache[11] || (_cache[11] = _createTextVNode(".", -1))], 64))
             : (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [_createTextVNode("Мониторинг доступен. Список игроков и управление скрыты, потому что у вашей роли нет соответствующих прав.")], 64))]))
         : _createCommentVNode("", true),
-      _createElementVNode("section", _hoisted_19, [_createElementVNode("div", _hoisted_20, [_cache[12] || (_cache[12] = _createElementVNode("div", null, [_createElementVNode("h2", null, [_createTextVNode("Наши серверы "), _createElementVNode("small", null, "В игре прямо сейчас")])], -1)), _createElementVNode("span", _hoisted_21, [_createElementVNode("b", null, _toDisplayString(totalPlayers()), 1), _cache[11] || (_cache[11] = _createTextVNode(" в игре прямо сейчас", -1))])]), _createElementVNode("div", _hoisted_22, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(state.servers, (s) => {
+      _createElementVNode("section", _hoisted_19, [_createElementVNode("div", _hoisted_20, [_cache[13] || (_cache[13] = _createElementVNode("div", null, [_createElementVNode("h2", null, [_createTextVNode("Наши серверы "), _createElementVNode("small", null, "В игре прямо сейчас")])], -1)), _createElementVNode("span", _hoisted_21, [_createElementVNode("b", null, _toDisplayString(totalPlayers()), 1), _cache[12] || (_cache[12] = _createTextVNode(" в игре прямо сейчас", -1))])]), _createElementVNode("div", _hoisted_22, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(state.servers, (s) => {
         return (_openBlock(), _createElementBlock("button", {
           key: s.id,
           class: _normalizeClass(["public-server-card", { active: s.id === state.sid, offline: isOffline(s.id) }]),
@@ -236,7 +247,7 @@ return function render(_ctx, _cache) {
             ? (_openBlock(), _createElementBlock("div", _hoisted_25, _toDisplayString(mapLabel(state.ovById[s.id].status.map)) + " · " + _toDisplayString(modeLabel(state.ovById[s.id].status.experiences)), 1))
             : (_openBlock(), _createElementBlock("div", _hoisted_26, "Нет соединения с сервером")),
           (state.ovById[s.id]?.status)
-            ? (_openBlock(), _createElementBlock("div", _hoisted_27, [_createElementVNode("span", _hoisted_28, [_cache[13] || (_cache[13] = _createElementVNode("i", null, null, -1)), _createTextVNode(_toDisplayString(livePhase(s.id)) + " — " + _toDisplayString(plCount(s.id) || '—'), 1)])]))
+            ? (_openBlock(), _createElementBlock("div", _hoisted_27, [_createElementVNode("span", _hoisted_28, [_cache[14] || (_cache[14] = _createElementVNode("i", null, null, -1)), _createTextVNode(_toDisplayString(livePhase(s.id)) + " — " + _toDisplayString(plCount(s.id) || '—'), 1)])]))
             : _createCommentVNode("", true),
           (state.ovById[s.id]?.status?.factionScores?.length)
             ? (_openBlock(), _createElementBlock("div", _hoisted_29, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(state.ovById[s.id].status.factionScores, (f) => {
@@ -246,7 +257,7 @@ return function render(_ctx, _cache) {
           _createElementVNode("div", {
             class: "server-card-id",
             title: state.ovById[s.id]?.server?.server_id || 'ID недоступен'
-          }, [_cache[14] || (_cache[14] = _createTextVNode(" ID сервера ", -1)), _createElementVNode("span", null, _toDisplayString(state.ovById[s.id]?.server?.server_id || 'недоступен'), 1), (state.ovById[s.id]?.server?.server_id)
+          }, [_cache[15] || (_cache[15] = _createTextVNode(" ID сервера ", -1)), _createElementVNode("span", null, _toDisplayString(state.ovById[s.id]?.server?.server_id || 'недоступен'), 1), (state.ovById[s.id]?.server?.server_id)
             ? (_openBlock(), _createElementBlock("button", {
                 key: 0,
                 onClick: _withModifiers($event => (copyText(state.ovById[s.id].server.server_id,'ID сервера')), ["stop"])
@@ -255,17 +266,17 @@ return function render(_ctx, _cache) {
           _createElementVNode("div", _hoisted_32, [_createElementVNode("span", { class: _normalizeClass(['dot', { on: !isOffline(s.id) }]) }, null, 2), _createTextVNode(_toDisplayString(isOffline(s.id) ? 'Нет подключения' : 'Подключиться к серверу'), 1)])
         ], 10, _hoisted_23))
       }), 128))])]),
-      _createElementVNode("section", _hoisted_33, [_cache[17] || (_cache[17] = _createElementVNode("div", { class: "section-heading" }, [_createElementVNode("div", null, [_createElementVNode("h2", null, [_createTextVNode("Победы команд "), _createElementVNode("small", null, "Статистика матчей появится после первых завершённых игр")])]), _createElementVNode("div", { class: "period-switch" }, [_createElementVNode("button", { class: "active" }, "месяц"), _createElementVNode("button", null, "3 месяца")])], -1)), _createElementVNode("div", _hoisted_34, [_cache[16] || (_cache[16] = _createElementVNode("article", { class: "win-card active" }, [_createElementVNode("b", null, "Все серверы"), _createElementVNode("span", null, "Результатов матчей пока нет")], -1)), (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(state.servers, (s) => {
+      _createElementVNode("section", _hoisted_33, [_cache[18] || (_cache[18] = _createElementVNode("div", { class: "section-heading" }, [_createElementVNode("div", null, [_createElementVNode("h2", null, [_createTextVNode("Победы команд "), _createElementVNode("small", null, "Статистика матчей появится после первых завершённых игр")])]), _createElementVNode("div", { class: "period-switch" }, [_createElementVNode("button", { class: "active" }, "месяц"), _createElementVNode("button", null, "3 месяца")])], -1)), _createElementVNode("div", _hoisted_34, [_cache[17] || (_cache[17] = _createElementVNode("article", { class: "win-card active" }, [_createElementVNode("b", null, "Все серверы"), _createElementVNode("span", null, "Результатов матчей пока нет")], -1)), (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(state.servers, (s) => {
         return (_openBlock(), _createElementBlock("article", {
           key: `wins-${s.id}`,
           class: "win-card"
-        }, [_createElementVNode("b", null, _toDisplayString(s.name), 1), _cache[15] || (_cache[15] = _createElementVNode("span", null, "Ещё нет завершённых матчей", -1))]))
+        }, [_createElementVNode("b", null, _toDisplayString(s.name), 1), _cache[16] || (_cache[16] = _createElementVNode("span", null, "Ещё нет завершённых матчей", -1))]))
       }), 128))])]),
-      _cache[34] || (_cache[34] = _createElementVNode("section", {
+      _cache[35] || (_cache[35] = _createElementVNode("section", {
         class: "how-to-join",
         id: "community"
       }, [_createElementVNode("div", { class: "section-heading" }, [_createElementVNode("div", null, [_createElementVNode("h2", null, [_createTextVNode("Как попасть на сервер "), _createElementVNode("small", null, "Три шага — и вы в матче с русскоязычными игроками")])])]), _createElementVNode("div", { class: "join-grid" }, [_createElementVNode("article", null, [_createElementVNode("i", null, "1"), _createElementVNode("div", null, [_createElementVNode("h3", null, "Зайдите в Discord"), _createElementVNode("p", null, "В канале сообщества всегда видно, где сейчас играют и с кем можно собрать команду."), _createElementVNode("a", { href: "#support" }, "Открыть сообщество →")])]), _createElementVNode("article", null, [_createElementVNode("i", null, "2"), _createElementVNode("div", null, [_createElementVNode("h3", null, "Выберите сервер"), _createElementVNode("p", null, "Карточки выше показывают онлайн, карту и режим. Нажмите на нужный сервер, чтобы открыть мониторинг."), _createElementVNode("a", { href: "#servers" }, "К списку серверов →")])]), _createElementVNode("article", null, [_createElementVNode("i", null, "3"), _createElementVNode("div", null, [_createElementVNode("h3", null, "Найдите нас в игре"), _createElementVNode("p", null, "Wardogs → Community Servers. Добавьте сервер в избранное по его ID, чтобы не искать снова."), _createElementVNode("a", { href: "#servers" }, "Показать ID серверов →")])])])], -1)),
-      _createElementVNode("section", _hoisted_35, [_cache[21] || (_cache[21] = _createElementVNode("div", null, [_createElementVNode("h2", null, "Добро пожаловать в WARDOGS"), _createElementVNode("p", null, "Мы создаём русскоязычное сообщество игроков Wardogs: собираем команды, обсуждаем обновления и помогаем новичкам освоиться в игре."), _createElementVNode("p", null, "Главное для нас — спокойная игра, уважение друг к другу и желание возвращаться на сервер.")], -1)), _createElementVNode("aside", null, [_cache[19] || (_cache[19] = _createElementVNode("h3", null, "WARDOGS только начинает свой путь.", -1)), _cache[20] || (_cache[20] = _createElementVNode("p", null, "Присоединяйся, приглашай друзей и становись частью сообщества.", -1)), _createElementVNode("div", null, [_cache[18] || (_cache[18] = _createElementVNode("a", {
+      _createElementVNode("section", _hoisted_35, [_cache[22] || (_cache[22] = _createElementVNode("div", null, [_createElementVNode("h2", null, "Добро пожаловать в WARDOGS"), _createElementVNode("p", null, "Мы создаём русскоязычное сообщество игроков Wardogs: собираем команды, обсуждаем обновления и помогаем новичкам освоиться в игре."), _createElementVNode("p", null, "Главное для нас — спокойная игра, уважение друг к другу и желание возвращаться на сервер.")], -1)), _createElementVNode("aside", null, [_cache[20] || (_cache[20] = _createElementVNode("h3", null, "WARDOGS только начинает свой путь.", -1)), _cache[21] || (_cache[21] = _createElementVNode("p", null, "Присоединяйся, приглашай друзей и становись частью сообщества.", -1)), _createElementVNode("div", null, [_cache[19] || (_cache[19] = _createElementVNode("a", {
         class: "btn primary",
         href: "https://discord.gg/wdru-ru",
         target: "_blank",
@@ -290,17 +301,17 @@ return function render(_ctx, _cache) {
           : _createCommentVNode("", true),
         (state.tab === 'status')
           ? (_openBlock(), _createElementBlock("section", _hoisted_41, [(overview && overview.error)
-              ? (_openBlock(), _createElementBlock("div", _hoisted_42, [_cache[22] || (_cache[22] = _createElementVNode("b", null, "Сервер недоступен.", -1)), _createTextVNode(" " + _toDisplayString(overview.error.message) + " (" + _toDisplayString(overview.error.code) + ") ", 1)]))
+              ? (_openBlock(), _createElementBlock("div", _hoisted_42, [_cache[23] || (_cache[23] = _createElementVNode("b", null, "Сервер недоступен.", -1)), _createTextVNode(" " + _toDisplayString(overview.error.message) + " (" + _toDisplayString(overview.error.code) + ") ", 1)]))
               : ov
                 ? (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [_createElementVNode("div", _hoisted_43, [_createElementVNode("div", _hoisted_44, [
-                    _cache[23] || (_cache[23] = _createElementVNode("div", { class: "k" }, "Сервер", -1)),
+                    _cache[24] || (_cache[24] = _createElementVNode("div", { class: "k" }, "Сервер", -1)),
                     _createElementVNode("div", _hoisted_45, _toDisplayString(ov.status.serverName), 1),
-                    _cache[24] || (_cache[24] = _createElementVNode("div", { class: "k" }, "Карта", -1)),
+                    _cache[25] || (_cache[25] = _createElementVNode("div", { class: "k" }, "Карта", -1)),
                     _createElementVNode("div", _hoisted_46, _toDisplayString(mapLabel(ov.status.map)), 1),
-                    _cache[25] || (_cache[25] = _createElementVNode("div", { class: "k" }, "Свет", -1)),
+                    _cache[26] || (_cache[26] = _createElementVNode("div", { class: "k" }, "Свет", -1)),
                     _createElementVNode("div", _hoisted_47, _toDisplayString(lightLabel(ov.status.lighting)), 1)
                   ]), _createElementVNode("div", _hoisted_48, [
-                    _cache[26] || (_cache[26] = _createElementVNode("div", { class: "k" }, "Игроки", -1)),
+                    _cache[27] || (_cache[27] = _createElementVNode("div", { class: "k" }, "Игроки", -1)),
                     _createElementVNode("div", _hoisted_49, _toDisplayString(ov.status.players.current) + " / " + _toDisplayString(ov.status.players.max), 1),
                     _createElementVNode("div", _hoisted_50, [_createElementVNode("div", {
                       class: "bar-fill",
@@ -308,7 +319,7 @@ return function render(_ctx, _cache) {
                     }, null, 4)]),
                     _createElementVNode("div", _hoisted_51, _toDisplayString(modeLabel(ov.status.experiences)), 1),
                     _createElementVNode("div", _hoisted_52, _toDisplayString(ov.server.build), 1)
-                  ]), _createElementVNode("div", _hoisted_53, [_cache[27] || (_cache[27] = _createElementVNode("div", { class: "k" }, "Матч", -1)), _createElementVNode("div", _hoisted_54, _toDisplayString(fmtClock(ov.status.matchSeconds)), 1)])]), _createElementVNode("div", _hoisted_55, [_cache[28] || (_cache[28] = _createElementVNode("h2", null, "Счёт фракций", -1)), _createElementVNode("div", _hoisted_56, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(sortedFactions, (f) => {
+                  ]), _createElementVNode("div", _hoisted_53, [_cache[28] || (_cache[28] = _createElementVNode("div", { class: "k" }, "Матч", -1)), _createElementVNode("div", _hoisted_54, _toDisplayString(fmtClock(ov.status.matchSeconds)), 1)])]), _createElementVNode("div", _hoisted_55, [_cache[29] || (_cache[29] = _createElementVNode("h2", null, "Счёт фракций", -1)), _createElementVNode("div", _hoisted_56, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(sortedFactions, (f) => {
                     return (_openBlock(), _createElementBlock("div", {
                       key: f.name,
                       class: "faction-row"
@@ -329,9 +340,9 @@ return function render(_ctx, _cache) {
           : _createCommentVNode("", true),
         (state.tab === 'players')
           ? (_openBlock(), _createElementBlock("section", _hoisted_61, [(ov && ov.error)
-              ? (_openBlock(), _createElementBlock("div", _hoisted_62, [_cache[29] || (_cache[29] = _createElementVNode("b", null, "Сервер недоступен.", -1)), _createTextVNode(" " + _toDisplayString(ov.error.message), 1)]))
+              ? (_openBlock(), _createElementBlock("div", _hoisted_62, [_cache[30] || (_cache[30] = _createElementVNode("b", null, "Сервер недоступен.", -1)), _createTextVNode(" " + _toDisplayString(ov.error.message), 1)]))
               : ov
-                ? (_openBlock(), _createElementBlock("div", _hoisted_63, [_createElementVNode("div", _hoisted_64, [_createElementVNode("h2", null, "Игроки на сервере — " + _toDisplayString(ov.players ? ov.players.count : 0), 1)]), _createElementVNode("div", _hoisted_65, [_createElementVNode("table", _hoisted_66, [_cache[30] || (_cache[30] = _createElementVNode("thead", null, [_createElementVNode("tr", null, [
+                ? (_openBlock(), _createElementBlock("div", _hoisted_63, [_createElementVNode("div", _hoisted_64, [_createElementVNode("h2", null, "Игроки на сервере — " + _toDisplayString(ov.players ? ov.players.count : 0), 1)]), _createElementVNode("div", _hoisted_65, [_createElementVNode("table", _hoisted_66, [_cache[31] || (_cache[31] = _createElementVNode("thead", null, [_createElementVNode("tr", null, [
                     _createElementVNode("th", null, "#"),
                     _createElementVNode("th", null, "Игрок"),
                     _createElementVNode("th", null, "Команда"),
@@ -357,7 +368,7 @@ return function render(_ctx, _cache) {
                 : (_openBlock(), _createElementBlock("div", _hoisted_74, "Загрузка…"))]))
           : _createCommentVNode("", true),
         (state.tab === 'bans')
-          ? (_openBlock(), _createElementBlock("section", _hoisted_75, [_createElementVNode("div", _hoisted_76, [_createElementVNode("div", _hoisted_77, [_createElementVNode("h2", null, "Баны — " + _toDisplayString(ov && ov.bans_count != null ? ov.bans_count : (ov && ov.bans ? ov.bans.count : 0)), 1)]), _createElementVNode("div", _hoisted_78, [_createElementVNode("table", _hoisted_79, [_cache[33] || (_cache[33] = _createElementVNode("thead", null, [_createElementVNode("tr", null, [
+          ? (_openBlock(), _createElementBlock("section", _hoisted_75, [_createElementVNode("div", _hoisted_76, [_createElementVNode("div", _hoisted_77, [_createElementVNode("h2", null, "Баны — " + _toDisplayString(ov && ov.bans_count != null ? ov.bans_count : (ov && ov.bans ? ov.bans.count : 0)), 1)]), _createElementVNode("div", _hoisted_78, [_createElementVNode("table", _hoisted_79, [_cache[34] || (_cache[34] = _createElementVNode("thead", null, [_createElementVNode("tr", null, [
               _createElementVNode("th", null, "Steam64"),
               _createElementVNode("th", null, "Причина"),
               _createElementVNode("th", null, "Кем"),
@@ -371,12 +382,12 @@ return function render(_ctx, _cache) {
                     _createElementVNode("td", null, _toDisplayString(fmtDate(b.bannedAtUtc)), 1)
                   ]))
                 }), 128)), (!ov.bans.bans || !ov.bans.bans.length)
-                  ? (_openBlock(), _createElementBlock("tr", _hoisted_81, [...(_cache[31] || (_cache[31] = [_createElementVNode("td", {
+                  ? (_openBlock(), _createElementBlock("tr", _hoisted_81, [...(_cache[32] || (_cache[32] = [_createElementVNode("td", {
                       colspan: "4",
                       class: "muted"
                     }, "Бан-лист пуст.", -1)]))]))
                   : _createCommentVNode("", true)]))
-              : (_openBlock(), _createElementBlock("tbody", _hoisted_82, [...(_cache[32] || (_cache[32] = [_createElementVNode("tr", null, [_createElementVNode("td", {
+              : (_openBlock(), _createElementBlock("tbody", _hoisted_82, [...(_cache[33] || (_cache[33] = [_createElementVNode("tr", null, [_createElementVNode("td", {
                   colspan: "4",
                   class: "muted"
                 }, "Загрузка…")], -1)]))]))])])])]))
