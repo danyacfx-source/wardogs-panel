@@ -6,7 +6,7 @@
     'use strict';
 
     const CONFIG_URL =
-        'data/ballistics/terrain-context.json';
+        'assets/ballistics/terrain-context.json';
 
     const state = {
         initialized: false,

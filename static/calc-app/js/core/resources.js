@@ -77,7 +77,7 @@ function classifyStaticJsonResource(path) {
 
     const fixed = {
         'config/app.json': 'app-config',
-        'data/weapons.json': 'weapons',
+        'assets/weapons.json': 'weapons',
         'locales/index.json': 'locales-index',
         'maps/index.json': 'maps-index',
         'maps/assets.json': 'map-assets'

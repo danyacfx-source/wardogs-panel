@@ -732,7 +732,7 @@ async function loadMotd() {
         const resource =
             versionStaticResource(
                 resourceURL(
-                    'data/motd.json'
+                    'assets/motd.json'
                 )
             );
 

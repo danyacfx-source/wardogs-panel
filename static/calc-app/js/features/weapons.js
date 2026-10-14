@@ -258,11 +258,11 @@ function getWeaponName(weapon) {
 }
 
 async function loadWeapons() {
-    const data = await fetchJSON('data/weapons.json');
+    const data = await fetchJSON('assets/weapons.json');
     const source = Array.isArray(data) ? data : data?.weapons;
 
     if (!Array.isArray(source) || !source.length) {
-        throw new Error('No weapons found in data/weapons.json');
+        throw new Error('No weapons found in assets/weapons.json');
     }
 
     WEAPONS = {};
@@ -277,7 +277,7 @@ async function loadWeapons() {
     const ids = Object.keys(WEAPONS);
 
     if (!ids.length) {
-        throw new Error('No valid weapons found in data/weapons.json');
+        throw new Error('No valid weapons found in assets/weapons.json');
     }
 
     DEFAULT_WEAPON =

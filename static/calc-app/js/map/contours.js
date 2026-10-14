@@ -94,7 +94,7 @@ function mapHasContours(mapId) {
 }
 
 function contoursUrl(mapId) {
-    return `data/terrain/${mapId}/contours.json`;
+    return `assets/terrain/${mapId}/contours.json`;
 }
 
 /*

@@ -10,7 +10,7 @@
     "maxY": 129.65
   },
   "tiles": {
-    "path": "/static/calc-app/data/tiles/bakurani",
+    "path": "/static/calc-app/assets/tiles/bakurani",
     "tileSize": 512,
     "minZoom": 0,
     "maxZoom": 4,
@@ -18,7 +18,7 @@
     "defaultStyle": "grayscale",
     "styles": {
       "grayscale": {
-        "path": "/static/calc-app/data/tiles/bakurani"
+        "path": "/static/calc-app/assets/tiles/bakurani"
       }
     }
   },

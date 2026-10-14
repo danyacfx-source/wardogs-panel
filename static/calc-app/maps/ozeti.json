@@ -10,7 +10,7 @@
     "maxY": 99.56
   },
   "tiles": {
-    "path": "/static/calc-app/data/tiles/ozeti",
+    "path": "/static/calc-app/assets/tiles/ozeti",
     "tileSize": 512,
     "minZoom": 0,
     "maxZoom": 4,
@@ -18,7 +18,7 @@
     "defaultStyle": "grayscale",
     "styles": {
       "grayscale": {
-        "path": "/static/calc-app/data/tiles/ozeti"
+        "path": "/static/calc-app/assets/tiles/ozeti"
       }
     }
   },
