@@ -6,7 +6,7 @@
 <title>WARDOGS // РњРѕРЅРёС‚РѕСЂРёРЅРі</title>
 <link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
 <link rel="preload" href="/static/wardogs-theme/wardogs-battlefield-v2.webp" as="image" type="image/webp" fetchpriority="high" />
-<link rel="stylesheet" href="/static/style.css?v=20261014-3" />
+<link rel="stylesheet" href="/static/style.css?v=20261014-4" />
 </head>
 <body data-panel-mode="monitor">
 <div id="app" v-cloak>
@@ -29,7 +29,7 @@
         <button class="btn ghost" @click="refreshAll(true)" :disabled="state.refreshing">РћР±РЅРѕРІРёС‚СЊ</button>
 
         <template v-if="state.me && state.me.authed">
-          <span v-if="hasPerms" class="user-chip profile-link" role="button" tabindex="0" title="Р›РёС‡РЅС‹Р№ РїСЂРѕС„РёР»СЊ" @click="goProfile" @keydown.enter="goProfile">
+          <span v-if="hasPerms" class="user-chip profile-link" role="button" tabindex="0" title="Р›РёС‡РЅС‹Р№ РїСЂРѕС„РёР»СЊ" @click="openProfileCard" @keydown.enter="openProfileCard">
             <b>{{ state.me.persona || state.me.steam_id }}</b>
             <small>РјРѕР№ РїСЂРѕС„РёР»СЊ</small>
           </span>
@@ -222,6 +222,83 @@
       </section>
 
     </main>
+
+    <div v-if="profile.open" class="player-card-backdrop" @click.self="closeProfileCard">
+      <aside class="player-card" role="dialog" aria-modal="true" aria-label="Личный профиль">
+        <header class="player-card-top">
+          <strong>Личный профиль</strong>
+          <button class="player-card-close" @click="closeProfileCard" aria-label="Закрыть">×</button>
+        </header>
+        <div class="player-card-body">
+          <div v-if="profile.loading && !profile.data" class="empty">Загрузка профиля…</div>
+          <div v-else-if="profile.error" class="err-box"><b>Не удалось загрузить профиль.</b> {{ profile.error }} <button class="mini-btn" @click="loadProfile">Повторить</button></div>
+          <template v-else-if="profile.data">
+            <div class="player-card-head">
+              <div class="player-identity">
+                <img v-if="profile.data.steam?.avatar_url" class="player-avatar image" :src="profile.data.steam.avatar_url" alt="Аватар Steam">
+                <div v-else class="player-avatar" aria-hidden="true">{{ (profile.data.me?.persona || profile.data.me?.steam_id || '?').slice(0, 1).toUpperCase() }}</div>
+                <div>
+                  <h2>{{ profile.data.me?.persona || 'Игрок' }}</h2>
+                  <div class="mono muted">{{ profile.data.me?.steam_id }}</div>
+                </div>
+              </div>
+            </div>
+            <div class="player-tags" style="margin-top:12px">
+              <span class="player-tag" :class="{green: !!profile.data.binding}">{{ profile.data.binding ? `Discord: ${profile.data.binding.discord_name || profile.data.binding.discord_id}` : 'Discord не привязан' }}</span>
+              <span v-if="profile.data.binding?.guild_member" class="player-tag">участник гильдии</span>
+              <span class="player-tag" :class="profile.data.me?.admin ? 'purple' : ''">{{ profile.data.me?.admin ? `прав: ${profile.data.me.permissions.length}` : 'без прав панели' }}</span>
+              <span v-for="vipItem in (profile.data.vip_slots || []).filter(v => v.active)" :key="vipItem.id" class="player-tag green">VIP · {{ vipItem.server_name }}</span>
+            </div>
+            <div class="toolbar-actions" style="margin-top:12px">
+              <a class="btn ghost" :href="profile.data.steam?.profile_url" target="_blank" rel="noopener">Профиль Steam ↗</a>
+              <a v-if="!profile.data.binding" class="btn primary" href="/api/auth/discord/start">Привязать Discord</a>
+              <button class="btn ghost" @click="loadProfile" :disabled="profile.loading">{{ profile.loading ? 'Обновление…' : 'Обновить' }}</button>
+            </div>
+          </template>
+        </div>
+        <div v-if="profile.data && !profile.error" class="player-card-content">
+          <div class="player-stat-grid">
+            <div class="player-stat"><span>K / D всего</span><b>{{ profile.data.activity ? kd(profile.data.activity) : '—' }}</b><small>K {{ profile.data.activity?.kills || 0 }} · D {{ profile.data.activity?.deaths || 0 }}</small></div>
+            <div class="player-stat"><span>Времени у нас</span><b>{{ fmtPlaytime(profile.data.activity?.total_seconds || 0) }}</b><small>сессий: {{ profile.data.activity?.session_count || 0 }}</small></div>
+            <div class="player-stat"><span>Серверов</span><b>{{ profile.data.activity?.server_count || 0 }}</b><small v-if="profile.data.activity?.first_seen_utc">с {{ fmtDate(profile.data.activity.first_seen_utc * 1000) }}</small></div>
+            <div class="player-stat"><span>Обращений</span><b>{{ profile.data.tickets_total || 0 }}</b><small>действий: {{ (profile.data.audit || []).length }}</small></div>
+          </div>
+
+          <section v-if="(profile.data.me?.permissions || []).length" class="player-section">
+            <div class="player-section-title">Мои права в панели · {{ profile.data.me.permissions.length }}</div>
+            <div class="player-tags"><span v-for="p in profile.data.me.permissions" :key="p" class="player-tag">{{ permLabel(p) }}</span></div>
+          </section>
+
+          <section class="player-section">
+            <div class="player-section-title">VIP-слоты · {{ (profile.data.vip_slots || []).length }}</div>
+            <div v-if="(profile.data.vip_slots || []).length" class="player-tags">
+              <span v-for="vipItem in profile.data.vip_slots" :key="vipItem.id" class="player-tag" :class="vipItem.active ? 'green' : 'red'">{{ vipItem.server_name }} · {{ vipItem.expires_utc ? `до ${fmtDate(vipItem.expires_utc * 1000)}` : 'бессрочный' }} · {{ vipItem.active ? 'активен' : 'истёк' }}</span>
+            </div>
+            <p v-else class="muted">VIP-слотов нет.</p>
+          </section>
+
+          <section class="player-section">
+            <div class="player-section-title">Мои обращения · {{ profile.data.tickets_total || 0 }}</div>
+            <div v-if="(profile.data.tickets || []).length" class="player-tags">
+              <span v-for="ticket in profile.data.tickets" :key="ticket.id" class="player-tag">{{ ticket.title }} · {{ ticketStatusLabel(ticket.status) }}</span>
+            </div>
+            <p v-else class="muted">Обращений нет.</p>
+          </section>
+
+          <section class="player-section">
+            <div class="player-section-title">Последние действия</div>
+            <div v-if="(profile.data.audit || []).length" class="player-tags" style="flex-direction:column;align-items:stretch">
+              <div v-for="(entry, i) in profile.data.audit" :key="i" class="ticket-comment"><header><b>{{ entry.event }}</b><small>{{ fmtDate(entry.timestamp_utc * 1000) }}</small></header><p class="mono">{{ entry.detail }}</p></div>
+            </div>
+            <p v-else class="muted">Действий пока не было.</p>
+          </section>
+        </div>
+        <footer class="player-card-footer">
+          <button class="btn ghost" @click="closeProfileCard">Закрыть</button>
+        </footer>
+      </aside>
+    </div>
+
     <div v-if="toasts.length" class="toasts">
       <div v-for="(t, i) in toasts" :key="i" class="toast" :class="t.kind">{{ t.text }}</div>
     </div>
@@ -230,7 +307,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/index.render.js?v=20261014-3"></script>
-<script src="/static/app.js?v=20261014-3"></script>
+<script src="/static/index.render.js?v=20261014-4"></script>
+<script src="/static/app.js?v=20261014-4"></script>
 </body>
 </html>

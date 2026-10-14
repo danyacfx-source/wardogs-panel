@@ -24,7 +24,7 @@
       const name = escapeHtml(me.persona || me.steam_id || "Игрок");
       const hasPanel = Array.isArray(me.permissions) && me.permissions.length > 0;
       const chip = hasPanel
-        ? `<a class="public-user-chip" title="Личный профиль" href="/panel#profile">${name}</a>`
+        ? `<a class="public-user-chip" title="Личный профиль" href="/#profile">${name}</a>`
         : `<span class="public-user-chip" title="Вход через Steam выполнен">${name}</span>`;
       actions.innerHTML = `${hasPanel ? '<a class="btn primary public-panel-link" href="/panel">Панель управления →</a>' : ''}${chip}<button class="public-logout" type="button" aria-label="Выйти из аккаунта">↗</button>`;
       actions.querySelector(".public-logout")?.addEventListener("click", async () => {

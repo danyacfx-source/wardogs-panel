@@ -561,10 +561,7 @@ const app = createApp({
       else if (q.get("bind") === "discord") this.toast(`Привязка Discord не удалась (${q.get("fail") || "?"})`, "err");
       else if (q.get("auth") === "steam" && q.get("fail")) this.toast("Вход через Steam не удался", "err");
       if (MODE === "panel") this.loadRoles();
-      if (location.hash === "#profile" && this.state.authed) {
-        if (MODE === "panel") this.openProfileCard();
-        else this.goProfile();
-      }
+      if (location.hash === "#profile" && this.state.authed) this.openProfileCard();
       if (MODE === "panel") {
         try { const saved=JSON.parse(sessionStorage.getItem('wardogs-view') || '{}'); for(const k of ['playersTableQuery','playersTableSort','bansQuery','bansSort','vipQuery','vipFilter','ticketQuery','ticketStatusFilter','ticketPriorityFilter']) if(typeof saved[k]==='string') this[k]=saved[k]; } catch {}
         this.$watch(()=>[this.playersTableQuery,this.playersTableSort,this.bansQuery,this.bansSort,this.vipQuery,this.vipFilter,this.ticketQuery,this.ticketStatusFilter,this.ticketPriorityFilter],()=>this.saveViewPreferences());
@@ -583,7 +580,7 @@ const app = createApp({
     },
     bindDiscord() { location.href = "/api/auth/discord/start"; },
     goPanel() { location.href = "/panel"; },
-    goProfile() { location.href = "/panel#profile"; },
+    goProfile() { this.openProfileCard(); },
     async refreshRoles(silent = false) {
       this.busy = true;
       const { data } = await this.api.request("POST", "/api/auth/refresh");
