@@ -10,15 +10,15 @@
     "maxY": 129.65
   },
   "tiles": {
-    "path": "/calc-assets/maps/tiles/bakurani",
-    "tileSize": 256,
+    "path": "/static/calc-app/data/tiles/bakurani",
+    "tileSize": 512,
     "minZoom": 0,
-    "maxZoom": 5,
+    "maxZoom": 4,
     "extension": "webp",
     "defaultStyle": "grayscale",
     "styles": {
       "grayscale": {
-        "path": "/calc-assets/maps/tiles/bakurani"
+        "path": "/static/calc-app/data/tiles/bakurani"
       }
     }
   },

@@ -10,15 +10,15 @@
     "maxY": 99.56
   },
   "tiles": {
-    "path": "/calc-assets/maps/tiles/ozeti",
-    "tileSize": 256,
+    "path": "/static/calc-app/data/tiles/ozeti",
+    "tileSize": 512,
     "minZoom": 0,
-    "maxZoom": 6,
+    "maxZoom": 4,
     "extension": "webp",
     "defaultStyle": "grayscale",
     "styles": {
       "grayscale": {
-        "path": "/calc-assets/maps/tiles/ozeti"
+        "path": "/static/calc-app/data/tiles/ozeti"
       }
     }
   },

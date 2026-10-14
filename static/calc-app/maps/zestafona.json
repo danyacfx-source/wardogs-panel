@@ -10,15 +10,15 @@
     "maxY": 141.9
   },
   "tiles": {
-    "path": "/calc-assets/maps/tiles/zestafona",
-    "tileSize": 256,
+    "path": "/static/calc-app/data/tiles/zestafona",
+    "tileSize": 512,
     "minZoom": 0,
-    "maxZoom": 6,
+    "maxZoom": 4,
     "extension": "webp",
     "defaultStyle": "grayscale",
     "styles": {
       "grayscale": {
-        "path": "/calc-assets/maps/tiles/zestafona"
+        "path": "/static/calc-app/data/tiles/zestafona"
       }
     }
   },
