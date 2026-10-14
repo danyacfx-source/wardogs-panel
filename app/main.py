@@ -277,7 +277,11 @@ async def calculator_asset_proxy(asset_path: str):
                 headers={
                     "Accept": "image/webp, application/json, application/octet-stream",
                     "Referer": "https://wardogs.zone/",
-                    "User-Agent": "Mozilla/5.0 (compatible; wardogs-panel)",
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/131.0.0.0 Safari/537.36"
+                    ),
                 },
             ) as upstream:
                 if upstream.status != 200:
