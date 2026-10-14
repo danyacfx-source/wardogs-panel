@@ -17,9 +17,13 @@
 
   const csrf = () =>
     decodeURIComponent(
-      (document.cookie.split('; ').find((cookie) => cookie.startsWith('wds_csrf=')) || '=').slice(
-        'wds_csrf='.length,
-      ) || '',
+      (
+        (
+          document.cookie
+            .split('; ')
+            .find((cookie) => cookie.startsWith('wds_csrf=') || cookie.startsWith('__Host-wds_csrf=')) || '='
+        ).split('=')[1] || ''
+      ),
     );
 
   function setMessage(text, ok) {

@@ -143,8 +143,9 @@ async def vip_order_cancel(order_id: str, request: Request):
     return {'ok':True}
 
 SESSION_COOKIE = "__Host-wds_session" if config.COOKIE_SECURE else "wds_session"
-STEAM_STATE_COOKIE = "wds_steam_state"
-DISCORD_STATE_COOKIE = "wds_discord_state"
+CSRF_COOKIE = "__Host-wds_csrf" if config.COOKIE_SECURE else "wds_csrf"
+STEAM_STATE_COOKIE = ("__Secure-wds_steam_state" if config.COOKIE_SECURE else "wds_steam_state")
+DISCORD_STATE_COOKIE = ("__Secure-wds_discord_state" if config.COOKIE_SECURE else "wds_discord_state")
 DEV_STEAM_ID = "76561190000000000"
 STEAM_ID_RE = re.compile(r"^\d{17}$")
 BOT_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{2,47}$")
@@ -795,6 +796,7 @@ async def auth_logout(request: Request):
         await db.delete_session(token)
     resp = JSONResponse({"ok": True})
     resp.delete_cookie(SESSION_COOKIE, path="/")
+    resp.delete_cookie(CSRF_COOKIE, path="/")
     return resp
 
 

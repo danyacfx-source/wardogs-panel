@@ -383,7 +383,7 @@ const app = createApp({
         const controller = new AbortController();
         const timeout = setTimeout(()=>controller.abort(), 25000);
         const opts = { method, credentials: "same-origin", signal: controller.signal };
-        const csrf = document.cookie.split("; ").find((c) => c.startsWith("wds_csrf="))?.split("=")[1];
+        const csrf = document.cookie.split("; ").find((c) => c.startsWith("wds_csrf=") || c.startsWith("__Host-wds_csrf="))?.split("=")[1];
         if (["POST", "PUT", "PATCH", "DELETE"].includes(method) && csrf) opts.headers = { "X-CSRF-Token": decodeURIComponent(csrf) };
         if (["POST", "PUT", "PATCH", "DELETE"].includes(method) &&
             (url.includes("/api/server/") || url.includes("/api/players/") ||
@@ -1930,7 +1930,7 @@ const app = createApp({
         headers: {
           "Content-Type": "text/plain",
           "If-Match": this.cfg.revision,
-          "X-CSRF-Token": decodeURIComponent(document.cookie.split("; ").find((c) => c.startsWith("wds_csrf="))?.split("=")[1] || ""),
+          "X-CSRF-Token": decodeURIComponent(document.cookie.split("; ").find((c) => c.startsWith("wds_csrf=") || c.startsWith("__Host-wds_csrf="))?.split("=")[1] || ""),
           "Idempotency-Key": globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         },
         body: this.cfg.text,

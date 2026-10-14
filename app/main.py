@@ -142,9 +142,11 @@ async def security_middleware(request: Request, call_next):
             response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         if request.url.path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-store")
-        if request.url.path == "/api/session" and not request.cookies.get("wds_csrf"):
+        if request.url.path == "/api/session" and not request.cookies.get(
+            api.CSRF_COOKIE
+        ) and not request.cookies.get("wds_csrf"):
             response.set_cookie(
-                "wds_csrf",
+                api.CSRF_COOKIE,
                 secrets.token_urlsafe(24),
                 secure=config.COOKIE_SECURE,
                 samesite="strict",
@@ -221,11 +223,15 @@ async def security_middleware(request: Request, call_next):
     protected = request.url.path.startswith("/api/") and request.method in {"POST", "PUT", "PATCH", "DELETE"}
     exempt = {"/api/auth/dev", "/api/auth/steam/callback", "/api/auth/discord/callback"}
     if protected and request.url.path not in exempt and request.cookies.get(api.SESSION_COOKIE):
+        fetch_site = (request.headers.get("sec-fetch-site") or "").lower()
+        if fetch_site == "cross-site":
+            from fastapi.responses import JSONResponse
+            return finish(JSONResponse({"error": {"code": "origin", "message": "Недопустимый источник запроса"}}, status_code=403))
         origin = request.headers.get("origin")
         if origin and origin.rstrip("/") != config.PUBLIC_URL:
             from fastapi.responses import JSONResponse
             return finish(JSONResponse({"error": {"code": "origin", "message": "Недопустимый источник запроса"}}, status_code=403))
-        csrf_cookie = request.cookies.get("wds_csrf") or ""
+        csrf_cookie = request.cookies.get(api.CSRF_COOKIE) or request.cookies.get("wds_csrf") or ""
         csrf_header = request.headers.get("X-CSRF-Token") or ""
         if not csrf_cookie or not secrets.compare_digest(csrf_cookie, csrf_header):
             from fastapi.responses import JSONResponse

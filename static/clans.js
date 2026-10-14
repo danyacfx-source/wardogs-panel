@@ -1,7 +1,7 @@
 (() => {
   const grid = document.querySelector('#clansGrid'), notice = document.querySelector('#clansNotice');
   const detail = document.querySelector('#clanDialog'), application = document.querySelector('#applicationDialog');
-  const csrf = () => decodeURIComponent(document.cookie.split('; ').find((part) => part.startsWith('wds_csrf='))?.split('=')[1] || '');
+  const csrf = () => decodeURIComponent(document.cookie.split('; ').find((part) => part.startsWith('wds_csrf=') || part.startsWith('__Host-wds_csrf='))?.split('=')[1] || '');
   const escape = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const closeButtons = document.querySelectorAll('.dialog-close');
   closeButtons.forEach((button) => button.addEventListener('click', () => button.closest('dialog').close()));
