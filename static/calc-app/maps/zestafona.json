@@ -13,15 +13,12 @@
     "path": "/calc-assets/maps/tiles/zestafona",
     "tileSize": 256,
     "minZoom": 0,
-    "maxZoom": 7,
+    "maxZoom": 6,
     "extension": "webp",
     "defaultStyle": "grayscale",
     "styles": {
       "grayscale": {
         "path": "/calc-assets/maps/tiles/zestafona"
-      },
-      "color": {
-        "path": "/calc-assets/maps/tiles-color/zestafona"
       }
     }
   },

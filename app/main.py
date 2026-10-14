@@ -35,13 +35,22 @@ STATIC_DIR = config.BASE_DIR / "static"
 # asset shapes the calculator needs through a fixed-origin proxy. This keeps
 # the browser same-origin (canvas exports and CSP remain safe) and prevents
 # the endpoint from becoming an open SSRF proxy.
+#
+# Upstream moved to wardogs.zone (Next.js). Tile URL shape:
+#   /game/maps/tiles/{mapId}/{hash}/{z}/{x}_{y}.webp
+# Our public path stays the historical zoom_N form so the vendored
+# calculator client does not need a rewrite:
+#   /calc-assets/maps/tiles/{map}/zoom_{z}/{x}_{y}.webp
+CALC_TILE_MAPS = {
+    "bakurani": ("kavkazi", "863d1ca7", 5),
+    "ozeti": ("europe", "5463cef3", 6),
+    "zestafona": ("northamerica", "d0486ad2", 6),
+}
 CALC_ASSET_PATH = re.compile(
-    r"^(?:maps/(?:tiles|tiles-color)/(?:bakurani|ozeti|zestafona)/"
-    r"zoom_[0-7]/\d+_\d+\.webp|"
-    r"data/terrain/(?:bakurani|ozeti|zestafona)/"
-    r"(?:manifest\.json|chunks/\d+_\d+\.bin))$"
+    r"^maps/(?:tiles|tiles-color)/(bakurani|ozeti|zestafona)/"
+    r"zoom_([0-7])/(\d+)_(\d+)\.webp$"
 )
-CALC_ASSET_ORIGIN = "https://zavod-wardogs.ru/calc-assets/"
+CALC_ASSET_ORIGIN = "https://wardogs.zone/game/maps/tiles/"
 
 
 async def maintenance_loop(stop_event):
@@ -246,16 +255,30 @@ app.include_router(donate.router)
 
 @app.get("/calc-assets/{asset_path:path}")
 async def calculator_asset_proxy(asset_path: str):
-    """Fetch only allow-listed calculator map assets from the upstream CDN."""
-    if not CALC_ASSET_PATH.fullmatch(asset_path):
+    """Fetch only allow-listed calculator map tiles from the upstream CDN."""
+    match = CALC_ASSET_PATH.fullmatch(asset_path)
+    if not match:
         return JSONResponse({"error": "asset_not_found"}, status_code=404)
+
+    map_key, zoom_s, x_s, y_s = match.groups()
+    upstream_map, tile_hash, max_zoom = CALC_TILE_MAPS[map_key]
+    zoom = int(zoom_s)
+    if zoom > max_zoom:
+        return JSONResponse({"error": "asset_not_found"}, status_code=404)
+
+    # tiles-color is not published upstream — fall back to the grayscale pyramid.
+    upstream_path = f"{upstream_map}/{tile_hash}/{zoom}/{x_s}_{y_s}.webp"
 
     try:
         timeout = aiohttp.ClientTimeout(total=20, connect=5)
         async with aiohttp.ClientSession(timeout=timeout) as client:
             async with client.get(
-                CALC_ASSET_ORIGIN + asset_path,
-                headers={"Accept": "image/webp, application/json, application/octet-stream"},
+                CALC_ASSET_ORIGIN + upstream_path,
+                headers={
+                    "Accept": "image/webp, application/json, application/octet-stream",
+                    "Referer": "https://wardogs.zone/",
+                    "User-Agent": "Mozilla/5.0 (compatible; wardogs-panel)",
+                },
             ) as upstream:
                 if upstream.status != 200:
                     return JSONResponse({"error": "asset_unavailable"}, status_code=404)
@@ -264,7 +287,7 @@ async def calculator_asset_proxy(asset_path: str):
                     return JSONResponse({"error": "asset_too_large"}, status_code=502)
                 content_type = upstream.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0]
     except (aiohttp.ClientError, asyncio.TimeoutError):
-        log.warning("Calculator asset upstream unavailable: %s", asset_path)
+        log.warning("Calculator asset upstream unavailable: %s", upstream_path)
         return JSONResponse({"error": "asset_unavailable"}, status_code=502)
 
     return Response(
