@@ -28,6 +28,7 @@ try:
     from . import config, db
     from . import discord as dmod
     from . import donate
+    from . import disclog
     from . import steam as steam_mod
     from .rcon_client import RCONError, WardogsRCON
 except ImportError:
@@ -35,6 +36,7 @@ except ImportError:
     import db
     import discord as dmod
     import donate
+    import disclog
     import steam as steam_mod
     from rcon_client import RCONError, WardogsRCON
 
@@ -111,6 +113,13 @@ async def fulfill_vip_order(order, operation_id: str = ""):
         failed = [item['steam_id'] for item in results if not item['synced']]
         detail += ':sync_error ' + ','.join(failed)
     await db.log_site_audit(order.get('actor_steam_id') or None, order['server_id'], 'vip.order.paid', detail)
+    _osrv = _get_server(order['server_id'])
+    disclog.emit(
+        "vip.order.paid", actor=order.get('actor_steam_id') or "донат",
+        server=(_osrv.name if _osrv else order['server_id']),
+        steam_id=order.get('buyer_steam_id') or '',
+        detail=f"{order['id']} · {len(results)} слотов",
+    )
     return True
 
 
@@ -2233,6 +2242,12 @@ async def expire_vip_slots():
         ok, error = await _sync_vip_record(item, add=False)
         if ok:
             await db.log_site_audit(None, item["server_id"], "vip.expire", item["steam_id"])
+            _srv = _get_server(item["server_id"])
+            disclog.emit(
+                "vip.expire", actor="автоматически",
+                server=(_srv.name if _srv else item["server_id"]),
+                steam_id=item["steam_id"],
+            )
         else:
             log.warning("VIP expiry sync failed for %s/%s: %s", item["server_id"], item["steam_id"], error)
 
@@ -2257,6 +2272,9 @@ async def expire_managed_bans():
         await db.mark_managed_ban(item["id"], "expired", "")
         await _invalidate(srv.id)
         await db.log_site_audit(None, item["server_id"], "ban.expire", item["steam_id"])
+        disclog.emit(
+            "ban.expire", actor="автоматически", server=srv.name, steam_id=item["steam_id"],
+        )
 
 
 @router.get("/server/{sid}/vip-slots")
@@ -2274,7 +2292,8 @@ async def vip_slots_list(sid: str, request: Request):
 @router.post("/server/{sid}/vip-slots")
 async def vip_slot_save(sid: str, request: Request):
     user = await _require_perm(request, "vip_edit")
-    if not _get_server(sid):
+    srv = _get_server(sid)
+    if not srv:
         return _not_found(sid)
     body = await _json_object(request)
     steam_id = _validate_steam_id(body.get("steam_id") or body.get("steamId"))
@@ -2294,6 +2313,10 @@ async def vip_slot_save(sid: str, request: Request):
     await db.log_site_audit(
         user["steam_id"], sid, "vip.save", f"{steam_id}:{'synced' if synced else 'error'}"
     )
+    disclog.emit(
+        "vip.save", actor=user["steam_id"], server=srv.name, steam_id=steam_id,
+        detail=note or ("синхронизировано" if synced else f"ошибка: {error}"),
+    )
     response = {"ok": True, "item": item, "synced": synced, "warning": error or None}
     await _idempotency_complete(user["steam_id"], idem_key, response)
     return response
@@ -2302,6 +2325,9 @@ async def vip_slot_save(sid: str, request: Request):
 @router.post("/server/{sid}/vip-slots/{vip_id}/sync")
 async def vip_slot_sync(sid: str, vip_id: str, request: Request):
     user = await _require_perm(request, "vip_edit")
+    srv = _get_server(sid)
+    if not srv:
+        return _not_found(sid)
     if not re.fullmatch(r"[0-9a-f]{24}", str(vip_id or "")):
         raise HTTPException(status_code=400, detail="Некорректный ID VIP")
     item = await db.get_vip_slot(vip_id, sid)
@@ -2311,6 +2337,10 @@ async def vip_slot_sync(sid: str, vip_id: str, request: Request):
     synced, error = await _sync_vip_record(item, add=active)
     await db.log_site_audit(
         user["steam_id"], sid, "vip.sync", f"{item['steam_id']}:{'ok' if synced else 'error'}"
+    )
+    disclog.emit(
+        "vip.sync", actor=user["steam_id"], server=srv.name, steam_id=item["steam_id"],
+        detail=("синхронизировано" if synced else f"ошибка: {error}"),
     )
     return {
         "ok": synced,
@@ -2322,6 +2352,9 @@ async def vip_slot_sync(sid: str, vip_id: str, request: Request):
 @router.delete("/server/{sid}/vip-slots/{vip_id}")
 async def vip_slot_delete(sid: str, vip_id: str, request: Request):
     user = await _require_perm(request, "vip_edit")
+    srv = _get_server(sid)
+    if not srv:
+        return _not_found(sid)
     if not re.fullmatch(r"[0-9a-f]{24}", str(vip_id or "")):
         raise HTTPException(status_code=400, detail="Некорректный ID VIP")
     item = await db.get_vip_slot(vip_id, sid)
@@ -2335,6 +2368,9 @@ async def vip_slot_delete(sid: str, vip_id: str, request: Request):
         )
     await db.delete_vip_slot(vip_id, sid)
     await db.log_site_audit(user["steam_id"], sid, "vip.delete", item["steam_id"])
+    disclog.emit(
+        "vip.delete", actor=user["steam_id"], server=srv.name, steam_id=item["steam_id"],
+    )
     return {"ok": True}
 
 
@@ -2658,6 +2694,10 @@ async def server_ban_add(sid: str, request: Request):
     )
     await _invalidate(srv.id)
     await db.log_site_audit(user["steam_id"], sid, "ban.add", steam_id)
+    disclog.emit(
+        "ban.add", actor=user["steam_id"], server=srv.name, steam_id=steam_id,
+        detail=" · ".join(x for x in (reason, display_name) if x),
+    )
     response = {"ok": True, "managed_ban": managed}
     await _idempotency_complete(user["steam_id"], idem_key, response)
     return response
@@ -2685,6 +2725,7 @@ async def server_ban_del(sid: str, steam_id: str, request: Request):
     await db.delete_managed_ban(sid, steam_id)
     await _invalidate(srv.id)
     await db.log_site_audit(user["steam_id"], sid, "ban.remove", steam_id)
+    disclog.emit("ban.remove", actor=user["steam_id"], server=srv.name, steam_id=steam_id)
     await _idempotency_complete(user["steam_id"], idem_key, {"ok": True})
     return {"ok": True}
 
@@ -2720,6 +2761,10 @@ async def server_ban_update(sid: str, steam_id: str, request: Request):
     )
     await _invalidate(sid)
     await db.log_site_audit(user["steam_id"], sid, "ban.update", steam_id)
+    disclog.emit(
+        "ban.update", actor=user["steam_id"],
+        server=(srv.name if srv else sid), steam_id=steam_id, detail=reason,
+    )
     return {"ok": True, "managed_ban": managed}
 
 
@@ -2752,6 +2797,10 @@ async def server_bans_bulk(sid: str, request: Request):
     succeeded = sum(1 for result in results if result["ok"])
     await db.log_site_audit(
         user["steam_id"], sid, "ban.bulk.remove", f"{succeeded}/{len(results)}"
+    )
+    disclog.emit(
+        "ban.bulk.remove", actor=user["steam_id"], server=srv.name,
+        detail=f"снято {succeeded} из {len(results)}",
     )
     return {"ok": succeeded == len(results), "succeeded": succeeded, "failed": len(results) - succeeded, "results": results}
 
@@ -2839,6 +2888,49 @@ async def server_player_patch(sid: str, steam_id: str, request: Request):
         await srv.api.request("PATCH", f"/v1/players/{steam_id}", json_body={"faction": faction})
 
     return await _server_action(sid, request, "move_faction", action, steam_id)
+
+
+def _swap_allowed(diff: int, has_vip: bool) -> bool:
+    """Штатный баланс: перевес до +2 всегда, до +4 — только с активным VIP-слотом."""
+    return diff <= (4 if has_vip else 2)
+
+
+async def _has_active_vip_slot(sid, steam_id):
+    now = time.time()
+    for slot in await db.list_vip_slots(sid):
+        if slot["steam_id"] == steam_id and (slot["expires_utc"] is None or slot["expires_utc"] > now):
+            return True
+    return False
+
+
+@router.post("/server/{sid}/players/{steam_id}/swap")
+async def server_player_swap(sid: str, steam_id: str, request: Request):
+    """SW: смена стороны с проверкой перевеса (до свапа)."""
+    steam_id = _validate_steam_id(steam_id)
+    body = await _json_object(request)
+    faction = str(body.get("faction") or "").strip()
+    async def action(srv):
+        if not faction or len(faction) > 80:
+            return JSONResponse({"error": {"code": "missing_field", "message": "поле faction"}}, status_code=400)
+        data = await srv.api.players()
+        players = (data or {}).get("players") or []
+        current = next((p for p in players if str(p.get("steamId") or "") == steam_id), None)
+        if current is None:
+            return JSONResponse({"error": {"code": "not_online", "message": "игрок не в сети"}}, status_code=409)
+        source = str(current.get("faction") or "")
+        if source.lower() == faction.lower():
+            return JSONResponse({"error": {"code": "same_faction", "message": "игрок уже в этой стороне"}}, status_code=400)
+        def count(name):
+            return sum(1 for p in players if str(p.get("faction") or "").lower() == name.lower())
+        diff = abs(count(source) - count(faction))
+        if not _swap_allowed(diff, await _has_active_vip_slot(sid, steam_id)):
+            return JSONResponse(
+                {"error": {"code": "balance", "message": f"перевес {diff} больше допустимого (до +2, с VIP-слотом до +4)"}},
+                status_code=409,
+            )
+        await srv.api.request("PATCH", f"/v1/players/{steam_id}", json_body={"faction": faction})
+
+    return await _server_action(sid, request, "move_faction", action, f"{steam_id} -> {faction}")
 
 
 @router.post("/server/{sid}/match/map")

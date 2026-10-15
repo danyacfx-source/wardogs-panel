@@ -1095,6 +1095,25 @@ const app = createApp({
       if (action === "kick") return this.kickPlayer(live);
       if (action === "kill") return this.killPlayer(live);
       if (action === "ban") return this.banPlayer(live);
+      if (action === "swap") return this.swapPlayer(live);
+    },
+    async swapPlayer(p) {
+      const factions = (this.ov?.status?.factionScores || []).map((f) => f.name).filter((name) => name && name !== p.faction);
+      if (!factions.length) return this.toast("Нет другой стороны для свапа", "warn");
+      const hasVip = (this.playerCard.profile?.vip_slots || []).some((s) => s.active && s.server_id === this.state.sid);
+      const limit = hasVip ? 4 : 2;
+      const options = factions.map((name) => {
+        const diff = Math.abs(this.factionPlayerCount(p.faction) - this.factionPlayerCount(name));
+        return { value: name, label: `${name} · перевес ${diff} · ${diff <= limit ? "можно" : "отказ"}` };
+      });
+      const values = await this.openActionDialog({
+        title: `Смена стороны — ${p.name}`,
+        message: `Текущая сторона: ${p.faction}. Перевес считается до свапа: штатно до +2, с активным VIP-слотом до +4.`,
+        confirmText: "Свапнуть",
+        fields: [{ key: "faction", label: "Сторона", type: "select", value: options[0].value, options }],
+      });
+      if (!values || !values.faction) return;
+      return this.act(`/api/server/${this.state.sid}/players/${p.steamId}/swap`, "POST", { faction: values.faction });
     },
     async changePlayerCardFaction(faction) {
       const live = this.playerCard.live;

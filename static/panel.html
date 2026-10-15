@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>WARDOGS // Панель управления</title>
 <link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
-<link rel="stylesheet" href="/static/style.css?v=20261015-1" />
+<link rel="stylesheet" href="/static/style.css?v=20261015-2" />
 </head>
 <body data-panel-mode="panel">
 <div id="app" v-cloak>
@@ -176,6 +176,7 @@
                 <button v-if="has('message')" class="command-card" @click="openPlayerCommand('Предупредить')"><strong>Предупредить</strong><p>Отправить игроку личное сообщение.</p><code>POST /v1/players/{steamId}/message</code><span>по игроку</span></button>
                 <button v-if="has('kick')" class="command-card" @click="openPlayerCommand('Кикнуть')"><strong>Кикнуть</strong><p>Отключить игрока от сервера с причиной.</p><code>POST /v1/players/{steamId}/kick</code><span>по игроку</span></button>
                 <button v-if="has('move_faction')" class="command-card cyan" @click="openPlayerCommand('Сменить фракцию')"><strong>Сменить фракцию</strong><p>Перевести игрока в другую команду.</p><code>PATCH /v1/players/{steamId}</code><span>по игроку</span></button>
+                <button v-if="has('move_faction')" class="command-card cyan" @click="openPlayerCommand('Смена стороны (SW)')"><strong>Смена стороны (SW)</strong><p>Свап с проверкой перевеса: до +2, с VIP-слотом до +4.</p><code>POST /api/.../players/{steamId}/swap</code><span>по игроку</span></button>
                 <button v-if="has('kill')" class="command-card" @click="openPlayerCommand('Убить')"><strong>Убить</strong><p>Ргрок теряет купленное снаряжение и технику.</p><code>POST /v1/players/{steamId}/kill</code><span>с подтверждением · по игроку</span></button>
                 <button v-if="has('ban_add')" class="command-card" @click="state.tab='bans'"><strong>Забанить</strong><p>Бан по SteamID со сроком и причиной.</p><code>POST /v1/bans</code><span>с подтверждением · по игроку</span></button>
                 <button v-if="has('vip_edit')" class="command-card amber" @click="state.tab='vip'"><strong>VIP-слот</strong><p>Выдать слот со сроком или бессрочно.</p><code>POST /v1/reserved-slots</code><span>по игроку</span></button>
@@ -1214,6 +1215,7 @@
                   <option v-for="f in (ov?.status?.factionScores || [])" :key="f.name" :value="f.name">{{ f.name }}</option>
                 </select>
                 <button v-else-if="has('move_faction')" class="btn ghost" disabled>Сменить фракцию</button>
+                <button v-if="has('move_faction')" class="btn ghost" :disabled="!playerCard.live" @click="playerCardAction('swap')">Смена стороны (SW)</button>
                 <button v-if="has('kill')" class="btn ghost" :disabled="!playerCard.live" @click="playerCardAction('kill')">Убить (slay)</button>
                 <button v-if="has('ban_add')" class="btn danger-outline" :disabled="!playerCard.live" @click="playerCardAction('ban')">Забанить</button>
               </div>
@@ -1381,7 +1383,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/panel.render.js?v=20261015-1"></script>
-<script src="/static/app.js?v=20261015-1"></script>
+<script src="/static/panel.render.js?v=20261015-2"></script>
+<script src="/static/app.js?v=20261015-2"></script>
 </body>
 </html>

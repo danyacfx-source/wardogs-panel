@@ -156,6 +156,8 @@ DISCORD_BOT_TOKEN = (os.environ.get("DISCORD_BOT_TOKEN") or "").strip()
 DISCORD_BOT_PANEL_URL = (os.environ.get("DISCORD_BOT_PANEL_URL") or "").strip().rstrip("/")
 DISCORD_BOT_PANEL_TOKEN = (os.environ.get("DISCORD_BOT_PANEL_TOKEN") or "").strip()
 GUILD_ID = (os.environ.get("WARDOGS_GUILD_ID") or "").strip()
+# Канал Discord для логов банов/випок (пусто — логи в Discord не отправляются).
+DISCORD_LOG_CHANNEL_ID = (os.environ.get("WARDOGS_LOG_CHANNEL_ID") or "").strip()
 
 ADMIN_ROLES = [
     part.strip()
@@ -250,6 +252,8 @@ def validate_runtime():
         raise RuntimeError("DISCORD_CLIENT_ID должен быть числовым идентификатором")
     if GUILD_ID and not re.fullmatch(r"\d{1,20}", GUILD_ID):
         raise RuntimeError("WARDOGS_GUILD_ID должен быть числовым идентификатором")
+    if DISCORD_LOG_CHANNEL_ID and not re.fullmatch(r"\d{1,20}", DISCORD_LOG_CHANNEL_ID):
+        raise RuntimeError("WARDOGS_LOG_CHANNEL_ID должен быть числовым идентификатором")
     if len(DISCORD_CLIENT_SECRET) > 512 or len(DISCORD_BOT_TOKEN) > 512:
         raise RuntimeError("Discord-секрет слишком длинный")
     if DISCORD_BOT_PANEL_URL:
