@@ -1346,19 +1346,51 @@ async def claim_idempotency(actor_steam_id, idem_key, fingerprint, ttl=600):
         if config.DATABASE_URL:
             # Insert-first makes concurrent claims serialize on PostgreSQL's
             # primary key instead of racing after a plain SELECT.
-            await db.execute(
-                "INSERT INTO idempotency_keys "
-                "(actor_steam_id, idem_key, fingerprint, created_utc, expires_utc) "
-                "VALUES (?, ?, ?, ?, ?) "
-                "ON CONFLICT(actor_steam_id, idem_key) DO NOTHING",
-                (actor_steam_id, idem_key, fingerprint, now, now + ttl),
+            # RETURNING distinguishes "we inserted it" from "another claim
+            # already owns the key": without it our own fresh row looks like
+            # an unfinished foreign claim (response_json IS NULL) and every
+            # request would be rejected as in_progress.
+            inserted = await db.connection.fetch(
+                _postgres_sql(
+                    "INSERT INTO idempotency_keys "
+                    "(actor_steam_id, idem_key, fingerprint, created_utc, expires_utc) "
+                    "VALUES (?, ?, ?, ?, ?) "
+                    "ON CONFLICT(actor_steam_id, idem_key) DO NOTHING "
+                    "RETURNING idem_key"
+                ),
+                actor_steam_id, idem_key, fingerprint, now, now + ttl,
             )
-            await db.execute(
-                "UPDATE idempotency_keys SET fingerprint = ?, created_utc = ?, "
-                "expires_utc = ?, status_code = NULL, response_json = NULL "
-                "WHERE actor_steam_id = ? AND idem_key = ? AND expires_utc < ?",
-                (fingerprint, now, now + ttl, actor_steam_id, idem_key, now),
+            if inserted:
+                await db.commit()
+                return {"kind": "claimed"}
+            # The key already exists: reset it when the previous claim expired.
+            updated = await db.connection.execute(
+                _postgres_sql(
+                    "UPDATE idempotency_keys SET fingerprint = ?, created_utc = ?, "
+                    "expires_utc = ?, status_code = NULL, response_json = NULL "
+                    "WHERE actor_steam_id = ? AND idem_key = ? AND expires_utc < ?"
+                ),
+                fingerprint, now, now + ttl, actor_steam_id, idem_key, now,
             )
+            if not str(updated).rstrip().endswith(" 0"):
+                await db.commit()
+                return {"kind": "claimed"}
+            cur = await db.execute(
+                "SELECT fingerprint, status_code, response_json, expires_utc "
+                "FROM idempotency_keys WHERE actor_steam_id = ? AND idem_key = ?",
+                (actor_steam_id, idem_key),
+            )
+            row = await cur.fetchone()
+            await db.commit()
+            if row and row[0] != fingerprint:
+                return {"kind": "conflict"}
+            if not row or row[2] is None:
+                return {"kind": "in_progress"}
+            try:
+                response = json.loads(row[2])
+            except (TypeError, ValueError, json.JSONDecodeError):
+                return {"kind": "in_progress"}
+            return {"kind": "replay", "status_code": int(row[1] or 200), "response": response}
         cur = await db.execute(
             "SELECT fingerprint, status_code, response_json, expires_utc "
             "FROM idempotency_keys WHERE actor_steam_id = ? AND idem_key = ?",
