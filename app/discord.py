@@ -283,10 +283,19 @@ def compute_permissions(binding, role_map, perms_map):
     perms_map: {role_ref: [perm, ...]} из DB (role_ref = id или имя роли).
     Роль без настроенного набора прав и попадающая в legacy ADMIN_ROLES
     получает все права (бутстрап, пока права не выданы явно).
+    Личный доступ: ref "user:<discord_id>" выдаёт права только этому
+    аккаунту Discord — независимо от ролей и состояния членства
+    (работает даже когда Discord не подтверждает гильдию).
     """
-    if not binding or not binding.get("guild_member"):
+    if not binding:
         return []
     granted = set()
+    discord_id = str(binding.get("discord_id") or "")
+    personal = perms_map.get(f"user:{discord_id}") if discord_id else None
+    if personal is not None:
+        granted.update(p for p in (personal or []) if p in ALL_PERMS)
+    if not binding.get("guild_member"):
+        return sorted(granted)
     for rid in binding.get("roles") or []:
         name = role_map.get(rid, "")
         configured = False

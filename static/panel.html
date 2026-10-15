@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>WARDOGS // Панель управления</title>
 <link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
-<link rel="stylesheet" href="/static/style.css?v=20261015-3" />
+<link rel="stylesheet" href="/static/style.css?v=20261015-4" />
 </head>
 <body data-panel-mode="panel">
 <div id="app" v-cloak>
@@ -989,6 +989,7 @@
             </div>
             <div class="toolbar-actions">
               <button class="btn ghost" @click="previewUserPermissions">Права пользователя</button>
+              <button class="btn ghost" @click="grantPersonalAccess" :disabled="busy">Личный доступ</button>
               <button v-if="dirtyRolesCount" class="btn primary" @click="saveAllRoles" :disabled="busy">Сохранить все · {{ dirtyRolesCount }}</button>
               <button class="btn ghost" @click="loadRoles(true)" :disabled="busy">Обновить роли</button>
             </div>
@@ -1383,7 +1384,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/panel.render.js?v=20261015-3"></script>
-<script src="/static/app.js?v=20261015-3"></script>
+<script src="/static/panel.render.js?v=20261015-4"></script>
+<script src="/static/app.js?v=20261015-4"></script>
 </body>
 </html>

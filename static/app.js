@@ -528,6 +528,10 @@ const app = createApp({
           this.actionDialog.error = "SteamID64 должен состоять из 17 цифр";
           return;
         }
+        if (field.validator === "discordid" && value && !/^\d{1,20}$/.test(value)) {
+          this.actionDialog.error = "Discord ID — от 1 до 20 цифр";
+          return;
+        }
         if (field.maxLength && value.length > field.maxLength) {
           this.actionDialog.error = `Поле «${field.label}» длиннее ${field.maxLength} символов`;
           return;
@@ -1549,6 +1553,25 @@ const app = createApp({
       const { status, data } = await this.api.request("GET", `/api/roles/preview/user/${values.steam_id}`);
       if (status !== 200) return this.toast(data?.detail || "Пользователь не найден", "err");
       this.openActionDialog({ title: data.discord_name || data.steam_id, message: `Роли: ${data.roles.map((role) => role.name).join(", ") || "нет"}.\nИтоговые права: ${data.permissions.map(this.permLabel).join(", ") || "нет доступа"}.`, confirmText: "Закрыть" });
+    },
+    async grantPersonalAccess() {
+      const values = await this.openActionDialog({
+        title: "Личный доступ по Discord ID",
+        message: "Права выдаются только этому аккаунту Discord: без привязки к ролям и независимо от членства в гильдии.",
+        confirmText: "Выдать все права",
+        fields: [{ key: "discord_id", label: "Discord ID", validator: "discordid", required: true, maxLength: 20 }],
+      });
+      if (!values) return;
+      this.busy = true;
+      try {
+        const { status, data } = await this.api.request("PUT", "/api/roles", { role_ref: `user:${values.discord_id}`, perms: [...this.allPerms] });
+        if (status === 200 && data.ok) {
+          this.toast(`Полный доступ выдан: ${values.discord_id}`, "ok");
+          await this.loadRoles(true);
+        } else {
+          this.toast(data?.detail || data?.error?.message || "Не удалось выдать доступ", "err");
+        }
+      } finally { this.busy = false; }
     },
     async showRoleHistory(role) {
       const { status, data } = await this.api.request("GET", `/api/roles/${encodeURIComponent(role.id)}/history`);

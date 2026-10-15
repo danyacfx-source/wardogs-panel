@@ -1902,6 +1902,15 @@ async def roles_list(request: Request):
     role_map = await dmod.guild_roles()
     perms_map = await db.get_role_perms_all()
     roles = []
+    for ref in sorted(perms_map):
+        if str(ref).startswith("user:"):
+            roles.append({
+                "id": ref,
+                "name": f"Личный доступ · {str(ref)[5:]}",
+                "perms": perms_map.get(ref) or [],
+                "configured": True,
+                "legacy": False,
+            })
     for rid, name in sorted(role_map.items()):
         perms = perms_map.get(rid)
         configured = rid in perms_map
