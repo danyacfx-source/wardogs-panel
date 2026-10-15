@@ -44,6 +44,23 @@ async def check_servers(pool):
             state = "в сети" if online else "недоступен"
             await db.log_site_audit(None, srv.id, "health.transition", state)
             await _notify(f"WARDOGS: сервер {srv.name} — {state}.")
+        if online:
+            try:
+                st = await srv.api.status()
+                status_players = (st or {}).get("players") or {}
+                try:
+                    pl = await srv.api.players()
+                except RCONError:
+                    pl = {}
+                player_list = (pl or {}).get("players") or []
+                await db.record_monitoring(
+                    srv.id,
+                    status_players.get("current", len(player_list)),
+                    status_players.get("max", 0),
+                    player_list,
+                )
+            except Exception:
+                log.exception("Не удалось записать срез мониторинга для %s", srv.id)
         return {"id": srv.id, "ok": online, "detail": detail if not online else None}
 
     # A dead RCON endpoint must not block checks for every other server.
