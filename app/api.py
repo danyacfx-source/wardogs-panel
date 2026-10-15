@@ -267,6 +267,7 @@ class Server:
         self.routes = set()
         self.config_writable = False
         self.caps_ok = False
+        self.info = {}  # version/build/feed с /v1/version и /v1/feed (новые билды)
         self._caps_checked_at = 0.0
         self._caps_lock = asyncio.Lock()
 
@@ -294,6 +295,37 @@ class Server:
                 # Retry a failed capability probe after a short outage.
                 self._caps_checked_at = time.monotonic() - 270
                 self.caps_ok = True
+            await self._refresh_info()
+
+    async def _refresh_info(self):
+        """Версия/билд и feed — роуты, появившиеся в сборке CL-516586+."""
+        info = dict(self.info)
+        if "GET /v1/version" in self.routes:
+            try:
+                version = await self.api.version()
+                if isinstance(version, dict):
+                    info["version"] = version
+            except RCONError:
+                pass
+        else:
+            info.pop("version", None)
+        if "GET /v1/feed" in self.routes:
+            try:
+                feed = await self.api.feed()
+                if isinstance(feed, dict):
+                    info["feed"] = feed
+            except RCONError:
+                pass
+        else:
+            info.pop("feed", None)
+        self.info = info
+
+    @property
+    def build(self):
+        version = self.info.get("version")
+        if isinstance(version, dict):
+            return str(version.get("build") or "")
+        return ""
 
 
 POOL = {cfg["id"]: Server(cfg) for cfg in config.SERVERS}
@@ -925,6 +957,8 @@ async def server_overview(sid: str, request: Request):
             "name": srv.name,
             "connect_url": srv.connect_url,
             "server_id": (server_identity or {}).get("serverId"),
+            "build": srv.build,
+            "feed": srv.info.get("feed") or {},
         },
         "error": err,
         "status": st,
@@ -1606,6 +1640,68 @@ async def server_rotation(sid: str, request: Request):
     return {"ok": True, **data}
 
 
+_ROTATION_SECTION_RE = re.compile(
+    r"(?ims)^\[/Script/WDGame\.WDServerMapRotationSettings\][^\[]*"
+)
+_ROTATION_ENTRY_RE = re.compile(r"(?im)^\s*[.+!]RotationEntries\s*=")
+
+
+def _cfg_str(value):
+    """Безопасное значение для ServerSettings.ini (без кавычек и переводов)."""
+    cleaned = str(value or "").replace('"', "").replace("\r", "").replace("\n", "")
+    return cleaned.strip()[:128]
+
+
+def _rotation_entry_line(entry):
+    parts = [f'Map="{_cfg_str(entry.get("map"))}"']
+    experiences = [str(x).strip() for x in (entry.get("experiences") or []) if str(x).strip()]
+    if experiences:
+        parts.append('Experiences="' + "+".join(_cfg_str(x) for x in experiences) + '"')
+    lighting = _cfg_str(entry.get("lighting"))
+    if lighting:
+        parts.append(f'Lighting="{lighting}"')
+    parts.append(f'ZoneAlternator="{_cfg_str(entry.get("zoneAlternator")) or "None"}"')
+    return ".RotationEntries=(" + ", ".join(parts) + ")"
+
+
+def _rotation_config_text(text, entries, mode=None):
+    """Собирает секцию ротации для PUT /v1/config.
+
+    PUT заменяет документ целиком, поэтому правим только секцию ротации,
+    сохраняя остальные ключи (bEnabled и незнакомые — как есть).
+    """
+    newline = "\r\n" if "\r\n" in text else "\n"
+    header = "[/Script/WDGame.WDServerMapRotationSettings]"
+    kept = []
+    b_enabled = None
+    rotation_mode = None
+    match = _ROTATION_SECTION_RE.search(text)
+    if match:
+        for line in match.group(0).splitlines()[1:]:
+            if not line.strip():
+                continue
+            if re.match(r"(?i)^\s*bEnabled\s*=", line):
+                b_enabled = line.strip()
+            elif re.match(r"(?i)^\s*RotationMode\s*=", line):
+                rotation_mode = line.strip()
+            elif _ROTATION_ENTRY_RE.match(line):
+                continue
+            else:
+                kept.append(line)
+    if mode in {"ordered", "random"}:
+        rotation_mode = f"RotationMode={'Ordered' if mode == 'ordered' else 'Random'}"
+    lines = [header]
+    lines.append(b_enabled or "bEnabled=True")
+    lines.append(rotation_mode or "RotationMode=Ordered")
+    lines.extend(kept)
+    lines.append("!RotationEntries=ClearArray")
+    lines.extend(_rotation_entry_line(entry) for entry in entries)
+    section = newline.join(lines) + newline
+    if match:
+        return text[: match.start()] + section + text[match.end():]
+    return text.rstrip("\r\n") + newline + newline + section
+
+
 @router.put("/server/{sid}/rotation")
 async def server_rotation_update(sid: str, request: Request):
     """Proxy a validated rotation update to the upstream RCON API."""
@@ -1639,11 +1735,50 @@ async def server_rotation_update(sid: str, request: Request):
     if body.get("mode") in {"ordered", "random"}:
         payload["mode"] = body["mode"]
     try:
-        status, data = await srv.api.request_raw("PUT", "/v1/rotation", json_body=payload)
+        await srv.ensure_caps()
+        if "PUT /v1/rotation" in srv.routes:
+            status, data = await srv.api.request_raw("PUT", "/v1/rotation", json_body=payload)
+            if status >= 400:
+                return JSONResponse(data if isinstance(data, dict) else {"detail": str(data)}, status_code=status)
+        elif srv.config_writable and "GET /v1/config" in srv.routes and "PUT /v1/config" in srv.routes:
+            # Сборка CL-516586+: запись ротации только через документ конфига.
+            status, cfg = await srv.api.request_raw("GET", "/v1/config")
+            if status != 200 or not isinstance(cfg, dict):
+                return JSONResponse(
+                    cfg if isinstance(cfg, dict) else {"error": {"message": "не удалось прочитать конфиг"}},
+                    status_code=status,
+                )
+            updated = _rotation_config_text(str(cfg.get("text") or ""), entries, payload.get("mode"))
+            if updated.encode("utf-8") > 65536:
+                raise HTTPException(status_code=413, detail="документ конфига больше лимита сервера (64 КБ)")
+            revision = str(cfg.get("revision") or "").strip()
+            headers = {"If-Match": f'"{revision}"'} if revision else {}
+            put_status, result = await srv.api.request_raw(
+                "PUT", "/v1/config", raw_body=updated, content_type="text/plain", extra_headers=headers
+            )
+            if put_status == 412:
+                return JSONResponse(
+                    {"error": {"code": "conflict", "message": "конфиг изменился на сервере — обновите и повторите"}},
+                    status_code=409,
+                )
+            if put_status != 200:
+                message = "конфиг отклонён сервером"
+                if isinstance(result, dict):
+                    errors = result.get("errors") or []
+                    if errors:
+                        first = errors[0]
+                        message = f"{first.get('section')}.{first.get('key')}: {first.get('message')}"
+                    elif isinstance(result.get("error"), dict):
+                        message = result["error"].get("message") or message
+                return JSONResponse(
+                    {"error": {"code": "config_rejected", "message": message}, "result": result},
+                    status_code=put_status,
+                )
+            data = await srv.api.rotation()
+        else:
+            raise HTTPException(status_code=501, detail="Сервер не поддерживает изменение ротации")
     except RCONError as e:
         return _rcon_error(e)
-    if status >= 400:
-        return JSONResponse(data if isinstance(data, dict) else {"detail": str(data)}, status_code=status)
     await db.log_site_audit(user["steam_id"], sid, "rotation.update", f"{len(entries)} карт")
     async with _cache_lock:
         _cache.pop((sid, "rotation"), None)
@@ -3016,4 +3151,13 @@ async def server_routes(sid: str, request: Request):
     if not srv:
         return _not_found(sid)
     await srv.ensure_caps()
-    return {"ok": True, "routes": sorted(srv.routes), "config_writable": srv.config_writable}
+    version = srv.info.get("version") if isinstance(srv.info.get("version"), dict) else {}
+    return {
+        "ok": True,
+        "routes": sorted(srv.routes),
+        "config_writable": srv.config_writable,
+        "build": srv.build,
+        "project": version.get("project") or {},
+        "engine": version.get("engine") or {},
+        "feed": srv.info.get("feed") or {},
+    }

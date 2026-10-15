@@ -202,6 +202,12 @@ class WardogsRCON:
     async def health(self):
         return await self.get("/v1/health")
 
+    async def version(self):
+        return await self.get("/v1/version")
+
+    async def feed(self):
+        return await self.get("/v1/feed")
+
     async def close(self):
         if self._session is not None and not self._session.closed:
             await self._session.close()

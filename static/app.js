@@ -131,6 +131,7 @@ const app = createApp({
       systemStatus: { services: [], history: [], loading: false, error: "" },
       serverView: "overview",
       serverApiRoutes: ["GET /v1/status", "GET /v1/players", "GET /v1/rotation", "GET /v1/health", "GET /v1/bans", "GET /v1/reserved-slots", "POST /v1/broadcast", "POST /v1/match/map", "POST /v1/match/end", "POST /v1/match/restart", "PUT /v1/world/lighting", "POST /v1/players/{id}/kick", "POST /v1/players/{id}/kill", "PATCH /v1/players/{id}", "GET /v1/config", "PUT /v1/config"],
+      serverBuild: "",
       staffQuery: "",
       clans: { items: [], loading: false, error: "" },
       selectedClan: null,
@@ -357,9 +358,15 @@ const app = createApp({
       if (t === "reserved") this.loadReserved();
       if (t === "vip") { this.loadVipSlots(); this.loadPayments(); }
       if (t === "tickets") this.loadTickets();
+      if (t === "server") this.loadRoutes();
+    },
+    serverView(v) {
+      if (v === "server") this.loadRoutes();
     },
     "state.sid"() {
       this.ensureCatalog();
+      this.serverApiRoutes = [];
+      this.serverBuild = "";
       if (!this.state.ovById[this.state.sid]) this.loadOverview(this.state.sid, true);
       if (this.state.tab === "audit") { this.loadAudit(); this.loadSiteAudit(); }
       if (this.state.tab === "config") this.loadConfig();
@@ -1857,8 +1864,10 @@ const app = createApp({
       this.toast(`Карта «${this.mapLabel(map)}» выбрана в форме смены карты`, "ok");
     },
     startRotationEdit() {
-      const entries = this.ov?.rotation?.entries || [];
+      const entries = [...(this.ov?.rotation?.entries || [])];
+      entries.sort((a, b) => (a.index ?? 1e9) - (b.index ?? 1e9));
       this.rotationDraft = entries.map((entry) => ({
+        index: entry.index,
         map: entry.map || "",
         experiences: Array.isArray(entry.experiences) ? [...entry.experiences] : [],
         experiencesText: Array.isArray(entry.experiences) ? entry.experiences.join(", ") : "",
@@ -1867,23 +1876,28 @@ const app = createApp({
       }));
       this.rotationEdit = true;
     },
+    reindexRotationDraft() {
+      this.rotationDraft.forEach((entry, i) => { entry.index = i; });
+    },
     cancelRotationEdit() {
       this.rotationEdit = false;
       this.rotationDraft = [];
     },
     addRotationEntry() {
       const firstMap = Object.keys(this.catalog.maps || {})[0] || "";
-      this.rotationDraft.push({ map: firstMap, experiences: [], experiencesText: "", lighting: "", zoneAlternator: "" });
+      this.rotationDraft.push({ index: this.rotationDraft.length, map: firstMap, experiences: [], experiencesText: "", lighting: "", zoneAlternator: "" });
     },
     moveRotationEntry(index, delta) {
       const target = index + delta;
       if (target < 0 || target >= this.rotationDraft.length) return;
       const [entry] = this.rotationDraft.splice(index, 1);
       this.rotationDraft.splice(target, 0, entry);
+      this.reindexRotationDraft();
     },
     removeRotationEntry(index) {
       if (this.rotationDraft.length <= 1) return this.toast("Ротация должна содержать хотя бы одну карту", "warn");
       this.rotationDraft.splice(index, 1);
+      this.reindexRotationDraft();
     },
     async saveRotation() {
       if (!this.rotationDraft.length) return this.toast("Добавьте хотя бы одну карту", "warn");
@@ -1935,6 +1949,14 @@ const app = createApp({
     // ---- конфиг ----
     async ensureConfig() {
       if (!this.cfg.loaded) await this.loadConfig();
+    },
+    async loadRoutes() {
+      if (!this.state.sid) return;
+      const { status, data } = await this.api.request("GET", `/api/server/${this.state.sid}/routes`);
+      if (status === 200 && data?.ok) {
+        this.serverApiRoutes = data.routes || [];
+        this.serverBuild = data.build || "";
+      }
     },
     async loadConfig() {
       this.busy = true;

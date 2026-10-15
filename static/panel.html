@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>WARDOGS // Панель управления</title>
 <link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
-<link rel="stylesheet" href="/static/style.css?v=20261015-2" />
+<link rel="stylesheet" href="/static/style.css?v=20261015-3" />
 </head>
 <body data-panel-mode="panel">
 <div id="app" v-cloak>
@@ -126,7 +126,7 @@
             <header><b>Матч</b><span class="muted">опрос каждые {{ state.refresh }} с</span></header>
             <div class="server-match-stats">
               <div><span>РГРОКОВ</span><b>{{ ov.status.players.current }}<small>/{{ ov.status.players.max }}</small></b></div>
-              <div><span>ВРЕМЯ МАТЧА</span><b>{{ fmtClock(ov.status.matchSeconds) }}</b></div>
+              <div><span>ВРЕМЯ МАТЧА</span><b>{{ typeof ov.status.matchSeconds === "number" ? fmtClock(ov.status.matchSeconds) : "—" }}</b></div>
               <div><span>СЛЕДУЮЩАЯ КАРТА</span><b>{{ nextEntry ? `${mapLabel(nextEntry.map)} · ${modeLabel(nextEntry.experiences)}` : '—' }}</b></div>
               <div><span>РОТАЦРЯ</span><b>{{ ov.rotation ? `${rotMode(ov.rotation)} · ${ov.rotation.entries?.length || 0}` : '—' }}</b></div>
             </div>
@@ -212,8 +212,8 @@
           <template v-else-if="serverView === 'server'">
             <article class="panel server-runtime">
               <h2>Сервер</h2>
-              <div class="runtime-metrics"><div><span>РМЯ В БРАУЗЕРЕ</span><b>{{ ov.status.serverName || ov.server.name }}</b></div><div><span>ЗАДЕРЖКА RCON</span><b>онлайн</b></div><div><span>ОПРОС</span><b>каждые {{ state.refresh }} с</b></div><div><span>СОСТОЯНРЕ</span><b>{{ ov.ok ? 'исправен' : 'ошибка' }}</b></div><div><span>АПТАЙМ СЕРВЕРА</span><b>{{ ov.health ? fmtDur(ov.health.uptimeSeconds) : '—' }}</b></div><div><span>БАНОВ</span><b>{{ ov.bans_count ?? 0 }}</b></div></div>
-              <h3>Маршруты API</h3><div class="route-cloud"><code v-for="route in serverApiRoutes" :key="route">{{ route }}</code></div>
+              <div class="runtime-metrics"><div><span>РМЯ В БРАУЗЕРЕ</span><b>{{ ov.status.serverName || ov.server.name }}</b></div><div><span>ВЕРСИЯ СЕРВЕРА</span><b>{{ serverBuild || ov.server.build || '—' }}</b></div><div><span>ЗАДЕРЖКА RCON</span><b>онлайн</b></div><div><span>ОПРОС</span><b>каждые {{ state.refresh }} с</b></div><div><span>СОСТОЯНРЕ</span><b>{{ ov.ok ? 'исправен' : 'ошибка' }}</b></div><div><span>АПТАЙМ СЕРВЕРА</span><b>{{ ov.health ? fmtDur(ov.health.uptimeSeconds) : '—' }}</b></div><div><span>БАНОВ</span><b>{{ ov.bans_count ?? 0 }}</b></div></div>
+              <h3>Маршруты API<span v-if="serverBuild" class="muted"> · {{ serverBuild }}</span></h3><div class="route-cloud"><code v-for="route in serverApiRoutes" :key="route">{{ route }}</code><p v-if="!serverApiRoutes.length" class="muted">Маршруты не загружены — нет прав config_view или сервер недоступен.</p></div>
               <div class="runtime-lists"><div><h3>Резерв-слоты</h3><p class="muted">Управление списком доступно в разделе «Резервные слоты».</p><button class="btn ghost" @click="state.tab='reserved'">Открыть резерв</button></div><div><h3>Баны на сервере ({{ ov.bans_count ?? 0 }})</h3><p class="muted">Объединённая история и действия находятся в бан-листе.</p><button class="btn ghost" @click="state.tab='bans'">Открыть бан-лист</button></div><div><h3>Конфигурация</h3><p class="muted">ServerSettings.ini, проверка и применение ревизий.</p><button class="btn ghost" @click="state.tab='config'">Открыть конфиг</button></div></div>
             </article>
           </template>
@@ -262,7 +262,7 @@
             </div>
             <div class="card">
               <div class="k">Матч</div>
-              <div class="v big">{{ fmtClock(ov.status.matchSeconds) }}</div>
+              <div class="v big">{{ typeof ov.status.matchSeconds === "number" ? fmtClock(ov.status.matchSeconds) : "—" }}</div>
               <div v-if="ov.health" class="k">Uptime сервера</div>
               <div v-if="ov.health" class="v">{{ fmtDur(ov.health.uptimeSeconds) }}</div>
             </div>
@@ -494,7 +494,7 @@
               <h2>Матч</h2>
               <div class="kv"><span>Сейчас:</span><b>{{ mapLabel(ov.status.map) }}</b></div>
               <div class="kv"><span>Свет:</span><b>{{ lightLabel(ov.status.lighting) }}</b></div>
-              <div class="kv"><span>Время матча:</span><b>{{ fmtClock(ov.status.matchSeconds) }}</b></div>
+              <div class="kv"><span>Время матча:</span><b>{{ typeof ov.status.matchSeconds === "number" ? fmtClock(ov.status.matchSeconds) : "—" }}</b></div>
               <template v-if="has('change_lighting')">
                 <label>Сменить свет без смены карты</label>
                 <div class="chips">
@@ -1383,7 +1383,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/panel.render.js?v=20261015-2"></script>
-<script src="/static/app.js?v=20261015-2"></script>
+<script src="/static/panel.render.js?v=20261015-3"></script>
+<script src="/static/app.js?v=20261015-3"></script>
 </body>
 </html>
