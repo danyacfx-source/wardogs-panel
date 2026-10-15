@@ -2903,6 +2903,27 @@ async def _has_active_vip_slot(sid, steam_id):
     return False
 
 
+async def swap_player(srv, sid, steam_id, faction):
+    """Ядро SW: (ok, code, message). Проверка перевеса ДО свапа, затем PATCH."""
+    if not faction or len(faction) > 80:
+        return False, "missing_field", "поле faction"
+    data = await srv.api.players()
+    players = (data or {}).get("players") or []
+    current = next((p for p in players if str(p.get("steamId") or "") == steam_id), None)
+    if current is None:
+        return False, "not_online", "игрок не в сети"
+    source = str(current.get("faction") or "")
+    if source.lower() == faction.lower():
+        return False, "same_faction", "игрок уже в этой стороне"
+    def count(name):
+        return sum(1 for p in players if str(p.get("faction") or "").lower() == name.lower())
+    diff = abs(count(source) - count(faction))
+    if not _swap_allowed(diff, await _has_active_vip_slot(sid, steam_id)):
+        return False, "balance", f"перевес {diff} больше допустимого (до +2, с VIP-слотом до +4)"
+    await srv.api.request("PATCH", f"/v1/players/{steam_id}", json_body={"faction": faction})
+    return True, "swapped", f"{steam_id} переведён в «{faction}» (перевес был {diff})"
+
+
 @router.post("/server/{sid}/players/{steam_id}/swap")
 async def server_player_swap(sid: str, steam_id: str, request: Request):
     """SW: смена стороны с проверкой перевеса (до свапа)."""
@@ -2910,27 +2931,30 @@ async def server_player_swap(sid: str, steam_id: str, request: Request):
     body = await _json_object(request)
     faction = str(body.get("faction") or "").strip()
     async def action(srv):
-        if not faction or len(faction) > 80:
-            return JSONResponse({"error": {"code": "missing_field", "message": "поле faction"}}, status_code=400)
-        data = await srv.api.players()
-        players = (data or {}).get("players") or []
-        current = next((p for p in players if str(p.get("steamId") or "") == steam_id), None)
-        if current is None:
-            return JSONResponse({"error": {"code": "not_online", "message": "игрок не в сети"}}, status_code=409)
-        source = str(current.get("faction") or "")
-        if source.lower() == faction.lower():
-            return JSONResponse({"error": {"code": "same_faction", "message": "игрок уже в этой стороне"}}, status_code=400)
-        def count(name):
-            return sum(1 for p in players if str(p.get("faction") or "").lower() == name.lower())
-        diff = abs(count(source) - count(faction))
-        if not _swap_allowed(diff, await _has_active_vip_slot(sid, steam_id)):
-            return JSONResponse(
-                {"error": {"code": "balance", "message": f"перевес {diff} больше допустимого (до +2, с VIP-слотом до +4)"}},
-                status_code=409,
-            )
-        await srv.api.request("PATCH", f"/v1/players/{steam_id}", json_body={"faction": faction})
+        ok, code, message = await swap_player(srv, sid, steam_id, faction)
+        if not ok:
+            status = 409 if code in {"not_online", "balance"} else 400
+            return JSONResponse({"error": {"code": code, "message": message}}, status_code=status)
 
     return await _server_action(sid, request, "move_faction", action, f"{steam_id} -> {faction}")
+
+
+@router.post("/discord/interactions")
+async def discord_interactions(request: Request):
+    """Discord slash-команды (интеракции панели): подпись Ed25519."""
+    from . import interactions
+
+    body = await request.body()
+    key = await interactions.public_key()
+    if not interactions.verify(request.headers, body, key):
+        return JSONResponse({}, status_code=401)
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        return JSONResponse({"error": "bad payload"}, status_code=400)
+    if not isinstance(payload, dict):
+        return JSONResponse({"error": "bad payload"}, status_code=400)
+    return await interactions.handle(payload)
 
 
 @router.post("/server/{sid}/match/map")

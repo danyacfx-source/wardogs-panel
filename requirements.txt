@@ -4,3 +4,4 @@ aiohttp>=3.9.0,<4
 aiosqlite>=0.20.0,<1
 asyncpg>=0.29.0,<1
 a2wsgi>=1.10.0,<2
+PyNaCl>=1.5.0,<2

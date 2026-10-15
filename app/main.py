@@ -18,12 +18,13 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 import aiohttp
 
 try:
-    from . import api, config, db, donate, monitor
+    from . import api, config, db, donate, interactions, monitor
 except ImportError:  # Поддержка прямого запуска: python app/main.py
     import api
     import config
     import db
     import donate
+    import interactions
     import monitor
 
 log = logging.getLogger("main")
@@ -76,13 +77,15 @@ async def lifespan(app):
     stop_health = asyncio.Event()
     health_task = None
     maintenance_task = None
+    discord_task = None
     if not config.DISABLE_BACKGROUND:
         health_task = asyncio.create_task(monitor.health_loop(api.POOL, stop_health))
         maintenance_task = asyncio.create_task(maintenance_loop(stop_health))
+        discord_task = asyncio.create_task(interactions.startup())
     log.info("WARDOGS-site запущен: %s (servers: %s)", config.PUBLIC_URL, ", ".join(s["id"] for s in config.SERVERS))
     yield
     stop_health.set()
-    for task in (health_task, maintenance_task):
+    for task in (health_task, maintenance_task, discord_task):
         if task is None:
             continue
         try:
