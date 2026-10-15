@@ -126,7 +126,7 @@ async def security_middleware(request: Request, call_next):
         script_src = "script-src 'self'"
         content_security_policy = (
             "default-src 'self'; object-src 'none'; connect-src 'self'; "
-            "img-src 'self' data:; style-src 'self'; "
+            "img-src 'self' data: https://avatars.steamstatic.com https://avatars.cloudflare.steamstatic.com https://steamcdn-a.akamaihd.net; style-src 'self'; "
             "style-src-attr 'unsafe-inline'; "
             f"{script_src}; font-src 'self' data:; "
             "base-uri 'self'; frame-ancestors 'self'; "
