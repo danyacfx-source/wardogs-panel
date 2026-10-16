@@ -1,12 +1,12 @@
-import asyncio
 import json
-import ssl
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone as dt_timezone
+
+import aiohttp
 
 TWITCH_GQL_URL = "https://gql.twitch.tv/gql"
 TWITCH_CLIENT_ID = "kimne78kx3ncx6brgo4mv6wki5h1ko"
+
+_session: aiohttp.ClientSession | None = None
 
 
 class TwitchStream:
@@ -35,30 +35,38 @@ class TwitchError(Exception):
     pass
 
 
-def _gql(query: str, variables: dict | None = None) -> dict:
-    payload = json.dumps({"query": query, "variables": variables or {}}).encode("utf-8")
-    req = urllib.request.Request(
-        TWITCH_GQL_URL,
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "Client-ID": TWITCH_CLIENT_ID,
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-        },
-        method="POST",
-    )
-    ctx = ssl.create_default_context()
+async def _get_session() -> aiohttp.ClientSession:
+    global _session
+    if _session is None or _session.closed:
+        timeout = aiohttp.ClientTimeout(total=25)
+        _session = aiohttp.ClientSession(timeout=timeout)
+    return _session
+
+
+async def close_session():
+    global _session
+    if _session is not None and not _session.closed:
+        await _session.close()
+    _session = None
+
+
+async def _gql(query: str, variables: dict | None = None) -> dict:
+    payload = {"query": query, "variables": variables or {}}
+    headers = {
+        "Content-Type": "application/json",
+        "Client-ID": TWITCH_CLIENT_ID,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    }
+    session = await _get_session()
     try:
-        with urllib.request.urlopen(req, timeout=25, context=ctx) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        raise TwitchError(f"HTTP {e.code}") from e
+        async with session.post(TWITCH_GQL_URL, json=payload, headers=headers) as resp:
+            if resp.status >= 400:
+                raise TwitchError(f"HTTP {resp.status}")
+            return await resp.json(content_type=None)
+    except TwitchError:
+        raise
     except Exception as e:
         raise TwitchError(str(e)) from e
-
-
-def _request(query: str) -> dict:
-    return _gql(query)
 
 
 _QUERY = (
@@ -69,14 +77,10 @@ _QUERY = (
 )
 
 
-def fetch_stream_sync(login: str) -> TwitchStream:
-    query = _QUERY.replace("__LOGIN__", login)
-    data = _request(query)
-    return TwitchStream(data)
-
-
 async def fetch_stream(login: str) -> TwitchStream:
-    return await asyncio.to_thread(fetch_stream_sync, login)
+    query = _QUERY.replace("__LOGIN__", login)
+    data = await _gql(query)
+    return TwitchStream(data)
 
 
 _VIEWERS_QUERY = "query { user(login: \"__LOGIN__\") { stream { viewersCount } } }"
@@ -95,33 +99,23 @@ def _parse_iso(value: str):
         return None
 
 
-def fetch_viewer_count_sync(login: str) -> int | None:
-    """Вернёт число зрителей, если стрим идёт; None если канал офлайн/не найден."""
-    data = _request(_VIEWERS_QUERY.replace("__LOGIN__", login))
+async def fetch_viewer_count(login: str) -> int | None:
+    data = await _gql(_VIEWERS_QUERY.replace("__LOGIN__", login))
     stream = (data.get("data", {}).get("user") or {}).get("stream")
     if not stream:
         return None
     return stream.get("viewersCount") or 0
 
 
-def fetch_next_start_sync(login: str) -> datetime | None:
-    """Ближайший запланированный старт стрима по расписанию (UTC) или None."""
-    data = _request(_ID_QUERY.replace("__LOGIN__", login))
+async def fetch_next_start(login: str) -> datetime | None:
+    data = await _gql(_ID_QUERY.replace("__LOGIN__", login))
     channel_id = (data.get("data", {}).get("user") or {}).get("id")
     if not channel_id:
         return None
-    data = _gql(_SCHEDULE_QUERY, variables={"id": channel_id})
+    data = await _gql(_SCHEDULE_QUERY, variables={"id": channel_id})
     segment = (
         (data.get("data", {}).get("channel") or {})
         .get("schedule") or {}
     ).get("nextSegment") or {}
     start = segment.get("startAt") or ""
     return _parse_iso(start) if start else None
-
-
-async def fetch_viewer_count(login: str) -> int | None:
-    return await asyncio.to_thread(fetch_viewer_count_sync, login)
-
-
-async def fetch_next_start(login: str) -> datetime | None:
-    return await asyncio.to_thread(fetch_next_start_sync, login)
