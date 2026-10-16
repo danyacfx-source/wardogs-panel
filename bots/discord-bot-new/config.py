@@ -102,11 +102,6 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 # В 2026 актуальная free-модель — gemini-3.8-flash (ключ AI Studio, формат AQ./AIza).
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
-# Резервные AI-движки (используются, когда Gemini недоступен).
-# Groq: бесплатный API, console.groq.com; не работает из РФ, работает из EU.
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
-
 # Фон rank-карточки (путь к картинке; пусто = градиент)
 RANK_BACKGROUND = os.getenv("RANK_BACKGROUND", "")
 

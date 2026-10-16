@@ -319,61 +319,6 @@ def _gemini_active(target_lang: str) -> bool:
     return bool(config.GEMINI_API_KEY) and time.monotonic() >= _gemini_down.get(target_lang, 0)
 
 
-# ---------- Groq (бесплатный AI-переводчик, резерв) ----------
-_GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-_groq_down: dict[str, float] = {}  # target_lang → monotonic timestamp фолбэка
-_GROQ_COOLDOWN = 120  # секунд после неудачи Groq
-
-
-def _groq_translate_sync(text: str, target_lang: str) -> str | None:
-    """Перевод через Groq API (OpenAI-совместимый). Возвращает None при сбое."""
-    lang_code = target_lang if target_lang in _AI_LANG_NAMES else "ru"
-    payload = {
-        "model": config.GROQ_MODEL,
-        "messages": [
-            {"role": "system", "content": _ai_system_instruction(lang_code)},
-            {"role": "user", "content": text},
-        ],
-        "temperature": 0.2,
-    }
-    req = urllib.request.Request(
-        _GROQ_URL,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {config.GROQ_API_KEY}",
-            "User-Agent": "wardogs-bot/1.0",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=_ENGINE_TIMEOUT) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        try:
-            detail = e.read().decode("utf-8", "replace")[:400]
-        except Exception:
-            detail = str(e)
-        log.warning("Groq HTTP %s: %s", e.code, detail)
-        return None
-    except Exception as e:
-        log.warning("Groq: %s", e)
-        return None
-    try:
-        out = body["choices"][0]["message"]["content"].strip()
-    except (KeyError, IndexError, TypeError):
-        log.warning("Groq: неожиданный ответ: %s", json.dumps(body, ensure_ascii=False)[:250])
-        return None
-    if not out or _is_error(out):
-        return None
-    return out
-
-
-def _groq_active(target_lang: str) -> bool:
-    """Groq настроен и не в кулдауне? Храним кулдаун по языку."""
-    return bool(config.GROQ_API_KEY) and time.monotonic() >= _groq_down.get(target_lang, 0)
-
-
 # Парные markdown-маркеры: открывающий и закрывающий совпадают.
 _MD_PAIR_RE = re.compile(
     r"^(?P<open>\*\*\*|\*\*|__|~~|\*|\|\|)(?P<inner>.*?)(?P=open)$",
@@ -445,11 +390,10 @@ async def async_translate_text(text: str, target_lang: str = "ru") -> str | None
 
     Цепочка движков:
       1. Gemini (AI, основной) — весь текст одним запросом, сам сохраняет
-         форматирование (system_instruction отделён от текста).
-      2. Groq (AI, резерв) — если Gemini недоступен/упал.
-      3. Google + MyMemory — если оба AI недоступны (построчный фолбэк
+         форматирование (system_instruction отделён от текста). При 503/429
+         пробует lite-модели.
+      2. Google + MyMemory — если Gemini недоступен (построчный фолбэк
          с сохранением разметки).
-    При сбое каждого AI включается кулдаун, чтобы не долбить мёртвый API.
     """
     if not text or not text.strip():
         return None
@@ -465,26 +409,10 @@ async def async_translate_text(text: str, target_lang: str = "ru") -> str | None
             out = None
         if out:
             return out
-        # Gemini не справился — кулдаун, пробуем Groq.
         _gemini_down[target_lang] = time.monotonic() + _GEMINI_COOLDOWN
         log.warning("Gemini не перевёл, включаю фолбэк на %ds", _GEMINI_COOLDOWN)
 
-    # 2. Groq: резервный AI.
-    if _groq_active(target_lang):
-        try:
-            out = await asyncio.wait_for(
-                asyncio.to_thread(_groq_translate_sync, text, target_lang),
-                _LINE_TIMEOUT,
-            )
-        except asyncio.TimeoutError:
-            out = None
-        if out:
-            return out
-        # Groq не справился — кулдаун и уходим в Google/MyMemory.
-        _groq_down[target_lang] = time.monotonic() + _GROQ_COOLDOWN
-        log.warning("Groq не перевёл, включаю фолбэк на %ds", _GROQ_COOLDOWN)
-
-    # 3. Фолбэк: построчный перевод с сохранением markdown.
+    # 2. Фолбэк: построчный перевод с сохранением markdown.
     engines = _get_engines(target_lang)
     lines = text.splitlines()
     out_lines: list[str] = []
