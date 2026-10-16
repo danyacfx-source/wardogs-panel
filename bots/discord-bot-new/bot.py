@@ -119,18 +119,6 @@ async def on_ready():
     except Exception as e:
         log.error("Ошибка регистрации persistent-кнопок тикетов: %s", e)
     try:
-        from cogs.clan_tickets import (
-            ClanTicketClosedView,
-            ClanTicketCloseView,
-            ClanTicketPanelView,
-        )
-        bot.add_view(ClanTicketPanelView())
-        bot.add_view(ClanTicketCloseView())
-        bot.add_view(ClanTicketClosedView())
-        log.info("Persistent-кнопки клановых тикетов перерегистрированы")
-    except Exception as e:
-        log.error("Ошибка регистрации persistent-кнопок кланов: %s", e)
-    try:
         from cogs.temp_voice import VoiceControlPanelView
         bot.add_view(VoiceControlPanelView())
         log.info("Persistent-кнопки панели войсов перерегистрированы")
@@ -165,9 +153,11 @@ COGS = [
     "cogs.automod",
     "cogs.server_sync",
     "cogs.giveaway",
-    "cogs.clan_tickets",
     "cogs.embed",
     "cogs.trap_channel",
+    "cogs.donation",
+    "cogs.clans",
+    "cogs.seeding",
 ]
 
 
