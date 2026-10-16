@@ -31,6 +31,18 @@ try:
     from . import disclog
     from . import steam as steam_mod
     from .rcon_client import RCONError, WardogsRCON
+    from .schemas import (
+        VipOrderCreate, VipSlotSave, DonateCheckoutRequest,
+        PlayerNoteCreate, PlayerTagCreate,
+        ClanPayload, ClanMemberSet, PlayerClanSet, PublicClanApplication, ClanMediaUpload,
+        TicketCreate, TicketUpdate, TicketCommentCreate,
+        RotationUpdate, ReservedSlotsLimit, ReservedSlotsAdd,
+        BroadcastRequest, BanAdd, BanUpdate, BansBulkRequest,
+        KickRequest, MessageRequest, PlayerPatchRequest, PlayerSwapRequest,
+        MatchMapRequest, LightingRequest,
+        DiscordBotCreate, DiscordBotUpdate, BotHeartbeat, BotEvent,
+        RolesPut, TempvoiceTransfer,
+    )
 except ImportError:
     import config
     import db
@@ -39,6 +51,20 @@ except ImportError:
     import disclog
     import steam as steam_mod
     from rcon_client import RCONError, WardogsRCON
+    from schemas import (
+        VipOrderCreate, VipSlotSave, DonateCheckoutRequest,
+        PlayerNoteCreate, PlayerTagCreate,
+        ClanPayload, ClanMemberSet, PlayerClanSet, PublicClanApplication, ClanMediaUpload,
+        TicketCreate, TicketUpdate, TicketCommentCreate,
+        RotationUpdate, ReservedSlotsLimit, ReservedSlotsAdd,
+        BroadcastRequest, BanAdd, BanUpdate, BansBulkRequest,
+        KickRequest, MessageRequest, PlayerPatchRequest, PlayerSwapRequest,
+        MatchMapRequest, LightingRequest,
+        DiscordBotCreate, DiscordBotUpdate, BotHeartbeat, BotEvent,
+        RolesPut, TempvoiceTransfer,
+    )
+
+from pydantic import ValidationError
 
 log = logging.getLogger("api")
 
@@ -126,14 +152,14 @@ async def fulfill_vip_order(order, operation_id: str = ""):
 @router.post('/vip/orders')
 async def vip_order_create(request: Request):
     user = await _require_perm(request, 'vip_edit')
-    body = await _json_object(request)
-    plan = next((p for p in VIP_PLANS if p['id'] == body.get('plan_id')), None)
-    buyer = str(body.get('buyer_steam_id') or '')
-    sid = str(body.get('server_id') or '')
-    recipients = body.get('recipients', [])
-    if not plan or not STEAM_ID_RE.fullmatch(buyer) or sid not in POOL:
+    payload = await _validated(request, VipOrderCreate)
+    plan = next((p for p in VIP_PLANS if p['id'] == payload.plan_id), None)
+    buyer = payload.buyer_steam_id
+    sid = str(payload.server_id or '')
+    recipients = list(payload.recipients or [])
+    if not plan or sid not in POOL:
         raise HTTPException(400, 'Проверьте тариф, покупателя и сервер')
-    if not isinstance(recipients,list) or len(recipients)>plan['seats'] or any(not isinstance(s,str) or not STEAM_ID_RE.fullmatch(s) for s in recipients) or len(set(recipients))!=len(recipients):
+    if len(recipients) > plan['seats']:
         raise HTTPException(400, 'Состав должен содержать уникальные SteamID64 в пределах тарифа')
     if not recipients and plan['seats']==1:
         recipients=[buyer]
@@ -417,6 +443,17 @@ async def _json_object(request: Request):
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="ожидался JSON-объект")
     return body
+
+
+async def _validated(request: Request, model_cls):
+    body = await _json_object(request)
+    try:
+        return model_cls(**body)
+    except ValidationError as exc:
+        first = exc.errors()[0] if exc.errors() else {}
+        msg = first.get("msg", "invalid body")
+        loc = ".".join(str(x) for x in first.get("loc", []) if x != "body")
+        raise HTTPException(status_code=400, detail=f"{loc}: {msg}" if loc else msg) from exc
 
 
 def _public_bot(item):
@@ -1110,12 +1147,10 @@ async def player_notes_list(steam_id: str, request: Request, limit: int = 100):
 async def player_note_add(steam_id: str, request: Request):
     user = await _require_perm(request, "player_notes")
     steam_id = _validate_steam_id(steam_id)
-    body = await _json_object(request)
-    note = str(body.get("note") or "").strip()
-    if not note or len(note) > 2000:
-        raise HTTPException(status_code=400, detail="Заметка должна содержать от 1 до 2000 символов")
+    payload = await _validated(request, PlayerNoteCreate)
+    note = payload.note
     idem_key, replay = await _idempotency_begin(
-        request, user["steam_id"], _request_fingerprint(request, body)
+        request, user["steam_id"], _request_fingerprint(request, await _json_object(request))
     )
     if replay:
         return replay
@@ -1160,15 +1195,11 @@ async def player_note_delete(steam_id: str, note_id: str, request: Request):
 async def player_tag_add(steam_id: str, request: Request):
     user = await _require_perm(request, "player_tags")
     steam_id = _validate_steam_id(steam_id)
-    body = await _json_object(request)
-    label = " ".join(str(body.get("label") or "").split())
-    color = str(body.get("color") or "gray").strip().lower()
-    if not label or len(label) > 32:
-        raise HTTPException(status_code=400, detail="Метка должна содержать от 1 до 32 символов")
-    if color not in {"gray", "orange", "red", "green", "blue", "purple", "pink"}:
-        raise HTTPException(status_code=400, detail="Некорректный цвет метки")
+    payload = await _validated(request, PlayerTagCreate)
+    label = payload.label
+    color = payload.color
     idem_key, replay = await _idempotency_begin(
-        request, user["steam_id"], _request_fingerprint(request, body)
+        request, user["steam_id"], _request_fingerprint(request, await _json_object(request))
     )
     if replay:
         return replay
@@ -1346,14 +1377,10 @@ async def public_clan_application_create(request: Request):
     user = await _current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Войдите через Steam, чтобы отправить заявку")
-    body = await _json_object(request)
-    name = " ".join(str(body.get("name") or "").split())
-    tag = "".join(str(body.get("tag") or "").upper().split())
-    description = str(body.get("description") or "").strip()
-    if not 3 <= len(name) <= 48 or not re.fullmatch(r"[A-ZА-Я0-9_-]{2,12}", tag):
-        raise HTTPException(status_code=400, detail="Укажите название от 3 до 48 символов и тег из 2–12 букв или цифр")
-    if not 30 <= len(description) <= 2500:
-        raise HTTPException(status_code=400, detail="Опишите клан: от 30 до 2500 символов")
+    payload = await _validated(request, PublicClanApplication)
+    name = payload.name
+    tag = payload.tag
+    description = payload.description
     title = f"Заявка на клан [{tag}] {name}"
     discord_name = ((await _user_status(user)).get("discord") or {}).get("discord_name") or "не привязан"
     ticket_text = f"{description}\n\nЛидер: {user.get('persona') or user['steam_id']}\nSteamID: {user['steam_id']}\nDiscord: {discord_name}"
@@ -1382,10 +1409,10 @@ async def clan_get(clan_id: str, request: Request):
 @router.post("/clans")
 async def clan_create(request: Request):
     user = await _require_perm(request, "clans")
-    body = await _json_object(request)
-    name, tag, color, description = _validate_clan_payload(body)
+    payload = await _validated(request, ClanPayload)
+    name, tag, color, description = payload.name, payload.tag, payload.color, payload.description
     idem_key, replay = await _idempotency_begin(
-        request, user["steam_id"], _request_fingerprint(request, body)
+        request, user["steam_id"], _request_fingerprint(request, await _json_object(request))
     )
     if replay:
         return replay
@@ -1403,10 +1430,10 @@ async def clan_create(request: Request):
 async def clan_update(clan_id: str, request: Request):
     user = await _require_perm(request, "clans")
     _clan_id(clan_id)
-    body = await _json_object(request)
-    name, tag, color, description = _validate_clan_payload(body)
+    payload = await _validated(request, ClanPayload)
+    name, tag, color, description = payload.name, payload.tag, payload.color, payload.description
     idem_key, replay = await _idempotency_begin(
-        request, user["steam_id"], _request_fingerprint(request, body)
+        request, user["steam_id"], _request_fingerprint(request, await _json_object(request))
     )
     if replay:
         return replay
@@ -1448,11 +1475,11 @@ async def clan_delete(clan_id: str, request: Request):
 async def clan_media_upload(clan_id: str, request: Request):
     user = await _require_perm(request, "clans")
     clan_id = _clan_id(clan_id)
-    body = await _json_object(request)
-    kind = str(body.get("kind") or "")
-    data_url = str(body.get("data_url") or "")
+    payload = await _validated(request, ClanMediaUpload)
+    kind = payload.kind
+    data_url = payload.data_url
     match = re.fullmatch(r"data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)", data_url)
-    if kind not in {"emblem", "cover"} or not match:
+    if not match:
         raise HTTPException(status_code=400, detail="Нужна картинка PNG, JPG или WebP")
     try:
         content = base64.b64decode(match.group(2), validate=True)
@@ -1476,11 +1503,9 @@ async def clan_media_upload(clan_id: str, request: Request):
 async def clan_member_set(clan_id: str, request: Request):
     user = await _require_perm(request, "clans")
     clan_id = _clan_id(clan_id)
-    body = await _json_object(request)
-    steam_id = _validate_steam_id(str(body.get("steam_id") or ""))
-    role = str(body.get("member_role") or "Участник")
-    if role not in {"Лидер", "Заместитель", "Участник"}:
-        raise HTTPException(status_code=400, detail="Выберите роль из списка")
+    payload = await _validated(request, ClanMemberSet)
+    steam_id = payload.steam_id
+    role = payload.member_role
     if not await db.set_clan_member_role(clan_id, steam_id, role):
         raise HTTPException(status_code=404, detail="Клан не найден")
     return await _clan_after_change(clan_id, user, "clan.member.set", f"{clan_id}:{steam_id}:{role}")
@@ -1500,13 +1525,11 @@ async def clan_member_delete(clan_id: str, steam_id: str, request: Request):
 async def player_clan_set(steam_id: str, request: Request):
     user = await _require_perm(request, "clans")
     steam_id = _validate_steam_id(steam_id)
-    body = await _json_object(request)
-    clan_id = str(body.get("clan_id") or "").strip()
-    member_role = " ".join(str(body.get("member_role") or "Участник").split())[:40]
-    if not re.fullmatch(r"[0-9a-f]{24}", clan_id):
-        raise HTTPException(status_code=400, detail="Некорректный ID клана")
+    payload = await _validated(request, PlayerClanSet)
+    clan_id = payload.clan_id
+    member_role = " ".join(str(payload.member_role or "Участник").split())[:40]
     idem_key, replay = await _idempotency_begin(
-        request, user["steam_id"], _request_fingerprint(request, body)
+        request, user["steam_id"], _request_fingerprint(request, await _json_object(request))
     )
     if replay:
         return replay
@@ -1572,21 +1595,15 @@ async def ticket_get(ticket_id: str, request: Request):
 @router.post("/tickets")
 async def ticket_create(request: Request):
     user = await _require_perm(request, "tickets_edit")
-    body = await _json_object(request)
-    title = " ".join(str(body.get("title") or "").split())
-    description = str(body.get("description") or "").strip()
-    priority = str(body.get("priority") or "normal").strip()
-    player_steam_id = str(body.get("player_steam_id") or "").strip() or None
-    if not title or len(title) > 160:
-        raise HTTPException(status_code=400, detail="Заголовок должен содержать от 1 до 160 символов")
-    if len(description) > 5000:
-        raise HTTPException(status_code=400, detail="Описание длиннее 5000 символов")
-    if priority not in TICKET_PRIORITIES:
-        raise HTTPException(status_code=400, detail="Некорректный приоритет")
+    payload = await _validated(request, TicketCreate)
+    title = " ".join(str(payload.title or "").split())
+    description = str(payload.description or "").strip()
+    priority = str(payload.priority or "normal").strip()
+    player_steam_id = str(payload.player_steam_id or "").strip() or None
     if player_steam_id:
         player_steam_id = _validate_steam_id(player_steam_id)
     idem_key, replay = await _idempotency_begin(
-        request, user["steam_id"], _request_fingerprint(request, body)
+        request, user["steam_id"], _request_fingerprint(request, await _json_object(request))
     )
     if replay:
         return replay
@@ -1606,13 +1623,13 @@ async def ticket_update(ticket_id: str, request: Request):
     current = await db.get_ticket(ticket_id)
     if not current:
         raise HTTPException(status_code=404, detail="Тикет не найден")
-    body = await _json_object(request)
-    title = " ".join(str(body.get("title", current["title"]) or "").split())
-    description = str(body.get("description", current["description"]) or "").strip()
-    status = str(body.get("status", current["status"]) or "").strip()
-    priority = str(body.get("priority", current["priority"]) or "").strip()
-    player_steam_id = body.get("player_steam_id", current["player_steam_id"])
-    assigned_to = body.get("assigned_to", current["assigned_to"])
+    payload = await _validated(request, TicketUpdate)
+    title = " ".join(str((payload.title or current["title"]) or "").split())
+    description = str((payload.description or current["description"]) or "").strip()
+    status = str((payload.status or current["status"]) or "").strip()
+    priority = str((payload.priority or current["priority"]) or "").strip()
+    player_steam_id = payload.player_steam_id if payload.player_steam_id is not None else current["player_steam_id"]
+    assigned_to = payload.assigned_to if payload.assigned_to is not None else current["assigned_to"]
     player_steam_id = str(player_steam_id or "").strip() or None
     assigned_to = str(assigned_to or "").strip() or None
     if not title or len(title) > 160 or len(description) > 5000:
@@ -1624,7 +1641,7 @@ async def ticket_update(ticket_id: str, request: Request):
     if assigned_to:
         assigned_to = _validate_steam_id(assigned_to)
     idem_key, replay = await _idempotency_begin(
-        request, user["steam_id"], _request_fingerprint(request, body)
+        request, user["steam_id"], _request_fingerprint(request, await _json_object(request))
     )
     if replay:
         return replay
@@ -1643,12 +1660,10 @@ async def ticket_update(ticket_id: str, request: Request):
 async def ticket_comment_add(ticket_id: str, request: Request):
     user = await _require_perm(request, "tickets_edit")
     ticket_id = _ticket_id(ticket_id)
-    body = await _json_object(request)
-    text = str(body.get("body") or "").strip()
-    if not text or len(text) > 2000:
-        raise HTTPException(status_code=400, detail="Комментарий должен содержать от 1 до 2000 символов")
+    payload = await _validated(request, TicketCommentCreate)
+    text = payload.body
     idem_key, replay = await _idempotency_begin(
-        request, user["steam_id"], _request_fingerprint(request, body)
+        request, user["steam_id"], _request_fingerprint(request, await _json_object(request))
     )
     if replay:
         return replay
@@ -1784,35 +1799,15 @@ async def server_rotation_update(sid: str, request: Request):
     srv = _get_server(sid)
     if not srv:
         return _not_found(sid)
-    body = await _json_object(request)
-    raw_entries = body.get("entries")
-    if not isinstance(raw_entries, list) or not 1 <= len(raw_entries) <= 100:
-        raise HTTPException(status_code=400, detail="entries должен содержать от 1 до 100 карт")
-    entries = []
-    for index, entry in enumerate(raw_entries):
-        if not isinstance(entry, dict):
-            raise HTTPException(status_code=400, detail=f"элемент ротации #{index + 1} должен быть объектом")
-        map_id = str(entry.get("map") or "").strip()[:128]
-        if not map_id:
-            raise HTTPException(status_code=400, detail=f"у элемента ротации #{index + 1} не указана карта")
-        experiences = entry.get("experiences") or []
-        if not isinstance(experiences, list) or any(not isinstance(value, str) for value in experiences):
-            raise HTTPException(status_code=400, detail=f"experiences элемента #{index + 1} должен быть массивом строк")
-        entries.append(
-            {
-                "map": map_id,
-                "experiences": [value.strip()[:128] for value in experiences[:20] if value.strip()],
-                "lighting": str(entry.get("lighting") or "").strip()[:128],
-                "zoneAlternator": str(entry.get("zoneAlternator") or "").strip()[:128],
-            }
-        )
-    payload = {"entries": entries}
-    if body.get("mode") in {"ordered", "random"}:
-        payload["mode"] = body["mode"]
+    payload = await _validated(request, RotationUpdate)
+    entries = [entry.model_dump() for entry in payload.entries]
+    rcon_body = {"entries": entries}
+    if payload.mode in {"ordered", "random"}:
+        rcon_body["mode"] = payload.mode
     try:
         await srv.ensure_caps()
         if "PUT /v1/rotation" in srv.routes:
-            status, data = await srv.api.request_raw("PUT", "/v1/rotation", json_body=payload)
+            status, data = await srv.api.request_raw("PUT", "/v1/rotation", json_body=rcon_body)
             if status >= 400:
                 return JSONResponse(data if isinstance(data, dict) else {"detail": str(data)}, status_code=status)
         elif srv.config_writable and "GET /v1/config" in srv.routes and "PUT /v1/config" in srv.routes:
@@ -1823,7 +1818,7 @@ async def server_rotation_update(sid: str, request: Request):
                     cfg if isinstance(cfg, dict) else {"error": {"message": "не удалось прочитать конфиг"}},
                     status_code=status,
                 )
-            updated = _rotation_config_text(str(cfg.get("text") or ""), entries, payload.get("mode"))
+            updated = _rotation_config_text(str(cfg.get("text") or ""), entries, rcon_body.get("mode"))
             if updated.encode("utf-8") > 65536:
                 raise HTTPException(status_code=413, detail="документ конфига больше лимита сервера (64 КБ)")
             revision = str(cfg.get("revision") or "").strip()
@@ -2059,23 +2054,23 @@ async def discord_bots_list(request: Request):
 @router.post("/discord/bots")
 async def discord_bots_create(request: Request):
     user = await _require_perm(request, "roles")
-    body = await _json_object(request)
-    name = str(body.get("name") or "").strip()[:80]
-    requested_id = str(body.get("bot_id") or "").strip().lower()
+    payload = await _validated(request, DiscordBotCreate)
+    name = str(payload.name or "").strip()[:80]
+    requested_id = str(payload.bot_id or "").strip().lower()
     bot_id = requested_id or re.sub(r"[^a-z0-9]+", "-", name.casefold()).strip("-")[:40]
     if not name or not BOT_ID_RE.fullmatch(bot_id):
         raise HTTPException(status_code=400, detail="Укажите имя и ID: 3–48 латинских символов")
     if len(await db.list_bot_integrations()) >= 64:
         raise HTTPException(status_code=409, detail="Достигнут запас реестра: 64 бота")
-    guild_id = str(body.get("guild_id") or "").strip()
+    guild_id = str(payload.guild_id or "").strip()
     if guild_id and not re.fullmatch(r"\d{5,20}", guild_id):
         raise HTTPException(status_code=400, detail="Некорректный Discord Guild ID")
-    base_url = str(body.get("base_url") or "").strip().rstrip("/")[:500]
+    base_url = str(payload.base_url or "").strip().rstrip("/")[:500]
     if base_url:
         parsed = urlsplit(base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise HTTPException(status_code=400, detail="Некорректный URL бота")
-    scopes = sorted(set(str(value) for value in (body.get("scopes") or [])) & BOT_SCOPES)
+    scopes = sorted(set(str(value) for value in payload.scopes or []) & BOT_SCOPES)
     if not scopes:
         scopes = ["events.write", "heartbeat"]
     token = f"wdb_{bot_id}_{secrets.token_urlsafe(32)}"
@@ -2096,17 +2091,18 @@ async def discord_bots_update(bot_id: str, request: Request):
     user = await _require_perm(request, "roles")
     if not BOT_ID_RE.fullmatch(bot_id):
         raise HTTPException(status_code=400, detail="Некорректный ID бота")
-    body = await _json_object(request)
+    payload = await _validated(request, DiscordBotUpdate)
     changes = {}
     for key, limit in (("name", 80), ("guild_id", 20), ("bot_user_id", 20), ("base_url", 500)):
-        if key in body:
-            changes[key] = str(body.get(key) or "").strip()[:limit]
-    if "enabled" in body:
-        changes["enabled"] = bool(body["enabled"])
-        if not changes["enabled"]:
+        val = getattr(payload, key, None)
+        if val is not None:
+            changes[key] = str(val).strip()[:limit]
+    if payload.enabled is not None:
+        changes["enabled"] = payload.enabled
+        if not payload.enabled:
             changes.update(status="disabled", detail="отключён администратором")
-    if "scopes" in body:
-        changes["scopes"] = sorted(set(str(value) for value in (body.get("scopes") or [])) & BOT_SCOPES)
+    if payload.scopes is not None:
+        changes["scopes"] = sorted(set(payload.scopes) & BOT_SCOPES)
     item = await db.update_bot_integration(bot_id, **changes)
     if not item:
         raise HTTPException(status_code=404, detail="Бот не найден")
@@ -2149,14 +2145,14 @@ async def discord_bot_events(bot_id: str, request: Request, limit: int = 100):
 @router.post("/bot/v1/heartbeat")
 async def bot_v1_heartbeat(request: Request):
     item = await _require_bot(request, "heartbeat")
-    body = await _json_object(request)
-    metadata = body.get("metadata") if isinstance(body.get("metadata"), dict) else {}
+    payload = await _validated(request, BotHeartbeat)
+    metadata = payload.metadata if isinstance(payload.metadata, dict) else {}
     encoded = json.dumps(metadata, ensure_ascii=False)
     if len(encoded.encode("utf-8")) > 8192:
         raise HTTPException(status_code=413, detail="Слишком большие метаданные")
     updated = await db.update_bot_integration(
-        item["bot_id"], status="online", detail=str(body.get("detail") or "")[:500],
-        version=str(body.get("version") or "")[:80], bot_user_id=str(body.get("bot_user_id") or item["bot_user_id"])[:20],
+        item["bot_id"], status="online", detail=str(payload.detail or "")[:500],
+        version=str(payload.version or "")[:80], bot_user_id=str(payload.bot_user_id or item["bot_user_id"])[:20],
         metadata=metadata, last_seen_utc=time.time(),
     )
     return {"ok": True, "bot": _public_bot(updated), "server_time": time.time(), "api_version": 1}
@@ -2165,15 +2161,15 @@ async def bot_v1_heartbeat(request: Request):
 @router.post("/bot/v1/events")
 async def bot_v1_events(request: Request):
     item = await _require_bot(request, "events.write")
-    body = await _json_object(request)
-    event_id = str(body.get("event_id") or "").strip()[:96]
-    event_type = str(body.get("event_type") or "").strip().lower()[:80]
-    payload = body.get("payload") if isinstance(body.get("payload"), dict) else {}
+    payload = await _validated(request, BotEvent)
+    event_id = payload.event_id
+    event_type = payload.event_type
+    event_payload = payload.payload if isinstance(payload.payload, dict) else {}
     if not event_id or not BOT_EVENT_RE.fullmatch(event_type):
         raise HTTPException(status_code=400, detail="Нужны event_id и корректный event_type")
-    if len(json.dumps(payload, ensure_ascii=False).encode("utf-8")) > 32768:
+    if len(json.dumps(event_payload, ensure_ascii=False).encode("utf-8")) > 32768:
         raise HTTPException(status_code=413, detail="Событие слишком большое")
-    created = await db.append_bot_event(item["bot_id"], event_id, event_type, payload)
+    created = await db.append_bot_event(item["bot_id"], event_id, event_type, event_payload)
     await db.update_bot_integration(item["bot_id"], status="online", last_seen_utc=time.time())
     return {"ok": True, "accepted": created, "duplicate": not created}
 
@@ -2245,10 +2241,10 @@ async def discord_tempvoice_delete(channel_id: str, request: Request):
 @router.post("/discord/tempvoice/{channel_id}/transfer")
 async def discord_tempvoice_transfer(channel_id: str, request: Request):
     user = await _require_perm(request, "roles")
-    body = await _json_object(request)
-    owner_id = str(body.get("owner_id") or "")
-    if not re.fullmatch(r"\d{1,20}", channel_id) or not re.fullmatch(r"\d{1,20}", owner_id):
-        raise HTTPException(status_code=400, detail="Некорректные ID комнаты или владельца")
+    payload = await _validated(request, TempvoiceTransfer)
+    owner_id = payload.owner_id
+    if not re.fullmatch(r"\d{1,20}", channel_id):
+        raise HTTPException(status_code=400, detail="Некорректный ID комнаты или владельца")
     data, error = await dmod.bot_panel_request(
         "POST", f"/api/tempvoice/{channel_id}/transfer", {"owner_id": owner_id}
     )
@@ -2286,15 +2282,12 @@ async def vip_history(sid: str, request: Request):
 @router.put("/roles")
 async def roles_put(request: Request):
     user = await _require_perm(request, "roles")
-    body = await _json_object(request)
-    role_ref = str(body.get("role_ref") or "").strip()[:128]
+    payload = await _validated(request, RolesPut)
+    role_ref = str(payload.role_ref or "").strip()[:128]
     if not role_ref:
         return JSONResponse({"error": {"code": "missing_field", "message": "поле role_ref"}}, status_code=400)
-    raw_perms = body.get("perms") or []
-    if not isinstance(raw_perms, list):
-        raise HTTPException(status_code=400, detail="поле perms должно быть массивом")
-    perms = [p for p in raw_perms if isinstance(p, str) and p in dmod.ALL_PERMS]
-    idem_key, replay = await _idempotency_begin(request, user["steam_id"], _request_fingerprint(request, body))
+    perms = [p for p in payload.perms if p in dmod.ALL_PERMS]
+    idem_key, replay = await _idempotency_begin(request, user["steam_id"], _request_fingerprint(request, await _json_object(request)))
     if replay:
         return replay
     old_perms = await db.get_role_perms(role_ref) or []
@@ -2519,13 +2512,13 @@ async def vip_slot_save(sid: str, request: Request):
     srv = _get_server(sid)
     if not srv:
         return _not_found(sid)
-    body = await _json_object(request)
-    steam_id = _validate_steam_id(body.get("steam_id") or body.get("steamId"))
-    display_name = " ".join(str(body.get("display_name") or "").split())[:120]
-    note = str(body.get("note") or "").strip()[:500]
-    expires_utc = _parse_vip_expiry(body.get("expires_utc"))
+    payload = await _validated(request, VipSlotSave)
+    steam_id = payload.steam
+    display_name = " ".join(str(payload.display_name or "").split())[:120]
+    note = str(payload.note or "").strip()[:500]
+    expires_utc = _parse_vip_expiry(payload.expires_utc)
     idem_key, replay = await _idempotency_begin(
-        request, user["steam_id"], _request_fingerprint(request, body)
+        request, user["steam_id"], _request_fingerprint(request, await _json_object(request))
     )
     if replay:
         return replay
@@ -2720,14 +2713,9 @@ async def reserved_slots_limit(sid: str, request: Request):
     srv = _get_server(sid)
     if not srv:
         return _not_found(sid)
-    try:
-        body = await _json_object(request)
-        value = int(body.get("max_reserved_slots"))
-    except (TypeError, ValueError, AttributeError, HTTPException):
-        raise HTTPException(status_code=400, detail="Количество резервных слотов должно быть целым числом")
-    if value < 0 or value > 100:
-        raise HTTPException(status_code=400, detail="Количество резервных слотов должно быть от 0 до 100")
-    idem_key, replay = await _idempotency_begin(request, user["steam_id"], _request_fingerprint(request, body))
+    payload = await _validated(request, ReservedSlotsLimit)
+    value = payload.max_reserved_slots
+    idem_key, replay = await _idempotency_begin(request, user["steam_id"], _request_fingerprint(request, await _json_object(request)))
     if replay:
         return replay
     try:
@@ -2783,9 +2771,9 @@ async def reserved_slots_add(sid: str, request: Request):
     srv = _get_server(sid)
     if not srv:
         return _not_found(sid)
-    body = await _json_object(request)
-    steam_id = _validate_steam_id(body.get("steam_id") or body.get("steamId"))
-    idem_key, replay = await _idempotency_begin(request, user["steam_id"], _request_fingerprint(request, body))
+    payload = await _validated(request, ReservedSlotsAdd)
+    steam_id = payload.steam
+    idem_key, replay = await _idempotency_begin(request, user["steam_id"], _request_fingerprint(request, await _json_object(request)))
     if replay:
         return replay
     try:
@@ -2908,11 +2896,9 @@ async def server_broadcast(sid: str, request: Request):
     srv = _get_server(sid)
     if not srv:
         return _not_found(sid)
-    body = await _json_object(request)
-    message = str(body.get("message") or "").strip()
-    if not message or len(message) > 2000:
-        return JSONResponse({"error": {"code": "missing_field", "message": "поле message"}}, status_code=400)
-    idem_key, replay = await _idempotency_begin(request, user["steam_id"], _request_fingerprint(request, body))
+    payload = await _validated(request, BroadcastRequest)
+    message = payload.message
+    idem_key, replay = await _idempotency_begin(request, user["steam_id"], _request_fingerprint(request, await _json_object(request)))
     if replay:
         return replay
     if not await _allow_action_once(user["steam_id"], sid, "broadcast", message):
@@ -2934,25 +2920,22 @@ async def server_ban_add(sid: str, request: Request):
     srv = _get_server(sid)
     if not srv:
         return _not_found(sid)
-    body = await _json_object(request)
-    try:
-        steam_id = _validate_steam_id(body.get("steamId"))
-    except HTTPException:
-        return JSONResponse({"error": {"code": "invalid_steam_id", "message": "SteamID64 должен состоять из 17 цифр"}}, status_code=400)
-    payload = {"steamId": steam_id}
-    reason = str(body.get("reason") or "").strip()[:500]
-    display_name = " ".join(str(body.get("display_name") or "").split())[:120]
-    expires_utc = _parse_vip_expiry(body.get("expires_utc"))
+    payload = await _validated(request, BanAdd)
+    steam_id = payload.steamId
+    ban_body = {"steamId": steam_id}
+    reason = str(payload.reason or "").strip()[:500]
+    display_name = " ".join(str(payload.display_name or "").split())[:120]
+    expires_utc = _parse_vip_expiry(payload.expires_utc)
     if reason:
-        payload["reason"] = reason
-    idem_key, replay = await _idempotency_begin(request, user["steam_id"], _request_fingerprint(request, body))
+        ban_body["reason"] = reason
+    idem_key, replay = await _idempotency_begin(request, user["steam_id"], _request_fingerprint(request, await _json_object(request)))
     if replay:
         return replay
     if not await _allow_action_once(user["steam_id"], sid, "ban.add", steam_id):
         await _idempotency_abort(user["steam_id"], idem_key)
         return JSONResponse({"error": {"code": "duplicate_action", "message": "Повторите действие через секунду"}}, status_code=409)
     try:
-        await srv.api.request("POST", "/v1/bans", json_body=payload)
+        await srv.api.request("POST", "/v1/bans", json_body=ban_body)
     except RCONError as e:
         if e.status != 409:
             await _idempotency_abort(user["steam_id"], idem_key)
@@ -2961,7 +2944,7 @@ async def server_ban_add(sid: str, request: Request):
     mirrored = []
     for other in _other_servers(sid):
         try:
-            await other.api.request("POST", "/v1/bans", json_body=payload)
+            await other.api.request("POST", "/v1/bans", json_body=ban_body)
             mirrored.append(other.id)
         except RCONError as e:
             if e.status != 409:
@@ -3035,9 +3018,12 @@ async def server_ban_update(sid: str, steam_id: str, request: Request):
     current = next((row for row in await db.list_managed_bans(sid) if row["steam_id"] == steam_id), None)
     if not current:
         raise HTTPException(status_code=404, detail="Бан не управляется этой панелью")
-    body = await _json_object(request)
-    reason = str(body.get("reason", current["reason"]) or "").strip()[:500]
-    expires_utc = _parse_vip_expiry(body.get("expires_utc")) if "expires_utc" in body else current["expires_utc"]
+    payload = await _validated(request, BanUpdate)
+    reason = " ".join(str((payload.reason or current["reason"]) or "").split())[:500]
+    if payload.expires_utc is not None:
+        expires_utc = _parse_vip_expiry(payload.expires_utc)
+    else:
+        expires_utc = current["expires_utc"]
     try:
         await srv.api.request("DELETE", f"/v1/bans/{steam_id}")
         await srv.api.request("POST", "/v1/bans", json_body={"steamId": steam_id, "reason": reason})
@@ -3079,9 +3065,9 @@ async def server_bans_bulk(sid: str, request: Request):
     srv = _get_server(sid)
     if not srv:
         return _not_found(sid)
-    body = await _json_object(request)
-    action = str(body.get("action") or "")
-    steam_ids = list(dict.fromkeys(str(value) for value in (body.get("steam_ids") or [])))
+    payload = await _validated(request, BansBulkRequest)
+    action = payload.action
+    steam_ids = list(dict.fromkeys(str(value) for value in payload.steam_ids))
     if action != "unban" or not steam_ids or len(steam_ids) > 50:
         raise HTTPException(status_code=400, detail="Поддерживается снятие от 1 до 50 банов")
     steam_ids = [_validate_steam_id(value) for value in steam_ids]
@@ -3243,8 +3229,8 @@ async def swap_player(srv, sid, steam_id, faction):
 async def server_player_swap(sid: str, steam_id: str, request: Request):
     """SW: смена стороны с проверкой перевеса (до свапа)."""
     steam_id = _validate_steam_id(steam_id)
-    body = await _json_object(request)
-    faction = str(body.get("faction") or "").strip()
+    payload = await _validated(request, PlayerSwapRequest)
+    faction = str(payload.faction or "").strip()
     async def action(srv):
         ok, code, message = await swap_player(srv, sid, steam_id, faction)
         if not ok:
