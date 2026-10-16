@@ -1,0 +1,22 @@
+services:
+  discord-bot:
+    build: .
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    environment:
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - bot-data:/app/data
+      - bot-backups:/app/backups
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+    mem_limit: 256m
+    pids_limit: 128
+
+volumes:
+  bot-data:
+  bot-backups:

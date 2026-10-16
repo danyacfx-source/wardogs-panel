@@ -23,6 +23,12 @@ WARDOGS_ALLOWED_HOSTS=panel.dendich.online
 WARDOGS_DB=/app/data/site.db
 WARDOGS_ALLOW_SQLITE_PRODUCTION=1
 WARDOGS_ALLOW_INSECURE_RCON=1
+# Авто-бэкап site.db в Discord-канал: при обновлении проекта /app/data может
+# быть пуст — панель восстановит БД из последнего бэкапа автоматически.
+# Укажите ID канала, куда бот (DISCORD_BOT_TOKEN) может писать вложения.
+WARDOGS_BACKUP_CHANNEL_ID=
+WARDOGS_BACKUP_INTERVAL=21600
+WARDOGS_BACKUP_KEEP=7
 
 STEAM_API_KEY=
 DISCORD_CLIENT_ID=

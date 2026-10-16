@@ -74,6 +74,33 @@ async def on_command_error(ctx, error):
         pass
 
 
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: Exception):
+    """Глобальная обработка ошибок slash-команд и кнопок."""
+    original = getattr(error, "original", error)
+    log.error(
+        "App command error in %s (user=%s): %s",
+        getattr(interaction.command, "qualified_name", interaction.data.get("custom_id", "?") if interaction.data else "?"),
+        interaction.user,
+        original,
+        exc_info=original,
+    )
+    message = "Произошла ошибка. Попробуйте позже."
+    if isinstance(original, discord.Forbidden):
+        message = "Недостаточно прав для этого действия."
+    elif isinstance(original, discord.NotFound):
+        message = "Объект не найден (возможно, был удалён)."
+    elif isinstance(original, commands.CheckFailure):
+        return
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(message, ephemeral=True)
+        else:
+            await interaction.response.send_message(message, ephemeral=True)
+    except Exception:
+        pass
+
+
 async def _lease_heartbeat():
     try:
         await bot.wait_until_ready()
