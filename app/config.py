@@ -177,6 +177,12 @@ BACKUP_INTERVAL_SECONDS = max(1800, int(os.environ.get("WARDOGS_BACKUP_INTERVAL"
 # Сколько последних бэкапов хранить в канале.
 BACKUP_KEEP = max(1, min(20, int(os.environ.get("WARDOGS_BACKUP_KEEP") or 7)))
 
+# Discord-роль VIP: выдаётся/снимается панелью при выдаче/истечении VIP-слота.
+# Пусто — роль не трогается (только reserved-slots в игре).
+VIP_ROLE_ID = (os.environ.get("WARDOGS_VIP_ROLE_ID") or "").strip()
+if VIP_ROLE_ID and not re.fullmatch(r"\d{1,20}", VIP_ROLE_ID):
+    raise RuntimeError("WARDOGS_VIP_ROLE_ID должен быть числовым идентификатором")
+
 ADMIN_ROLES = [
     part.strip()
     for part in (os.environ.get("WARDOGS_ADMIN_ROLES") or "").split(",")

@@ -2450,7 +2450,32 @@ async def _sync_vip_record(item, add=True):
         return False, str(message)
     state = "synced" if add else "expired"
     await db.mark_vip_sync(item["id"], state, "")
+    # Discord-роль VIP: выдаём при добавлении, снимаем при истечении
+    # (только если у игрока не осталось других активных слотов).
+    try:
+        if add:
+            await dmod.grant_vip_role(item["steam_id"])
+        else:
+            if not await _has_active_vip_slot_anywhere(item["steam_id"]):
+                await dmod.revoke_vip_role(item["steam_id"])
+    except Exception:
+        log.exception("VIP role sync failed for %s", item["steam_id"])
     return True, ""
+
+
+async def _has_active_vip_slot_anywhere(steam_id: str) -> bool:
+    """Есть ли у игрока хотя бы один активный VIP-слот на любом сервере."""
+    now = time.time()
+    for srv in POOL.values():
+        try:
+            for slot in await db.list_vip_slots(srv.id):
+                if slot["steam_id"] == steam_id and (
+                    slot["expires_utc"] is None or slot["expires_utc"] > now
+                ):
+                    return True
+        except Exception:
+            pass
+    return False
 
 
 async def expire_vip_slots():

@@ -277,6 +277,64 @@ async def bot_panel_request(method, path, payload=None):
         return None, "API бота временно недоступен"
 
 
+async def grant_vip_role(steam_id: str) -> bool:
+    """Выдаёт VIP-роль в гильдии по привязке steam→discord.
+
+    Возвращает True, если роль выдана (или уже была). False — ошибка/нет привязки.
+    """
+    if not config.VIP_ROLE_ID or not config.DISCORD_BOT_TOKEN or not config.GUILD_ID:
+        return False
+    binding = await db.get_binding(steam_id)
+    if not binding or not binding.get("discord_id") or not binding.get("guild_member"):
+        return False
+    discord_id = str(binding["discord_id"])
+    if not DISCORD_ID_RE.fullmatch(discord_id):
+        return False
+    timeout = aiohttp.ClientTimeout(total=15)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.put(
+                f"{API}/guilds/{config.GUILD_ID}/members/{discord_id}/roles/{config.VIP_ROLE_ID}",
+                headers={"Authorization": f"Bot {config.DISCORD_BOT_TOKEN}"},
+            ) as resp:
+                if resp.status in (204, 200):
+                    return True
+                if resp.status == 204 or resp.status == 404:
+                    # 404 = роль уже есть или участник не найден — проверяем
+                    pass
+                log.warning("vip role grant: HTTP %s for %s", resp.status, steam_id)
+                return False
+    except (aiohttp.ClientError, OSError, asyncio.TimeoutError):
+        log.warning("vip role grant failed for %s", steam_id)
+        return False
+
+
+async def revoke_vip_role(steam_id: str) -> bool:
+    """Снимает VIP-роль в гильдии по привязке steam→discord."""
+    if not config.VIP_ROLE_ID or not config.DISCORD_BOT_TOKEN or not config.GUILD_ID:
+        return False
+    binding = await db.get_binding(steam_id)
+    if not binding or not binding.get("discord_id"):
+        return False
+    discord_id = str(binding["discord_id"])
+    if not DISCORD_ID_RE.fullmatch(discord_id):
+        return False
+    timeout = aiohttp.ClientTimeout(total=15)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.delete(
+                f"{API}/guilds/{config.GUILD_ID}/members/{discord_id}/roles/{config.VIP_ROLE_ID}",
+                headers={"Authorization": f"Bot {config.DISCORD_BOT_TOKEN}"},
+            ) as resp:
+                if resp.status in (204, 200, 404):
+                    return True
+                log.warning("vip role revoke: HTTP %s for %s", resp.status, steam_id)
+                return False
+    except (aiohttp.ClientError, OSError, asyncio.TimeoutError):
+        log.warning("vip role revoke failed for %s", steam_id)
+        return False
+
+
 def compute_permissions(binding, role_map, perms_map):
     """Права пользователя по его ролям в гильдии.
 
