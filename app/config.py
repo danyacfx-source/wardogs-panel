@@ -167,6 +167,15 @@ GIVEAWAY_AUTHOR_ID = (os.environ.get("WARDOGS_GIVEAWAY_AUTHOR_ID") or "").strip(
 CLAN_SYNC_SECRET = (os.environ.get("WARDOGS_CLAN_SYNC_SECRET") or "").strip()
 # Публичный ключ приложения для проверки подписи slash-команд (пусто — берётся из Discord API).
 DISCORD_PUBLIC_KEY = (os.environ.get("DISCORD_PUBLIC_KEY") or "").strip()
+# Канал для авто-бэкапов site.db (пусто — бэкапы выключены).
+# Потеря /app/data при обновлении Bothost восстанавливается из последнего бэкапа.
+BACKUP_CHANNEL_ID = (os.environ.get("WARDOGS_BACKUP_CHANNEL_ID") or "").strip()
+if BACKUP_CHANNEL_ID and not re.fullmatch(r"\d{1,20}", BACKUP_CHANNEL_ID):
+    raise RuntimeError("WARDOGS_BACKUP_CHANNEL_ID должен быть числовым идентификатором")
+# Интервал авто-бэкапа в секундах (минимум 30 минут).
+BACKUP_INTERVAL_SECONDS = max(1800, int(os.environ.get("WARDOGS_BACKUP_INTERVAL") or 21600))
+# Сколько последних бэкапов хранить в канале.
+BACKUP_KEEP = max(1, min(20, int(os.environ.get("WARDOGS_BACKUP_KEEP") or 7)))
 
 ADMIN_ROLES = [
     part.strip()

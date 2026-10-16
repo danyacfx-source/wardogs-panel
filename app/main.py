@@ -18,9 +18,10 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 import aiohttp
 
 try:
-    from . import api, config, db, donate, interactions, monitor
+    from . import api, backup, config, db, donate, interactions, monitor
 except ImportError:  # Поддержка прямого запуска: python app/main.py
     import api
+    import backup
     import config
     import db
     import donate
@@ -80,20 +81,52 @@ async def maintenance_loop(stop_event):
 @asynccontextmanager
 async def lifespan(app):
     config.validate_runtime()
+    # Bothost при обновлении пересоздаёт контейнер и /app/data может быть
+    # пуст — восстанавливаем site.db из резервного Discord-канала до init().
+    if config.BACKUP_CHANNEL_ID and config.DISCORD_BOT_TOKEN:
+        try:
+            restored = await backup.restore_backup()
+            if restored:
+                log.info("site.db восстановлена из резервного канала")
+        except Exception:
+            log.exception("Ошибка восстановления site.db из Discord")
     await db.init()
     await db.prune_sessions()
+    log.info(
+        "База данных: %s (%s, %d байт)",
+        config.DB_PATH,
+        config.DB_BACKEND,
+        config.DB_PATH.stat().st_size if config.DB_PATH.exists() else 0,
+    )
     stop_health = asyncio.Event()
     health_task = None
     maintenance_task = None
     discord_task = None
+    backup_task = None
     if not config.DISABLE_BACKGROUND:
         health_task = asyncio.create_task(monitor.health_loop(api.POOL, stop_health))
         maintenance_task = asyncio.create_task(maintenance_loop(stop_health))
         discord_task = asyncio.create_task(interactions.startup())
+        if config.BACKUP_CHANNEL_ID and config.DISCORD_BOT_TOKEN:
+            # Стартовый бэкап — сразу фиксируем текущее состояние.
+            async def _initial_backup():
+                try:
+                    await asyncio.sleep(30)
+                    await backup.send_backup()
+                except Exception:
+                    log.exception("Ошибка стартового бэкапа")
+            backup_task = asyncio.create_task(backup.backup_loop(stop_health))
+            asyncio.create_task(_initial_backup())
     log.info("WARDOGS-site запущен: %s (servers: %s)", config.PUBLIC_URL, ", ".join(s["id"] for s in config.SERVERS))
     yield
     stop_health.set()
-    for task in (health_task, maintenance_task, discord_task):
+    # Финальный бэкап перед остановкой — фиксируем изменения с последнего цикла.
+    if backup_task is not None:
+        try:
+            await asyncio.wait_for(backup.send_backup(), timeout=20)
+        except Exception:
+            log.exception("Ошибка финального бэкапа")
+    for task in (health_task, maintenance_task, discord_task, backup_task):
         if task is None:
             continue
         try:

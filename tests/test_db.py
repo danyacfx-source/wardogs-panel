@@ -123,6 +123,7 @@ def test_player_presence_tracks_time_and_sessions(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "presence.db")
     clock = {"now": 1_000.0}
     monkeypatch.setattr(db, "_now", lambda: clock["now"])
+    monkeypatch.setattr(db.core, "_now", lambda: clock["now"])
     player = {
         "steamId": "76561190000000001",
         "name": "Игрок",
@@ -164,6 +165,7 @@ def test_player_leaderboard_supports_multiple_sorts(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "leaderboard.db")
     clock = {"now": 2_000.0}
     monkeypatch.setattr(db, "_now", lambda: clock["now"])
+    monkeypatch.setattr(db.core, "_now", lambda: clock["now"])
     veteran = {"steamId": "76561190000000001", "name": "Ветеран", "kills": 4, "deaths": 2}
     fragger = {"steamId": "76561190000000002", "name": "Фраггер", "kills": 10, "deaths": 5}
 
