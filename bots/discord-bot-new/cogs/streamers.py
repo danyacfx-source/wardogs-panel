@@ -23,15 +23,12 @@ log = logging.getLogger("streamers")
 LIVE_COLOR = discord.Color(0x9146FF)
 OFFLINE_COLOR = discord.Color(0x5865F2)
 
-# ID владельца бота: в ЛС разрешаем управление только ему (модель прав без ролей).
-_OWNER_ID = 635370416252125184
-
 
 def _can_manage_streamers(interaction: discord.Interaction) -> bool:
     """Право добавлять/удалять стримеров. На сервере — manage_guild, в ЛС — владелец."""
     if interaction.guild is not None:
         return interaction.user.guild_permissions.manage_guild
-    return interaction.user.id == _OWNER_ID
+    return interaction.user.id == config.OWNER_ID
 
 
 class StreamersCog(commands.Cog):

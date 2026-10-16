@@ -36,13 +36,7 @@ from database import (
 
 log = logging.getLogger("donation")
 
-TIERS = [
-    {"name": "Друг стаи", "roleId": 1553090039615852675, "min": 50000, "icon": "🐾"},
-    {"name": "Снабженец", "roleId": 1553092734791983174, "min": 250000, "icon": "📦"},
-    {"name": "Опора стаи", "roleId": 1553093158441590975, "min": 500000, "icon": "🛡️"},
-    {"name": "Хранитель рубежа", "roleId": 1553093418031386714, "min": 1000000, "icon": "⚔️"},
-    {"name": "Легенда WARDOGS|RU", "roleId": 1553093599862988910, "min": 2000000, "icon": "🏅"},
-]
+TIERS = config.DONATION_TIERS or []
 
 PRODUCTS = {
     "personal_1": {"name": "Личный VIP · 1 месяц", "kind": "personal", "months": 1, "seats": 1, "amount": 50000},
@@ -53,11 +47,11 @@ PRODUCTS = {
     "clan_30": {"name": "VIP для клана · 30 мест · 1 месяц", "kind": "clan", "months": 1, "seats": 30, "amount": 1200000},
 }
 
-VIP_ROLE_ID = 1552725871830503484
-CHANNEL_SUPPORT = 1552893505620418640
-CHANNEL_VIP = 1552895310945189938
-CHANNEL_THANKS = 1552893588780621904
-CHANNEL_TOP = 1552893678035673219
+VIP_ROLE_ID = config.DONATION_VIP_ROLE_ID
+CHANNEL_SUPPORT = config.DONATION_CHANNEL_SUPPORT
+CHANNEL_VIP = config.DONATION_CHANNEL_VIP
+CHANNEL_THANKS = config.DONATION_CHANNEL_THANKS
+CHANNEL_TOP = config.DONATION_CHANNEL_TOP
 
 ORDER_LIFETIME_MS = 2 * 60 * 60 * 1000
 PAYMENT_GRACE_MS = 24 * 60 * 60 * 1000

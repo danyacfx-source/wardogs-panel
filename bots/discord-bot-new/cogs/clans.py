@@ -19,6 +19,7 @@ from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from discord import app_commands
 from discord.ext import commands, tasks
 
+import config
 from config import GUILD_ID
 
 log = logging.getLogger("clans")
@@ -40,13 +41,13 @@ DATA_DIR = Path(os.getenv("DATA_DIR", "./data")).resolve()
 STATE_FILE = DATA_DIR / "clan_state.json"
 BACKUP_DIR = Path(os.getenv("BACKUP_DIR", str(DATA_DIR / "backups"))).resolve()
 
-CLAN_SYNC_URL = os.getenv("CLAN_SYNC_URL", os.getenv("SITE_SYNC_URL", "https://panel.dendich.online/api/public/clan-sync"))
-CLAN_SYNC_SECRET = os.getenv("CLAN_SYNC_SECRET", os.getenv("SITE_SYNC_SECRET", ""))
-CLAN_BACKUP_SECRET = os.getenv("CLAN_BACKUP_SECRET", os.getenv("BACKUP_SECRET", ""))
-CLAN_BACKUP_INTERVAL_HOURS = int(os.getenv("CLAN_BACKUP_INTERVAL_HOURS", "24"))
-CLAN_BACKUP_RETENTION = int(os.getenv("CLAN_BACKUP_RETENTION", "30"))
-CLAN_ADMIN_ROLE_ID = int(os.getenv("CLAN_ADMIN_ROLE_ID", "0"))
-CLAN_BACKUP_CHANNEL_ID = int(os.getenv("CLAN_BACKUP_CHANNEL_ID", "0"))
+CLAN_SYNC_URL = config.CLAN_SYNC_URL
+CLAN_SYNC_SECRET = config.CLAN_SYNC_SECRET
+CLAN_BACKUP_SECRET = config.CLAN_BACKUP_SECRET
+CLAN_BACKUP_INTERVAL_HOURS = config.CLAN_BACKUP_INTERVAL_HOURS
+CLAN_BACKUP_RETENTION = config.CLAN_BACKUP_RETENTION
+CLAN_ADMIN_ROLE_ID = config.CLAN_ADMIN_ROLE_ID
+CLAN_BACKUP_CHANNEL_ID = config.CLAN_BACKUP_CHANNEL_ID
 
 
 def clean(value, max_len=2000):

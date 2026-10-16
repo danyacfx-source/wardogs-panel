@@ -1790,8 +1790,9 @@ def seed_hash_code(discord_id: str, code: str) -> str:
 
 def _hash_code(discord_id: str, code: str) -> str:
     import hashlib as _hashlib
+    import config as _config
 
-    key = os.getenv("SEED_CHALLENGE_KEY", "wardogs-seeding-v1").encode()
+    key = (_config.SEED_CHALLENGE_KEY or "wardogs-seeding-v1").encode()
     return _hashlib.sha256(key + b"\0" + str(discord_id).encode() + b"\0" + str(code).strip().upper().encode()).hexdigest()
 
 
