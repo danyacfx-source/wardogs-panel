@@ -554,6 +554,27 @@ class SeedingCog(commands.Cog):
             out.append(("second", "Сервер 2", self.rcon2))
         return out
 
+    @commands.Cog.listener()
+    async def on_interaction(self, interaction: discord.Interaction):
+        if not interaction.data:
+            return
+        custom_id = interaction.data.get("custom_id", "")
+        if not custom_id.startswith("seed:gather:connect:"):
+            return
+        parts = custom_id.split(":")
+        # seed:gather:connect:<serverId>:<sessionId>
+        if len(parts) < 5:
+            return
+        server_id, session_id = parts[3], parts[4]
+        sessions = seed_get_state("seeding_gathers", {}) or {}
+        session = sessions.get(server_id)
+        if not session:
+            embed = discord.Embed(color=0x3498DB, title="🎮 Подключение",
+                                  description="Этот сбор уже завершён. Свяжитесь с администрацией для уточнения.")
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        await self._send_gather_instructions(interaction, session)
+
     # ---------- Seed tick loop ----------
 
     @tasks.loop(seconds=max(15, config.SEED_TICK_SECONDS))
@@ -1292,6 +1313,7 @@ class SeedingCog(commands.Cog):
         if not isinstance(channel, discord.TextChannel):
             return
         embed = self._gather_embed(session)
+        view = self._gather_connect_view(session)
         msg_id = session.get("cardMessageId")
         message = None
         if msg_id:
@@ -1301,35 +1323,82 @@ class SeedingCog(commands.Cog):
                 message = None
         if message:
             try:
-                await message.edit(embed=embed)
+                await message.edit(embed=embed, view=view)
             except Exception as e:
                 log.warning("gather edit failed: %s", e)
         else:
             try:
-                message = await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                message = await channel.send(embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
                 session["cardMessageId"] = str(message.id)
             except Exception as e:
                 log.warning("gather send failed: %s", e)
 
     def _gather_embed(self, session: dict) -> discord.Embed:
-        status_labels = {
-            "active": "🟢 Сбор идёт",
-            "reached": "✅ Цель достигнута",
-            "expired": "⏰ Время вышло",
-            "cancelled": "❌ Отменён",
-        }
+        status = session.get("status")
         population = session.get("population")
         target = session.get("target", 20)
-        desc = session.get("instructions") or f"Подключайтесь к {session.get('serverName') or 'серверу WARDOGS'}"
-        embed = discord.Embed(
-            color=discord.Color.green() if session.get("status") == "active" else discord.Color.orange(),
-            title=f"🐺 Сбор на {str(session.get('label') or 'сервер').lower()}",
-            description=f"{status_labels.get(session.get('status'), session.get('status'))}\n\n{desc}",
-        )
-        embed.add_field(name="👥 Игроки", value=f"{population if population is not None else '?'}/{target}")
-        embed.add_field(name="⏱ Срок", value=f"<t:{int(session.get('expiresAt', 0) / 1000)}:R>")
-        embed.set_footer(text=f"ID: {session.get('id')}")
+        label = str(session.get("label") or "сервер")
+        server_name = session.get("serverName") or label
+        closed = status in ("cancelled", "expired")
+        reached = status == "reached"
+
+        if reached:
+            desc = f"**Цель достигнута: {population}/{target} игроков!**\nСпасибо каждому, кто помог собрать стаю."
+            color = discord.Color.green()
+            title = f"🎉 Цель достигнута · {label}"
+        elif closed:
+            desc = "Сбор остановлен администрацией." if status == "cancelled" else "Время сбора истекло. Можно объявить новый сбор."
+            color = discord.Color.dark_grey()
+            title = f"🏁 Сбор завершён · {label}"
+        elif population is None or not session.get("sampleOk", True):
+            desc = "Связь с сервером временно недоступна. **Число игроков уточняется.**"
+            color = 0xD4A017
+            title = f"📣 Собираем стаю · {label}"
+        else:
+            missing = max(0, target - population)
+            filled = min(10, int(population / target * 10)) if target else 0
+            desc = (f"**Сейчас {population}/{target} — нужно ещё {missing}**\n\n"
+                    f"{'🟩' * filled}{'⬛' * (10 - filled)}\n\nЗаходите на сервер и помогите запустить игру!")
+            color = 0xD4A017
+            title = f"📣 Собираем стаю · {label}"
+
+        embed = discord.Embed(color=color, title=title, description=desc)
+        embed.add_field(name="🎮 Игровой сервер", value=server_name)
+        embed.add_field(name="🎯 Цель", value=f"{target} игроков", inline=True)
+        expires = session.get("expiresAt", 0)
+        embed.add_field(name="⏳ Срок сбора", value=f"<t:{int(expires / 1000)}:R>" if expires else "—", inline=True)
+        sample_at = session.get("sampleAt")
+        if sample_at:
+            name = "Последняя проверка" if (reached or closed or not session.get("sampleOk", True)) else "Данные обновлены"
+            embed.add_field(name=name, value=f"<t:{int(sample_at / 1000)}:R>", inline=False)
+        embed.set_footer(text=f"{'Итог сбора' if reached else 'Сбор'} №{session.get('id', '')}")
         return embed
+
+    def _gather_connect_view(self, session: dict) -> discord.ui.View:
+        server_id = session.get("serverId") or session.get("id") or ""
+        view = discord.ui.View(timeout=None)
+        btn = discord.ui.Button(label="Как подключиться", emoji="🎮", style=discord.ButtonStyle.primary,
+                                custom_id=f"seed:gather:connect:{server_id}:{session.get('id', '')}")
+        async def _cb(interaction: discord.Interaction):
+            await self._send_gather_instructions(interaction, session)
+        btn.callback = _cb
+        view.add_item(btn)
+        return view
+
+    async def _send_gather_instructions(self, interaction: discord.Interaction, session: dict):
+        instructions = session.get("instructions") or (
+            f"1. Запустите **WARDOGS**.\n2. Откройте список игровых серверов и найдите **{session.get('serverName') or session.get('label') or 'WARDOGS'}**.\n3. Подключитесь к этому серверу и дождитесь загрузки."
+        )
+        embed = discord.Embed(color=0x3498DB, title=f"🎮 Подключение · {session.get('label', '')}", description=instructions)
+        voice_ref = f"<#{config.SEED_VOICE_CHANNEL_ID}>" if config.SEED_VOICE_CHANNEL_ID else "голосовой канал сидинга"
+        rules_ref = f"<#{config.SEED_RULES_CHANNEL_ID}>" if config.SEED_RULES_CHANNEL_ID else "канал правил"
+        embed.add_field(name="🐾 Если участвуете в сидинге",
+                        value=f"Зайдите в голосовой канал {voice_ref}. Для начисления времени и баллов используйте подтверждённую Steam-привязку. Правила: {rules_ref} и команда `/seed help`.")
+        embed.set_footer(text="WARDOGS RU · Сидинг")
+        if interaction.response.is_done():
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        else:
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ---------- Backup loop ----------
 
@@ -1934,7 +2003,7 @@ class SeedingCog(commands.Cog):
             sessions[server.value] = session
             seed_set_state("seeding_gathers", sessions)
             await self._deliver_gather_card(session)
-        await interaction.followup.send(embed=self._gather_embed(session), ephemeral=True)
+        await interaction.followup.send(embed=self._gather_embed(session), view=self._gather_connect_view(session), ephemeral=True)
 
     @gather_group.command(name="stop", description="Остановить сбор игроков и закрыть карточку")
     @app_commands.choices(

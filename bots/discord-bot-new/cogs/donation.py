@@ -408,6 +408,7 @@ class DonationCog(commands.Cog):
         title = "🎉 Новый уровень поддержки!" if gained else "💛 Спасибо за поддержку!"
         embed = discord.Embed(color=color, title=title,
                               description=f"Спасибо <@{p['buyer_id']}> за вклад в развитие WARDOGS RU!")
+        embed.set_author(name="WARDOGS RU · БЛАГОДАРНОСТЬ")
         embed.add_field(name="Последний перевод", value=f"**{format_rub(p.get('amount') or 0)}**", inline=True)
         embed.add_field(name="Всего поддержано", value=f"**{format_rub(total_after)}**", inline=True)
         embed.add_field(name="Спонсорская роль",
