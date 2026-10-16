@@ -29,7 +29,7 @@ def test_upgrade_from_previous_release(tmp_path, monkeypatch):
 
     async def run():
         await db.init()
-        assert await db.schema_version() == 16
+        assert await db.schema_version() == 17
         with sqlite3.connect(database) as raw:
             assert raw.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0
             columns = {row[1] for row in raw.execute("PRAGMA table_info(site_audit)")}

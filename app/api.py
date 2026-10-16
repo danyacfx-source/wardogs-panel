@@ -1256,9 +1256,76 @@ def _public_clan(item, detail=False):
         result["leader"] = (item.get("leader") or {}).get("name") or "Не назначен"
         result["members"] = [
             {"name": member.get("name") or "Игрок", "member_role": member.get("member_role") or "Участник"}
-            for member in item.get("members") or []
-        ]
+        for member in item.get("members") or []
+    ]
     return result
+
+
+@router.get("/public/giveaways")
+async def public_giveaways_feed():
+    """Публичный фид розыгрышов (для страницы /giveaways/ на сайте)."""
+    entry = await db.load_public_registry("giveaways")
+    if not entry:
+        return {"version": 1, "generated_at": None, "source": {}, "giveaways": []}
+    feed = entry["payload"]
+    feed["updated_utc"] = entry["updated_utc"]
+    return feed
+
+
+@router.get("/public/clans-registry")
+async def public_clans_registry():
+    """Публичный реестр кланов, накачанный clans-bot через /public/clan-sync."""
+    entry = await db.load_public_registry("clans")
+    if not entry:
+        return {"version": 1, "generated_at": None, "source": {}, "clans": []}
+    feed = entry["payload"]
+    feed["updated_utc"] = entry["updated_utc"]
+    return feed
+
+
+@router.post("/public/clan-sync")
+async def public_clan_sync(request: Request):
+    """Приём реестра кланов от clans-bot (HMAC-SHA256: timestamp.body)."""
+    if not config.CLAN_SYNC_SECRET:
+        raise HTTPException(status_code=404, detail="clan-sync disabled")
+    timestamp = (request.headers.get("x-wardogs-timestamp") or "").strip()
+    signature = (request.headers.get("x-wardogs-signature") or "").strip().lower()
+    if not timestamp.isdigit() or not re.fullmatch(r"[0-9a-f]{64}", signature):
+        raise HTTPException(status_code=403, detail="bad signature")
+    ts = int(timestamp)
+    if abs(time.time() - ts) > 300:
+        raise HTTPException(status_code=403, detail="stale timestamp")
+    raw = await request.body()
+    if len(raw) > config.MAX_BODY_BYTES * 4:
+        raise HTTPException(status_code=413, detail="payload too large")
+    expected = hmac.new(
+        config.CLAN_SYNC_SECRET.encode(), f"{ts}.".encode() + raw, hashlib.sha256
+    ).hexdigest()
+    if not hmac.compare_digest(expected, signature):
+        raise HTTPException(status_code=403, detail="bad signature")
+    try:
+        body = json.loads(raw)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="invalid JSON") from exc
+    if not isinstance(body, dict) or not isinstance(body.get("clans"), list) or len(body["clans"]) > 100:
+        raise HTTPException(status_code=400, detail="invalid payload")
+    clans = []
+    for item in body["clans"]:
+        if not isinstance(item, dict):
+            continue
+        clan_id = str(item.get("id") or "")
+        name = str(item.get("name") or "").strip()
+        if not re.fullmatch(r"\d{17,20}", clan_id) or not 2 <= len(name) <= 48:
+            continue
+        clans.append(item)
+    feed = {
+        "version": 1,
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+        "source": body.get("source") if isinstance(body.get("source"), dict) else {},
+        "clans": clans,
+    }
+    await db.save_public_registry("clans", json.dumps(feed, ensure_ascii=False))
+    return {"ok": True, "clans": len(clans)}
 
 
 @router.get("/public/clans")

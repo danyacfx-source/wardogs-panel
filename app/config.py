@@ -158,6 +158,13 @@ DISCORD_BOT_PANEL_TOKEN = (os.environ.get("DISCORD_BOT_PANEL_TOKEN") or "").stri
 GUILD_ID = (os.environ.get("WARDOGS_GUILD_ID") or "").strip()
 # Канал Discord для логов банов/випок (пусто — логи в Discord не отправляются).
 DISCORD_LOG_CHANNEL_ID = (os.environ.get("WARDOGS_LOG_CHANNEL_ID") or "").strip()
+# Канал розыгрышов и ID бота-автора: панель сама строит публичный фид
+# GET /api/public/giveaways (пусто — фид не синхронизируется).
+GIVEAWAY_CHANNEL_ID = (os.environ.get("WARDOGS_GIVEAWAY_CHANNEL_ID") or "").strip()
+GIVEAWAY_AUTHOR_ID = (os.environ.get("WARDOGS_GIVEAWAY_AUTHOR_ID") or "").strip()
+# Общий секрет HMAC для приёма реестра кланов от clans-bot
+# (POST /api/public/clan-sync; пусто — приём выключен).
+CLAN_SYNC_SECRET = (os.environ.get("WARDOGS_CLAN_SYNC_SECRET") or "").strip()
 # Публичный ключ приложения для проверки подписи slash-команд (пусто — берётся из Discord API).
 DISCORD_PUBLIC_KEY = (os.environ.get("DISCORD_PUBLIC_KEY") or "").strip()
 

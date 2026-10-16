@@ -10,7 +10,7 @@ def test_migration_and_site_audit(tmp_path, monkeypatch):
 
     async def run():
         await db.init()
-        assert await db.schema_version() == 16
+        assert await db.schema_version() == 17
         await db.upsert_user("76561190000000000", "Test")
         session_token = await db.create_session("76561190000000000")
         with sqlite3.connect(tmp_path / "test.db") as raw:

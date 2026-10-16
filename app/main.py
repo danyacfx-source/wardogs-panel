@@ -56,6 +56,10 @@ CALC_ASSET_ORIGIN = "https://wardogs.zone/game/maps/tiles/"
 
 async def maintenance_loop(stop_event):
     """Удаляет истёкшие сессии, OAuth-state и idempotency keys."""
+    try:
+        from . import giveaways as _giveaways
+    except ImportError:
+        import giveaways as _giveaways
     while not stop_event.is_set():
         try:
             await db.prune_sessions()
@@ -63,6 +67,10 @@ async def maintenance_loop(stop_event):
             await api.expire_managed_bans()
         except Exception:
             log.exception("Ошибка очистки временных записей базы")
+        try:
+            await _giveaways.sync_giveaways()
+        except Exception:
+            log.exception("Ошибка синхронизации розыгрышов")
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=600)
         except asyncio.TimeoutError:

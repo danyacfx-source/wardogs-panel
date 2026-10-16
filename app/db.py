@@ -2095,3 +2095,31 @@ async def list_bot_events(bot_id, limit=100):
             payload = {}
         result.append({"event_id": row[0], "event_type": row[1], "payload": payload, "created_utc": row[3]})
     return result
+
+
+async def save_public_registry(key, payload_json):
+    """Сохраняет публичный JSON-фид (розыгрыши, клановый реестр)."""
+    async with _conn() as database:
+        await database.execute(
+            "INSERT INTO public_registry (key, payload_json, updated_utc) VALUES (?, ?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET payload_json=excluded.payload_json, "
+            "updated_utc=excluded.updated_utc",
+            (key, payload_json, _now()),
+        )
+        await database.commit()
+
+
+async def load_public_registry(key):
+    async with _conn() as database:
+        cur = await database.execute(
+            "SELECT payload_json, updated_utc FROM public_registry WHERE key = ?",
+            (key,),
+        )
+        row = await cur.fetchone()
+    if not row:
+        return None
+    try:
+        payload = json.loads(row[0])
+    except (TypeError, ValueError):
+        return None
+    return {"payload": payload, "updated_utc": row[1]}
