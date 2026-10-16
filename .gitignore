@@ -7,6 +7,7 @@ site.db
 *.zip
 *.rar
 *.log
+_local/
 
 # Python-generated files
 __pycache__/
@@ -27,4 +28,5 @@ bots/**/data/
 .vscode/
 .DS_Store
 Thumbs.db
+
 
