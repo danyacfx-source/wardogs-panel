@@ -50,6 +50,30 @@ bot = commands.Bot(
 )
 
 
+@bot.event
+async def on_error(event_method, *args, **kwargs):
+    """Глобальный логер необработанных событий — бот не падает, а пишет."""
+    log.error("Unhandled error in %s", event_method, exc_info=True)
+
+
+@bot.event
+async def on_command_error(ctx, error):
+    """Ошибка команды — отвечаем пользователю и логируем, но не роняем бота."""
+    if isinstance(error, commands.CommandNotFound):
+        return
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("Недостаточно прав для этой команды.")
+        return
+    if isinstance(error, commands.CommandOnCooldown):
+        await ctx.send(f"Подождите {error.retry_after:.1f}s.")
+        return
+    log.error("Command error in %s: %s", ctx.command, error, exc_info=True)
+    try:
+        await ctx.send("Ошибка при выполнении команды. Попробуйте позже.")
+    except Exception:
+        pass
+
+
 async def _lease_heartbeat():
     try:
         await bot.wait_until_ready()
@@ -260,11 +284,20 @@ async def main():
         async with bot:
             bot.run_id = RUN_ID
             for cog in COGS:
-                try:
-                    await bot.load_extension(cog)
-                    log.info("Загружен ког: %s", cog)
-                except Exception as e:
-                    log.exception("Ошибка загрузки %s: %s", cog, e)
+                # Retry до 3 раз с паузой — транзиентные ошибки сети/БД не роняют ког.
+                loaded = False
+                for attempt in range(3):
+                    try:
+                        await bot.load_extension(cog)
+                        log.info("Загружен ког: %s", cog)
+                        loaded = True
+                        break
+                    except Exception as e:
+                        log.warning("Ошибка загрузки %s (попытка %d/3): %s", cog, attempt + 1, e)
+                        if attempt < 2:
+                            await asyncio.sleep(2.0 * (attempt + 1))
+                if not loaded:
+                    log.error("Ког %s не загрузился после 3 попыток — пропускаю", cog)
             # Сердцебиение лисцпа, чтобы живой бот не терял владение.
             bot.loop.create_task(_lease_heartbeat())
             await bot.start(config.TOKEN)

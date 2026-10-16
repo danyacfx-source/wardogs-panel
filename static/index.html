@@ -12,7 +12,7 @@
 <div id="app" v-cloak>
 <!-- WARDOGS_APP_TEMPLATE_START -->
 
-  <!-- ======= МОНРТОРРНГ ======= -->
+  <!-- ======= МОНИТОРИНГ ======= -->
   <div class="app-wrap">
     <header class="topbar public-topbar">
       <div class="brand"><span class="brand-mark">W</span> WARDOGS <small>RUSSIAN COMMUNITY</small></div>
@@ -132,7 +132,7 @@
               <div class="v">{{ lightLabel(ov.status.lighting) }}</div>
             </div>
             <div class="card">
-              <div class="k">Ргроки</div>
+              <div class="k">Игроки</div>
               <div class="v big">{{ ov.status.players.current }} / {{ ov.status.players.max }}</div>
               <div class="bar"><div class="bar-fill" :style="{ width: pct(ov.status.players) + '%' }"></div></div>
               <div class="k">{{ modeLabel(ov.status.experiences) }}</div>
@@ -160,19 +160,19 @@
         <div v-else class="panel empty">Загрузка…</div>
       </section>
 
-      <!-- ===== РГРОКР (только просмотр) ===== -->
+      <!-- ===== ИГРОКИ (только просмотр) ===== -->
       <section v-if="state.tab === 'players'">
         <div v-if="ov && ov.error" class="panel err-box"><b>Сервер недоступен.</b> {{ ov.error.message }}</div>
         <template v-else-if="ov">
           <div class="panel">
             <div class="toolbar">
-              <h2>Ргроки на сервере — {{ ov.players ? ov.players.count : 0 }}</h2>
+              <h2>Игроки на сервере — {{ ov.players ? ov.players.count : 0 }}</h2>
             </div>
             <div class="table-scroll">
               <table class="tbl">
                 <thead>
                   <tr>
-                    <th>#</th><th>Ргрок</th><th>Команда</th><th class="num">K</th>
+                    <th>#</th><th>Игрок</th><th>Команда</th><th class="num">K</th>
                     <th class="num">D</th><th class="num">KD</th><th class="num">Касса</th>
                     <th class="num">Пинг</th>
                   </tr>

@@ -407,7 +407,7 @@ return function render(_ctx, _cache) {
                     _cache[26] || (_cache[26] = _createElementVNode("div", { class: "k" }, "Свет", -1)),
                     _createElementVNode("div", _hoisted_47, _toDisplayString(lightLabel(ov.status.lighting)), 1)
                   ]), _createElementVNode("div", _hoisted_48, [
-                    _cache[27] || (_cache[27] = _createElementVNode("div", { class: "k" }, "Ргроки", -1)),
+                    _cache[27] || (_cache[27] = _createElementVNode("div", { class: "k" }, "Игроки", -1)),
                     _createElementVNode("div", _hoisted_49, _toDisplayString(ov.status.players.current) + " / " + _toDisplayString(ov.status.players.max), 1),
                     _createElementVNode("div", _hoisted_50, [_createElementVNode("div", {
                       class: "bar-fill",
@@ -438,9 +438,9 @@ return function render(_ctx, _cache) {
           ? (_openBlock(), _createElementBlock("section", _hoisted_61, [(ov && ov.error)
               ? (_openBlock(), _createElementBlock("div", _hoisted_62, [_cache[30] || (_cache[30] = _createElementVNode("b", null, "Сервер недоступен.", -1)), _createTextVNode(" " + _toDisplayString(ov.error.message), 1)]))
               : ov
-                ? (_openBlock(), _createElementBlock("div", _hoisted_63, [_createElementVNode("div", _hoisted_64, [_createElementVNode("h2", null, "Ргроки на сервере — " + _toDisplayString(ov.players ? ov.players.count : 0), 1)]), _createElementVNode("div", _hoisted_65, [_createElementVNode("table", _hoisted_66, [_cache[31] || (_cache[31] = _createElementVNode("thead", null, [_createElementVNode("tr", null, [
+                ? (_openBlock(), _createElementBlock("div", _hoisted_63, [_createElementVNode("div", _hoisted_64, [_createElementVNode("h2", null, "Игроки на сервере — " + _toDisplayString(ov.players ? ov.players.count : 0), 1)]), _createElementVNode("div", _hoisted_65, [_createElementVNode("table", _hoisted_66, [_cache[31] || (_cache[31] = _createElementVNode("thead", null, [_createElementVNode("tr", null, [
                     _createElementVNode("th", null, "#"),
-                    _createElementVNode("th", null, "Ргрок"),
+                    _createElementVNode("th", null, "Игрок"),
                     _createElementVNode("th", null, "Команда"),
                     _createElementVNode("th", { class: "num" }, "K"),
                     _createElementVNode("th", { class: "num" }, "D"),

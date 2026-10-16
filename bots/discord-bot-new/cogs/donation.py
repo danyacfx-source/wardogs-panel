@@ -176,6 +176,53 @@ class DonationCog(commands.Cog):
         if self.site_base and self.checkout_secret and self.feed_token:
             self.feed_loop.start()
 
+    async def cog_load(self):
+        # Авто-upsert панелей на старте: поддержать/VIP работают сразу после рестарта
+        # без ручного /donation-admin setup.
+        self.bot.loop.create_task(self._startup_upsert())
+
+    async def _startup_upsert(self):
+        await self.bot.wait_until_ready()
+        guild = self.bot.get_guild(config.GUILD_ID)
+        if guild is None:
+            return
+        # Не создаём каналы/спонсорский чат — только обновляем уже настроенные панели.
+        for key, ch_id, embed_fn in (
+            ("support", CHANNEL_SUPPORT, self._support_embed),
+            ("vip", CHANNEL_VIP, self._vip_embed),
+        ):
+            try:
+                ch = guild.get_channel(ch_id)
+                if ch is None:
+                    continue
+                # Собираем view заново (custom_id те же — on_interaction разрулит).
+                if key == "support":
+                    btn = discord.ui.View()
+                    btn.add_item(discord.ui.Button(label="Поддержать", emoji="💛", style=discord.ButtonStyle.primary, custom_id="support:open"))
+                    comps = [btn]
+                else:
+                    vip_view = discord.ui.View()
+                    personal_select = discord.ui.Select(custom_id="vip:personal", placeholder="Выбрать личный VIP",
+                        options=[discord.SelectOption(label=PRODUCTS[k]["name"], value=k, description=format_rub(PRODUCTS[k]["amount"]))
+                                 for k in ["personal_1", "personal_3", "personal_12"]])
+                    clan_select = discord.ui.Select(custom_id="vip:clan", placeholder="Выбрать VIP для клана",
+                        options=[discord.SelectOption(label=PRODUCTS[k]["name"], value=k, description=format_rub(PRODUCTS[k]["amount"]))
+                                 for k in ["clan_10", "clan_20", "clan_30"]])
+                    vip_view.add_item(personal_select)
+                    vip_view2 = discord.ui.View()
+                    vip_view2.add_item(clan_select)
+                    comps = [vip_view, vip_view2]
+                await self._upsert_panel(guild, key, ch_id, embed_fn(), comps)
+                log.info("Панель %s обновлена на старте", key)
+            except Exception as e:
+                log.warning("Не удалось обновить панель %s на старте: %s", key, e)
+        # Топ-10 тоже.
+        try:
+            await self._refresh_top(guild)
+            log.info("Топ спонсоров обновлён на старте")
+        except Exception as e:
+            log.warning("Не удалось обновить топ на старте: %s", e)
+
     # ---- Slash commands ----
 
     @app_commands.command(name="donate", description="Поддержка WARDOGS RU")

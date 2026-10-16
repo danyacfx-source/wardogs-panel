@@ -446,6 +446,41 @@ class ClansCog(commands.Cog):
     async def cog_load(self):
         await self.store.load()
         self._session = aiohttp.ClientSession()
+        # Авто-refresh панелей/карточек на старте — чтобы уже настроенные
+        # эмбеды подхватились без ручного /clan-setup.
+        self.bot.loop.create_task(self._startup_refresh())
+
+    async def _startup_refresh(self):
+        await self.bot.wait_until_ready()
+        guild = self.bot.get_guild(GUILD_ID)
+        if guild is None:
+            return
+        setup = self.store.state.get("setup") or {}
+        # Панель регистрации.
+        reg_id = setup.get("registrationChannelId")
+        panel_id = setup.get("panelMessageId")
+        if reg_id and panel_id:
+            try:
+                ch = guild.get_channel(int(reg_id))
+                if isinstance(ch, discord.TextChannel):
+                    msg = await ch.fetch_message(int(panel_id))
+                    view = discord.ui.View(timeout=None)
+                    view.add_item(discord.ui.Button(custom_id="clan:apply", label="Подать заявку на регистрацию клана", emoji="🛡️", style=discord.ButtonStyle.success))
+                    await msg.edit(embed=self._registration_panel(), view=view)
+                    log.info("Клановая панель регистрации обновлена на старте")
+            except Exception as e:
+                log.warning("Не удалось обновить панель регистрации кланов: %s", e)
+        # Карточки кланов в списке + агитация.
+        for clan in list(self.store.state.get("clans", {}).values()):
+            try:
+                await self._update_clan_artifacts(guild, clan, sync=False)
+            except Exception as e:
+                log.warning("Не удалось обновить карточку клана %s: %s", clan.get("name"), e)
+        # Синк в сайт (один раз на старте).
+        try:
+            await sync_site(list(self.store.state.get("clans", {}).values()))
+        except Exception as e:
+            log.warning("Site sync on startup failed: %s", e)
 
     async def _ensure_channel(self, guild: discord.Guild, stored_id, **kwargs):
         if stored_id:
@@ -1578,6 +1613,7 @@ class ClansCog(commands.Cog):
                     pass
         await interaction.followup.send(f"Клан «{clan['name']}» распущен. Его роли, каналы и публичные карточки удалены.")
 
+    @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
         if not interaction.guild or interaction.guild_id != GUILD_ID:
             return
