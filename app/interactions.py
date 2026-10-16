@@ -126,9 +126,12 @@ async def _autocomplete(payload):
         if name == "side":
             status = await srv.api.status()
             factions = (status or {}).get("factionScores") or []
+            names = [f.get("name", "") for f in factions if f.get("name")]
+            if not names:
+                names = ["Valkyra", "Lonestar", "Manticore"]
             return {
                 "type": 8,
-                "data": {"choices": _choices([(f.get("name", ""), f.get("name", "")) for f in factions], query)},
+                "data": {"choices": _choices([(n, n) for n in names], query)},
             }
         if name == "player":
             data_players = await srv.api.players()

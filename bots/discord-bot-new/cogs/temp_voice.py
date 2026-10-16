@@ -166,14 +166,15 @@ async def _fetch_factions() -> list[str]:
     url = cfg.SEED_RCON_URL
     password = cfg.SEED_RCON_PASSWORD
     if not url or not password:
-        return []
+        return ["Valkyra", "Lonestar", "Manticore"]
     client = WardogsRconClient(url, password, label="tempvoice")
     try:
         scores = await client.faction_scores()
-        return [f["name"] for f in scores if f.get("name")]
+        names = [f["name"] for f in scores if f.get("name")]
+        return names or ["Valkyra", "Lonestar", "Manticore"]
     except Exception:
         log.warning("tempvoice: не удалось получить фракции из RCON", exc_info=True)
-        return []
+        return ["Valkyra", "Lonestar", "Manticore"]
     finally:
         await client.close()
 

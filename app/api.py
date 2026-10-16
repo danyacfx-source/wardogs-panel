@@ -3229,6 +3229,11 @@ async def _has_active_vip_slot(sid, steam_id):
     return False
 
 
+# SW cooldown: одна смена стороны за игру. Ключ — (sid, steam_id),
+# значение — map, на которой был сделан свап. Смена карты = новая игра.
+_sw_cooldown: dict[tuple[str, str], str] = {}
+
+
 async def swap_player(srv, sid, steam_id, faction):
     """Ядро SW: (ok, code, message). Проверка перевеса ДО свапа, затем PATCH."""
     if not faction or len(faction) > 80:
@@ -3241,12 +3246,24 @@ async def swap_player(srv, sid, steam_id, faction):
     source = str(current.get("faction") or "")
     if source.lower() == faction.lower():
         return False, "same_faction", "игрок уже в этой стороне"
+    # Кулдаун: 1 свап за игру (игра = текущая карта).
+    try:
+        status = await srv.api.status()
+        game_key = str((status or {}).get("map") or "")
+    except Exception:
+        game_key = ""
+    if game_key:
+        prev = _sw_cooldown.get((sid, steam_id))
+        if prev == game_key:
+            return False, "cooldown", "уже был свап на этой карте — 1 раз за игру"
     def count(name):
         return sum(1 for p in players if str(p.get("faction") or "").lower() == name.lower())
     diff = abs(count(source) - count(faction))
     if not _swap_allowed(diff, await _has_active_vip_slot(sid, steam_id)):
         return False, "balance", f"перевес {diff} больше допустимого (до +2, с VIP-слотом до +4)"
     await srv.api.request("PATCH", f"/v1/players/{steam_id}", json_body={"faction": faction})
+    if game_key:
+        _sw_cooldown[(sid, steam_id)] = game_key
     return True, "swapped", f"{steam_id} переведён в «{faction}» (перевес был {diff})"
 
 
@@ -3259,7 +3276,7 @@ async def server_player_swap(sid: str, steam_id: str, request: Request):
     async def action(srv):
         ok, code, message = await swap_player(srv, sid, steam_id, faction)
         if not ok:
-            status = 409 if code in {"not_online", "balance"} else 400
+            status = 409 if code in {"not_online", "balance", "cooldown"} else 400
             return JSONResponse({"error": {"code": code, "message": message}}, status_code=status)
 
     return await _server_action(sid, request, "move_faction", action, f"{steam_id} -> {faction}")
