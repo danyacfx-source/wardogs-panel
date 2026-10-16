@@ -269,6 +269,13 @@ def _gemini_translate_sync(text: str, target_lang: str) -> str | None:
     try:
         with urllib.request.urlopen(req, timeout=_LINE_TIMEOUT) as resp:
             body = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            detail = e.read().decode("utf-8", "replace")[:400]
+        except Exception:
+            detail = str(e)
+        log.warning("Gemini HTTP %s: %s", e.code, detail)
+        return None
     except Exception as e:
         log.warning("Gemini: %s", e)
         return None
@@ -317,6 +324,13 @@ def _groq_translate_sync(text: str, target_lang: str) -> str | None:
     try:
         with urllib.request.urlopen(req, timeout=_ENGINE_TIMEOUT) as resp:
             body = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            detail = e.read().decode("utf-8", "replace")[:400]
+        except Exception:
+            detail = str(e)
+        log.warning("Groq HTTP %s: %s", e.code, detail)
+        return None
     except Exception as e:
         log.warning("Groq: %s", e)
         return None
@@ -387,12 +401,15 @@ async def _translate_line(engines: _Translators, line: str) -> str:
         if i % 2 == 1:
             out.append(await _translate_token(engines, piece))
         elif piece.strip():
+            lead = piece[: len(piece) - len(piece.lstrip())]
+            trail = piece[len(piece.rstrip()) :]
+            body = piece.strip()
             try:
-                res = await asyncio.wait_for(_translate_text(engines, piece), _LINE_TIMEOUT)
+                res = await asyncio.wait_for(_translate_text(engines, body), _LINE_TIMEOUT)
             except asyncio.TimeoutError:
                 log.warning("Таймаут перевода строки, оставляю оригинал")
                 res = None
-            out.append(res if res is not None else piece)
+            out.append(lead + (res if res is not None else body) + trail)
         else:
             out.append(piece)
     return prefix + "".join(out)

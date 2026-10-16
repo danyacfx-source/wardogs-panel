@@ -7,6 +7,31 @@ from dotenv import load_dotenv
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv(override=True)
 
+
+def _bootstrap_proxy():
+    """Прокси из реестра Windows → env (urllib / deep_translator / aiohttp)."""
+    if os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy"):
+        return
+    try:
+        import winreg
+
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+        ) as key:
+            enable, _ = winreg.QueryValueEx(key, "ProxyEnable")
+            server, _ = winreg.QueryValueEx(key, "ProxyServer")
+        if enable and server:
+            if "://" not in server:
+                server = f"http://{server}"
+            os.environ.setdefault("HTTPS_PROXY", server)
+            os.environ.setdefault("HTTP_PROXY", server)
+    except Exception:
+        pass
+
+
+_bootstrap_proxy()
+
 log = logging.getLogger("config")
 
 
@@ -74,13 +99,14 @@ TRANSLATE_TARGET = os.getenv("TRANSLATE_TARGET", "ru")
 # ИИ-переводчик Gemini (бесплатный API, aistudio.google.com).
 # Ключ задаётся через GEMINI_API_KEY в .env.
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-# Точный id модели проверять в консоли Google AI Studio.
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+# Актуальные free-модели Google AI Studio (AIza... ключ, не OAuth).
+# Проверка ключа: ключ должен начинаться с AIza.
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 # Резервные AI-движки (используются, когда Gemini недоступен).
 # Groq: бесплатный API, console.groq.com; не работает из РФ, работает из EU.
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 # Фон rank-карточки (путь к картинке; пусто = градиент)
 RANK_BACKGROUND = os.getenv("RANK_BACKGROUND", "")
