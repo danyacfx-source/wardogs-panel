@@ -1793,6 +1793,11 @@ async def server_rotation_update(sid: str, request: Request):
     return {"ok": True, "rotation": data, "entries": entries}
 
 
+def _other_servers(sid):
+    """Все серверы панели, кроме указанного (для зеркальных банов)."""
+    return [server for server in POOL.values() if server.id != sid]
+
+
 async def _enrich_bans(sid, data):
     """Merge panel-managed expiry metadata into the live upstream ban list."""
     if not isinstance(data, dict):
@@ -2841,16 +2846,32 @@ async def server_ban_add(sid: str, request: Request):
         if e.status != 409:
             await _idempotency_abort(user["steam_id"], idem_key)
             return _rcon_error(e)
-    managed = await db.save_managed_ban(
-        sid, steam_id, display_name, reason, expires_utc, user["steam_id"]
-    )
-    await _invalidate(srv.id)
+    # Бан действует на все серверы: дублируем на остальные (409 = уже есть).
+    mirrored = []
+    for other in _other_servers(sid):
+        try:
+            await other.api.request("POST", "/v1/bans", json_body=payload)
+            mirrored.append(other.id)
+        except RCONError as e:
+            if e.status != 409:
+                log.warning("Зеркальный бан %s не удался на %s: %s", steam_id, other.id, e.message)
+    managed = None
+    for applied_sid in [sid] + mirrored:
+        saved = await db.save_managed_ban(
+            applied_sid, steam_id, display_name, reason, expires_utc, user["steam_id"]
+        )
+        if applied_sid == sid:
+            managed = saved
+        await _invalidate(applied_sid)
     await db.log_site_audit(user["steam_id"], sid, "ban.add", steam_id)
     disclog.emit(
         "ban.add", actor=user["steam_id"], server=srv.name, steam_id=steam_id,
-        detail=" · ".join(x for x in (reason, display_name) if x),
+        detail=" · ".join(x for x in (
+            reason, display_name,
+            f"зеркало: {', '.join(mirrored)}" if mirrored else "",
+        ) if x),
     )
-    response = {"ok": True, "managed_ban": managed}
+    response = {"ok": True, "managed_ban": managed, "mirrored": mirrored}
     await _idempotency_complete(user["steam_id"], idem_key, response)
     return response
 
@@ -2874,8 +2895,17 @@ async def server_ban_del(sid: str, steam_id: str, request: Request):
         if e.status != 404:
             await _idempotency_abort(user["steam_id"], idem_key)
             return _rcon_error(e)
-    await db.delete_managed_ban(sid, steam_id)
-    await _invalidate(srv.id)
+    # Снятие тоже глобальное: чистим остальные серверы и их managed-записи.
+    others = _other_servers(sid)
+    for other in others:
+        try:
+            await other.api.request("DELETE", f"/v1/bans/{steam_id}")
+        except RCONError as e:
+            if e.status != 404:
+                log.warning("Зеркальное снятие банa %s не удалось на %s: %s", steam_id, other.id, e.message)
+    for applied_sid in [sid] + [s.id for s in others]:
+        await db.delete_managed_ban(applied_sid, steam_id)
+        await _invalidate(applied_sid)
     await db.log_site_audit(user["steam_id"], sid, "ban.remove", steam_id)
     disclog.emit("ban.remove", actor=user["steam_id"], server=srv.name, steam_id=steam_id)
     await _idempotency_complete(user["steam_id"], idem_key, {"ok": True})
@@ -2908,10 +2938,21 @@ async def server_ban_update(sid: str, steam_id: str, request: Request):
         except RCONError:
             log.exception("Не удалось восстановить бан %s после ошибки обновления", steam_id)
         return _rcon_error(exc)
-    managed = await db.save_managed_ban(
-        sid, steam_id, current["display_name"], reason, expires_utc, user["steam_id"]
-    )
-    await _invalidate(sid)
+    # Обновление зеркалим на остальные серверы (best-effort).
+    for other in _other_servers(sid):
+        try:
+            await other.api.request("DELETE", f"/v1/bans/{steam_id}")
+            await other.api.request("POST", "/v1/bans", json_body={"steamId": steam_id, "reason": reason})
+        except RCONError as exc:
+            log.warning("Зеркальное обновление бана %s не удалось на %s: %s", steam_id, other.id, exc.message)
+    managed = None
+    for applied_sid in [sid] + [s.id for s in _other_servers(sid)]:
+        saved = await db.save_managed_ban(
+            applied_sid, steam_id, current["display_name"], reason, expires_utc, user["steam_id"]
+        )
+        if applied_sid == sid:
+            managed = saved
+        await _invalidate(applied_sid)
     await db.log_site_audit(user["steam_id"], sid, "ban.update", steam_id)
     disclog.emit(
         "ban.update", actor=user["steam_id"],
@@ -2934,18 +2975,29 @@ async def server_bans_bulk(sid: str, request: Request):
         raise HTTPException(status_code=400, detail="Поддерживается снятие от 1 до 50 банов")
     steam_ids = [_validate_steam_id(value) for value in steam_ids]
     results = []
+    others = _other_servers(sid)
     for steam_id in steam_ids:
         try:
             await srv.api.request("DELETE", f"/v1/bans/{steam_id}")
-            await db.delete_managed_ban(sid, steam_id)
-            results.append({"steam_id": steam_id, "ok": True})
+            ok = True
         except RCONError as exc:
             if exc.status == 404:
-                await db.delete_managed_ban(sid, steam_id)
-                results.append({"steam_id": steam_id, "ok": True, "already_absent": True})
+                ok = True
             else:
                 results.append({"steam_id": steam_id, "ok": False, "error": exc.message})
-    await _invalidate(sid)
+                continue
+        # Снятие зеркалим на остальные серверы (best-effort).
+        for other in others:
+            try:
+                await other.api.request("DELETE", f"/v1/bans/{steam_id}")
+            except RCONError as exc:
+                if exc.status != 404:
+                    log.warning("Зеркальное снятие банa %s не удалось на %s: %s", steam_id, other.id, exc.message)
+        for applied_sid in [sid] + [s.id for s in others]:
+            await db.delete_managed_ban(applied_sid, steam_id)
+        results.append({"steam_id": steam_id, "ok": ok})
+    for applied_sid in [sid] + [s.id for s in others]:
+        await _invalidate(applied_sid)
     succeeded = sum(1 for result in results if result["ok"])
     await db.log_site_audit(
         user["steam_id"], sid, "ban.bulk.remove", f"{succeeded}/{len(results)}"
