@@ -246,6 +246,46 @@ def _ai_system_instruction(lang_code: str) -> str:
     )
 
 
+# Резервные Gemini-модели, когда основная под 503 (спрос).
+_GEMINI_FALLBACK_MODELS = (
+    "gemini-3.5-flash-lite",
+    "gemini-3-flash-preview",
+)
+
+
+def _gemini_call_model(model: str, data: bytes, headers: dict, attempts: int = 3) -> str | None:
+    """Один запрос к модели. Ретраит 429/503. Возвращает текст или None."""
+    url = _GEMINI_URL.format(model=model)
+    for attempt in range(attempts):
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            try:
+                detail = e.read().decode("utf-8", "replace")[:400]
+            except Exception:
+                detail = str(e)
+            if e.code in (429, 503) and attempt < attempts - 1:
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            log.warning("Gemini[%s] HTTP %s: %s", model, e.code, detail)
+            return None
+        except Exception as e:
+            log.warning("Gemini[%s]: %s", model, e)
+            return None
+        try:
+            parts = body["candidates"][0]["content"]["parts"]
+            out = "".join(p.get("text", "") for p in parts).strip()
+        except (KeyError, IndexError, TypeError):
+            log.warning("Gemini[%s]: неожиданный ответ: %s", model, json.dumps(body, ensure_ascii=False)[:250])
+            return None
+        if out and not _is_error(out):
+            return out
+        return None
+    return None
+
+
 def _gemini_translate_sync(text: str, target_lang: str) -> str | None:
     """Перевод через Gemini API (REST). Текст идёт в contents отдельно от
     system_instruction, чтобы пост (с его заголовками) не склеивался с командами."""
@@ -255,39 +295,24 @@ def _gemini_translate_sync(text: str, target_lang: str) -> str | None:
         "contents": [{"role": "user", "parts": [{"text": text}]}],
         "generationConfig": {"temperature": 0.2, "topP": 0.95, "maxOutputTokens": 4096},
     }
-    url = _GEMINI_URL.format(model=config.GEMINI_MODEL)
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "x-goog-api-key": config.GEMINI_API_KEY,
-            "User-Agent": "wardogs-bot/1.0",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=_LINE_TIMEOUT) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        try:
-            detail = e.read().decode("utf-8", "replace")[:400]
-        except Exception:
-            detail = str(e)
-        log.warning("Gemini HTTP %s: %s", e.code, detail)
-        return None
-    except Exception as e:
-        log.warning("Gemini: %s", e)
-        return None
-    try:
-        parts = body["candidates"][0]["content"]["parts"]
-        out = "".join(p.get("text", "") for p in parts).strip()
-    except (KeyError, IndexError, TypeError):
-        log.warning("Gemini: неожиданный ответ: %s", json.dumps(body, ensure_ascii=False)[:250])
-        return None
-    if not out or _is_error(out):
-        return None
-    return out
+    data = json.dumps(payload).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": config.GEMINI_API_KEY,
+        "User-Agent": "wardogs-bot/1.0",
+    }
+    primary = config.GEMINI_MODEL
+    out = _gemini_call_model(primary, data, headers, attempts=3)
+    if out:
+        return out
+    for model in _GEMINI_FALLBACK_MODELS:
+        if model == primary:
+            continue
+        out = _gemini_call_model(model, data, headers, attempts=1)
+        if out:
+            log.info("Gemini: %s занята, переведено через %s", primary, model)
+            return out
+    return None
 
 
 def _gemini_active(target_lang: str) -> bool:
@@ -429,12 +454,12 @@ async def async_translate_text(text: str, target_lang: str = "ru") -> str | None
     if not text or not text.strip():
         return None
 
-    # 1. Gemini: весь текст одним запросом.
+    # 1. Gemini: весь текст одним запросом (ретраи 503/429 + lite-фолбэк моделей).
     if _gemini_active(target_lang):
         try:
             out = await asyncio.wait_for(
                 asyncio.to_thread(_gemini_translate_sync, text, target_lang),
-                _LINE_TIMEOUT,
+                70,
             )
         except asyncio.TimeoutError:
             out = None

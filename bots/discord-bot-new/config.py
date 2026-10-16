@@ -99,9 +99,8 @@ TRANSLATE_TARGET = os.getenv("TRANSLATE_TARGET", "ru")
 # ИИ-переводчик Gemini (бесплатный API, aistudio.google.com).
 # Ключ задаётся через GEMINI_API_KEY в .env.
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-# Актуальные free-модели Google AI Studio (AIza... ключ, не OAuth).
-# Проверка ключа: ключ должен начинаться с AIza.
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# В 2026 актуальная free-модель — gemini-3.8-flash (ключ AI Studio, формат AQ./AIza).
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
 # Резервные AI-движки (используются, когда Gemini недоступен).
 # Groq: бесплатный API, console.groq.com; не работает из РФ, работает из EU.
