@@ -710,6 +710,14 @@ async def system_status(request: Request):
     return {"ok": all(item["ok"] for item in services), "services": services, "history": list(_service_history)}
 
 
+@router.post("/discord/log-test")
+async def discord_log_test(request: Request):
+    """Диагностика Discord-логов: токен бота, доступ к каналу, тестовая отправка."""
+    await _require_any_perm(request, {"audit", "roles", "config_view"})
+    result = await disclog.test_channel()
+    return JSONResponse(result, status_code=200 if result["ok"] else 400)
+
+
 @router.post("/auth/dev")
 async def auth_dev(request: Request):
     if not _dev_auth_allowed(request):

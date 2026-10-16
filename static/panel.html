@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>WARDOGS // Панель управления</title>
 <link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
-<link rel="stylesheet" href="/static/style.css?v=20261015-4" />
+<link rel="stylesheet" href="/static/style.css?v=20261015-5" />
 </head>
 <body data-panel-mode="panel">
 <div id="app" v-cloak>
@@ -940,7 +940,7 @@
 
       <!-- ===== СОСТОЯНРЕ СРСТЕМ ===== -->
       <section v-if="state.tab === 'system'">
-        <header class="staff-page-head"><div><div class="admin-path">— /admin/system</div><h2>Центр состояния</h2><p>Ргровые серверы, база, Steam, Discord и связь с «Асуной Юки» в одном месте.</p></div><button class="btn ghost" @click="loadSystemStatus" :disabled="systemStatus.loading">Проверить сейчас</button></header>
+        <header class="staff-page-head"><div><div class="admin-path">— /admin/system</div><h2>Центр состояния</h2><p>Ргровые серверы, база, Steam, Discord и связь с «Асуной Юки» в одном месте.</p></div><div class="toolbar-actions"><button class="btn ghost" @click="testLogChannel" :disabled="busy">Тест лог-канала</button><button class="btn ghost" @click="loadSystemStatus" :disabled="systemStatus.loading">Проверить сейчас</button></div></header>
         <div v-if="systemStatus.loading" class="skeleton-grid"><i v-for="n in 5" :key="n" class="skeleton-card"></i></div>
         <div v-else-if="systemStatus.error" class="panel err-box">{{ systemStatus.error }}</div>
         <template v-else><div class="status-service-grid"><article v-for="service in systemStatus.services" :key="service.id" class="panel status-service" :class="{failed: !service.ok}"><span class="dot" :class="{on: service.ok}"></span><div><h3>{{ service.name || service.id }}</h3><p>{{ service.detail || (service.ok ? 'Работает' : 'Недоступен') }}</p></div><b>{{ service.ok ? 'OK' : 'СБОЙ' }}</b></article></div><div class="panel"><h2>Рстория изменений состояния</h2><div class="table-scroll"><table class="tbl"><thead><tr><th>Время</th><th>Сервис</th><th>Состояние</th><th>Подробности</th></tr></thead><tbody><tr v-for="item in systemStatus.history" :key="`${item.timestamp_utc}-${item.service}`"><td>{{ fmtDate(item.timestamp_utc * 1000) }}</td><td>{{ item.service }}</td><td><span class="badge" :class="{warn: !item.ok}">{{ item.ok ? 'восстановлен' : 'сбой' }}</span></td><td>{{ item.detail }}</td></tr><tr v-if="!systemStatus.history.length"><td colspan="4" class="muted">Рзменений состояния пока нет.</td></tr></tbody></table></div></div></template>
@@ -1384,7 +1384,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/panel.render.js?v=20261015-4"></script>
-<script src="/static/app.js?v=20261015-4"></script>
+<script src="/static/panel.render.js?v=20261015-5"></script>
+<script src="/static/app.js?v=20261015-5"></script>
 </body>
 </html>

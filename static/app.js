@@ -1547,6 +1547,14 @@ const app = createApp({
         else this.systemStatus.error = data?.detail || "Не удалось получить состояние систем";
       } finally { this.systemStatus.loading = false; }
     },
+    async testLogChannel() {
+      this.busy = true;
+      try {
+        const { status, data } = await this.api.request("POST", "/api/discord/log-test");
+        if (status === 200 && data?.ok) this.toast("Лог-канал работает", "ok");
+        this.openActionDialog({ title: "Лог-канал", message: data?.detail || `HTTP ${status}`, confirmText: "Закрыть" });
+      } finally { this.busy = false; }
+    },
     async previewUserPermissions() {
       const values = await this.openActionDialog({ title: "Итоговые права пользователя", confirmText: "Показать", fields: [{ key: "steam_id", label: "SteamID64", validator: "steam64", required: true }] });
       if (!values) return;

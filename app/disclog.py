@@ -78,3 +78,61 @@ def emit(event, *, actor=None, server="", steam_id="", detail=""):
         "footer": {"text": "WARDOGS панель"},
     }
     _fire(_post({"embeds": [embed], "allowed_mentions": {"parse": []}}))
+
+
+async def test_channel():
+    """Диагностика лог-канала: токен, доступ бота к каналу, тестовая отправка."""
+    result = {"ok": False, "token": False, "channel": False, "send": False, "detail": ""}
+    if not config.DISCORD_BOT_TOKEN:
+        result["detail"] = "DISCORD_BOT_TOKEN не задан"
+        return result
+    if not config.DISCORD_LOG_CHANNEL_ID:
+        result["detail"] = "WARDOGS_LOG_CHANNEL_ID не задан"
+        return result
+    headers = {"Authorization": f"Bot {config.DISCORD_BOT_TOKEN}"}
+    timeout = aiohttp.ClientTimeout(total=15)
+    me = {}
+    chan = {}
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(f"{API}/users/@me", headers=headers) as resp:
+                if resp.status != 200:
+                    result["detail"] = f"токен отклонён Discord: HTTP {resp.status} (бот удалён или токен сброшен)"
+                    return result
+                me = await resp.json(content_type=None)
+                result["token"] = True
+            async with session.get(f"{API}/channels/{config.DISCORD_LOG_CHANNEL_ID}", headers=headers) as resp:
+                if resp.status != 200:
+                    hint = {
+                        404: "неверный ID или бот не добавлен в канал",
+                        403: "у бота нет прав View Channel/Send Messages",
+                    }.get(resp.status, "")
+                    result["detail"] = f"канал недоступен для бота: HTTP {resp.status}" + (f" ({hint})" if hint else "")
+                    return result
+                chan = await resp.json(content_type=None)
+                result["channel"] = True
+            payload = {
+                "embeds": [{
+                    "title": "Тест лог-канала",
+                    "description": "Панель WARDOGS отправляет сообщения сюда. Видишь это — логи банов/випок работают.",
+                    "color": 0x5865F2,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "footer": {"text": "WARDOGS панель · diagnostic"},
+                }],
+                "allowed_mentions": {"parse": []},
+            }
+            async with session.post(
+                f"{API}/channels/{config.DISCORD_LOG_CHANNEL_ID}/messages",
+                json=payload,
+                headers=headers,
+            ) as resp:
+                if resp.status >= 400:
+                    result["detail"] = f"отправка не удалась: HTTP {resp.status} {(await resp.text())[:160]}"
+                    return result
+                result["send"] = True
+    except Exception as exc:
+        result["detail"] = f"ошибка запроса к Discord: {type(exc).__name__}: {str(exc)[:120]}"
+        return result
+    result["ok"] = True
+    result["detail"] = f"бот {me.get('username', '?')} → #{chan.get('name', '?')} — тест отправлен, проверь канал"
+    return result

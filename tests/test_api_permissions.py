@@ -30,6 +30,12 @@ def test_audit_export_requires_permission():
     assert response.status_code == 401
 
 
+def test_log_channel_test_requires_permission():
+    with TestClient(app) as client:
+        response = client.post("/api/discord/log-test")
+    assert response.status_code == 401
+
+
 def test_csv_exports_escape_spreadsheet_formulas():
     response = _csv_response("audit.csv", ["detail"], [{"detail": "=HYPERLINK(\"https://evil.example\")"}])
     assert b"\'=HYPERLINK" in response.body
