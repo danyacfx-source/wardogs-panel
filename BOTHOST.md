@@ -33,7 +33,7 @@ WARDOGS_BACKUP_KEEP=7
 # Discord-роль VIP (ID роли). Выдаётся/снимается панелью при выдаче/истечении VIP-слота.
 # Требует DISCORD_BOT_TOKEN + WARDOGS_GUILD_ID + привязки steam→discord.
 # Пусто — роль не трогается (только reserved-slots в игре).
-WARDOGS_VIP_ROLE_ID=
+WARDOGS_VIP_ROLE_ID=1552725871830503484
 
 STEAM_API_KEY=
 DISCORD_CLIENT_ID=
