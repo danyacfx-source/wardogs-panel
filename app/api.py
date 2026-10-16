@@ -29,6 +29,7 @@ try:
     from . import discord as dmod
     from . import donate
     from . import disclog
+    from . import seed_store
     from . import steam as steam_mod
     from .rcon_client import RCONError, WardogsRCON
     from .schemas import (
@@ -49,6 +50,7 @@ except ImportError:
     import discord as dmod
     import donate
     import disclog
+    import seed_store
     import steam as steam_mod
     from rcon_client import RCONError, WardogsRCON
     from schemas import (
@@ -672,6 +674,60 @@ async def my_profile(request: Request):
         "audit": audit,
         "server_names": server_names,
     }
+
+
+@router.get("/seed/balance")
+async def seed_balance(request: Request):
+    """Баланс баллов сидинга + доступные SKU для покупки VIP."""
+    user = _require_user(await _current_user(request))
+    binding = await db.get_binding(user["steam_id"])
+    discord_id = (binding or {}).get("discord_id") or ""
+    if not discord_id:
+        return {"ok": False, "error": "Привяжите Discord в профиле, чтобы купить VIP за баллы."}
+    info = seed_store.get_balance(discord_id)
+    if info is None:
+        return {"ok": False, "error": "Привязка Discord↔Steam не найдена. Используйте /seed link в Discord."}
+    return {
+        "ok": True,
+        "balance": info["balance"],
+        "steam_id": info.get("steam_id") or "",
+        "display_name": info.get("display_name") or "",
+        "skus": [
+            {"sku": sku, "label": e["label"], "cost": e["cost"]}
+            for sku, e in seed_store.VIP_SKUS.items()
+        ],
+    }
+
+
+@router.post("/seed/vip")
+async def seed_vip_purchase(request: Request):
+    """Покупка VIP за баллы сидинга: списывает баллы, создаёт VIP-слот на всех серверах."""
+    user = _require_user(await _current_user(request))
+    body = await _json_object(request)
+    sku = str(body.get("sku") or "").strip()
+    if sku not in seed_store.VIP_SKUS:
+        raise HTTPException(status_code=400, detail="Неизвестный SKU")
+    binding = await db.get_binding(user["steam_id"])
+    discord_id = (binding or {}).get("discord_id") or ""
+    if not discord_id:
+        raise HTTPException(status_code=400, detail="Привяжите Discord в профиле")
+    result = seed_store.purchase_vip(discord_id, sku)
+    if not result["ok"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    duration = result["duration"]
+    expires_utc = time.time() + duration
+    steam_id = user["steam_id"]
+    display_name = user.get("steam_name") or steam_id
+    note = f"покупка за баллы сидинга ({sku})"
+    created = []
+    for srv in POOL.values():
+        item = await db.save_vip_slot(srv.id, steam_id, display_name, expires_utc, note, steam_id)
+        ok, error = await _sync_vip_record(item, add=True)
+        created.append({"server": srv.id, "ok": ok, "error": error or None})
+    await db.log_site_audit(steam_id, None, "vip.save", f"{steam_id}:seed:{sku}")
+    disclog.emit("vip.save", actor=steam_id, steam_id=steam_id,
+                 detail=f"VIP за баллы сидинга ({sku}), баланс: {result['balance']}")
+    return {"ok": True, "balance": result["balance"], "sku": sku, "expires_utc": expires_utc, "servers": created}
 
 
 @router.post("/donate/checkout")
