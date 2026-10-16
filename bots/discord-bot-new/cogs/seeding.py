@@ -397,6 +397,114 @@ class SeedingCog(commands.Cog):
         )
         # Warm-up capabilities (non-fatal)
         asyncio.create_task(self._warmup_rcon())
+        # Правила/гайд/магазин/рейтинг — авто-pub на старте.
+        asyncio.create_task(self._publish_rules_panel())
+
+    async def _publish_rules_panel(self):
+        """4 эмбеда в канале правил: правила, как начать, магазин, рейтинг.
+        Апсерт по сохранённому message_id — не плодит дубли."""
+        await self.bot.wait_until_ready()
+        if not config.SEED_RULES_CHANNEL_ID:
+            return
+        guild = self.bot.get_guild(config.GUILD_ID)
+        if guild is None:
+            return
+        try:
+            ch = guild.get_channel(config.SEED_RULES_CHANNEL_ID)
+            if ch is None:
+                ch = await guild.fetch_channel(config.SEED_RULES_CHANNEL_ID)
+        except Exception as e:
+            log.warning("Rules channel %s недоступен: %s", config.SEED_RULES_CHANNEL_ID, e)
+            return
+        if not isinstance(ch, discord.TextChannel):
+            return
+
+        voice = f"<#{config.SEED_VOICE_CHANNEL_ID}>" if config.SEED_VOICE_CHANNEL_ID else "голосовой канал сидинга"
+        shop = f"<#{config.SEED_SHOP_CHANNEL_ID}>" if config.SEED_SHOP_CHANNEL_ID else "канал магазина"
+        rank = f"<#{config.SEED_RANK_CHANNEL_ID}>" if config.SEED_RANK_CHANNEL_ID else "канал рейтинга"
+        rules_ch = f"<#{config.SEED_RULES_CHANNEL_ID}>"
+        seeder_role = f"<@&{config.SEEDER_ROLE_ID}>" if config.SEEDER_ROLE_ID else "роль сидера"
+        vip_role = f"<@&{config.VIP_ROLE_ID_SEED}>" if config.VIP_ROLE_ID_SEED else "VIP-роль"
+        super_role = f"<@&{config.SUPER_SEEDER_ROLE_ID}>" if config.SUPER_SEEDER_ROLE_ID else "роль супер-сидера"
+        start_h = config.SEED_START_TIME or "06:00"
+        end_h = config.SEED_END_TIME or "00:00"
+        stop_n = getattr(config, "SEED_STOP_PLAYER_COUNT", 60)
+        resume_min = getattr(config, "SEED_RESUME_BELOW_SECONDS", 600) // 60
+        grace_min = getattr(config, "SEED_SESSION_GRACE_SECONDS", 300) // 60
+        vip_1 = getattr(config, "VIP_1_DAY_COST", 40)
+        vip_7 = getattr(config, "VIP_7_DAY_COST", 200)
+        vip_30 = getattr(config, "VIP_30_DAY_COST", 720)
+
+        no_mention = discord.AllowedMentions.none()
+
+        # 1. Правила
+        rules = discord.Embed(color=0xE74C3C, title="📜 Правила сидинга WARDOGS | RU",
+                              description="Помогайте серверу набрать онлайн, получайте баллы и обменивайте их на игровые привилегии.\n\nПопытки обхода правил, подмена аккаунта или передача учётной записи могут привести к проверке и отмене начислений.")
+        rules.add_field(name="⏰ Когда начисляются баллы",
+                        value=f"Ежедневно с **{start_h} до {end_h} МСК**. Вне этого времени сидинг не учитывается.")
+        rules.add_field(name="🎮 Что нужно для участия",
+                        value=f"Одновременно находиться на одном из двух серверов WARDOGS и в голосовом канале {voice} с привязанным SteamID64. Время и баллы общие; одновременное присутствие не удваивает начисление.")
+        rules.add_field(name="⭐ Начисление",
+                        value="Первый непрерывный час — **1 балл каждые 6 минут** (до 10 баллов).\nСо второго часа — **1 балл каждые 3 минуты** (20 баллов в час).")
+        rules.add_field(name="⏸️ Когда счётчик приостанавливается",
+                        value=f"На каждом сервере отдельно при онлайне **{stop_n}+ игроков**. Возобновление — после {resume_min} минут ниже порога.\nТехническая пауза до {grace_min} минут сохраняет стаж непрерывной сессии, но время паузы не оплачивается.")
+        rules.set_footer(text="Баллы начисляются только после проверки Discord и игрового сервера")
+
+        # 2. Как начать
+        start = discord.Embed(color=0x2ECC71, title="🚀 Как начать сидинг — пошагово",
+                              description=f"**Все команды можно выполнять прямо в этом канале.** Начните вводить `/seed`, затем выберите нужный пункт из меню Discord.\n\n"
+                                          f"**1. Зайдите на любой из двух игровых серверов WARDOGS.**\nОставайтесь в игре до завершения привязки — бот должен увидеть ваш SteamID среди игроков.\n\n"
+                                          f"**2. Подготовьте SteamID64.**\nЭто 17 цифр, обычно начинающихся с `7656`. Укажите именно SteamID64, а не ссылку на профиль и не игровой ник.\n\n"
+                                          f"**3. Выполните `/seed link`.**\nВ поле `steam_id` вставьте SteamID64. Бот отправит одноразовый восьмизначный код личным сообщением внутри игры.\n\n"
+                                          f"**4. Выполните `/seed verify`.**\nВ поле `code` введите код из игры. После успешной проверки вы получите роль {seeder_role}.\n\n"
+                                          f"**5. Перейдите в голосовой канал {voice}.**\nПока вы одновременно в игре на одном из двух серверов и в этом голосовом канале, бот считает общее время по правилам выше.\n\n"
+                                          f"**6. Проверьте результат.**\nКоманда `/seed status` показывает баланс, время, состояние сидинга и VIP. `/seed top` показывает текущий рейтинг.\n\n"
+                                          f"**Нужен только оплаченный VIP?** Используйте `/vip-link link steam_id` и `/vip-link verify code`. Эта привязка не выдаёт роль сидера и не начисляет баллы.\n\n"
+                                          f"**Отвязка:** сидер — `/seed unlink confirm:true`, участник только с VIP — `/vip-link unlink confirm:true`. При действующем VIP отвязка недоступна; история сидера сохраняется.")
+        start.set_footer(text="Обычные сообщения в этом канале автоматически удаляются; slash-команды работают")
+
+        # 3. Магазин
+        rewards = discord.Embed(color=0xF1C40F, title="👑 Магазин наград и VIP",
+                                description=f"Откройте {shop} и нажмите кнопку нужной награды. Покупка и ответ бота видны только вам.")
+        rewards.add_field(name="🎫 VIP на 1 день", value=f"**{vip_1} баллов**", inline=True)
+        rewards.add_field(name="🎟️ VIP на 7 дней", value=f"**{vip_7} баллов**", inline=True)
+        rewards.add_field(name="💎 VIP на 30 дней", value=f"**{vip_30} баллов**", inline=True)
+        rewards.add_field(name="Что входит",
+                          value=f"Роль {vip_role} и Reserved slot на обоих серверах. Срок начинается после подтверждённой активации слота на обоих.")
+        rewards.add_field(name="🔒 Уже есть постоянный слот?",
+                          value="Магазин не спишет баллы за дублирующий VIP. Защищённый администрацией Reserved slot сохраняется независимо от VIP и рейтинга.")
+        rewards.set_footer(text="Баланс и статус: /seed status")
+
+        # 4. Рейтинг
+        ranking = discord.Embed(color=0x3498DB, title="🏆 Еженедельный рейтинг и награды",
+                                description=f"Рейтинг в {rank} строится по подтверждённому времени сидинга за текущую неделю и обновляется автоматически.")
+        ranking.add_field(name="🥇🥈🥉 Награда топ-3",
+                          value=f"Три лучших сидера завершившейся недели получают роль {super_role} и бесплатный Reserved slot на обоих серверах.")
+        ranking.add_field(name="📅 Срок награды",
+                          value="Неделя считается с понедельника 00:00 до следующего понедельника 00:00 МСК. Роль и слот действуют до следующего обновления, затем бот передаёт их новой тройке лидеров.")
+        ranking.add_field(name="📊 Две карточки рейтинга",
+                          value="Первая показывает живой рейтинг текущей недели, вторая — трёх победителей прошлой недели и состояние их наград.")
+        ranking.add_field(name="🔐 Постоянные Reserved slots",
+                          value="Слоты на обоих серверах, отдельно защищённые администрацией, не снимаются при окончании VIP или при смене победителей рейтинга.")
+        ranking.set_footer(text="Чем больше подтверждённого времени — тем выше место")
+
+        payload = {"embeds": [rules, start, rewards, ranking], "allowed_mentions": no_mention}
+        prior = seed_get_state("rules_message_id", "")
+        if prior:
+            try:
+                msg = await ch.fetch_message(int(prior))
+                if msg.author.id == self.bot.user.id:
+                    await msg.edit(**payload)
+                    log.info("Rules-панель обновлена на старте")
+                    return
+            except Exception:
+                pass
+        try:
+            msg = await ch.send(**payload)
+            seed_set_state("rules_message_id", str(msg.id))
+            log.info("Rules-панель опубликована на старте")
+        except Exception as e:
+            log.warning("Не удалось опубликовать rules-панель: %s", e)
 
     async def cog_unload(self):
         for loop in (
