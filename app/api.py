@@ -2466,15 +2466,35 @@ async def vip_slot_save(sid: str, request: Request):
         sid, steam_id, display_name, expires_utc, note, user["steam_id"]
     )
     synced, error = await _sync_vip_record(item, add=True)
+    # VIP действует на все серверы: дублируем entitlement и managed-запись.
+    mirrored = []
+    for other in _other_servers(sid):
+        other_item = await db.save_vip_slot(
+            other.id, steam_id, display_name, expires_utc, note, user["steam_id"]
+        )
+        other_synced, other_error = await _sync_vip_record(other_item, add=True)
+        if other_synced:
+            mirrored.append(other.id)
+        else:
+            log.warning(
+                "Зеркальный VIP %s не синхронизирован на %s: %s",
+                steam_id, other.id, other_error,
+            )
     item = await db.get_vip_slot(item["id"], sid)
     await db.log_site_audit(
         user["steam_id"], sid, "vip.save", f"{steam_id}:{'synced' if synced else 'error'}"
     )
     disclog.emit(
         "vip.save", actor=user["steam_id"], server=srv.name, steam_id=steam_id,
-        detail=note or ("синхронизировано" if synced else f"ошибка: {error}"),
+        detail=" · ".join(x for x in (
+            note or ("синхронизировано" if synced else f"ошибка: {error}"),
+            f"зеркало: {', '.join(mirrored)}" if mirrored else "",
+        ) if x),
     )
-    response = {"ok": True, "item": item, "synced": synced, "warning": error or None}
+    response = {
+        "ok": True, "item": item, "synced": synced,
+        "warning": error or None, "mirrored": mirrored,
+    }
     await _idempotency_complete(user["steam_id"], idem_key, response)
     return response
 
@@ -2492,6 +2512,14 @@ async def vip_slot_sync(sid: str, vip_id: str, request: Request):
         raise HTTPException(status_code=404, detail="VIP-запись не найдена")
     active = item["expires_utc"] is None or item["expires_utc"] > time.time()
     synced, error = await _sync_vip_record(item, add=active)
+    # Ручной re-sync зеркалим на остальные серверы по steam_id.
+    for other in _other_servers(sid):
+        other_item = next(
+            (row for row in await db.list_vip_slots(other.id) if row["steam_id"] == item["steam_id"]),
+            None,
+        )
+        if other_item:
+            await _sync_vip_record(other_item, add=active)
     await db.log_site_audit(
         user["steam_id"], sid, "vip.sync", f"{item['steam_id']}:{'ok' if synced else 'error'}"
     )
@@ -2523,6 +2551,22 @@ async def vip_slot_delete(sid: str, vip_id: str, request: Request):
             {"ok": False, "detail": error, "item": await db.get_vip_slot(vip_id, sid)},
             status_code=502,
         )
+    # Снятие VIP тоже глобальное: снимаем entitlement и чистим записи зеркальных серверов.
+    for other in _other_servers(sid):
+        other_item = next(
+            (row for row in await db.list_vip_slots(other.id) if row["steam_id"] == item["steam_id"]),
+            None,
+        )
+        if not other_item:
+            continue
+        other_synced, other_error = await _sync_vip_record(other_item, add=False)
+        if other_synced:
+            await db.delete_vip_slot(other_item["id"], other.id)
+        else:
+            log.warning(
+                "Зеркальное снятие VIP %s не удалось на %s: %s",
+                item["steam_id"], other.id, other_error,
+            )
     await db.delete_vip_slot(vip_id, sid)
     await db.log_site_audit(user["steam_id"], sid, "vip.delete", item["steam_id"])
     disclog.emit(
