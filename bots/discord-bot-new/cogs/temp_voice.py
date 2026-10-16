@@ -129,6 +129,63 @@ def _make_modals(vc):
     return RenameModal, LimitModal, InviteModal, KickModal
 
 
+# ---------- Настройка нового канала ----------
+
+FACTION_CHOICES = ["ВС", "ТАК", "Спецназ", "Инженер", "Медик", "Другое"]
+
+
+class ChannelSetupModal(discord.ui.Modal, title="Настройка канала"):
+    faction = discord.ui.TextInput(
+        label="Фракция / роль",
+        placeholder="ВС / ТАК / Спецназ / Инженер / Медик / Другое",
+        required=True,
+        max_length=30,
+    )
+    server = discord.ui.TextInput(
+        label="Сервер (необязательно)",
+        placeholder="Например: #1, EU, РЖ…",
+        required=False,
+        max_length=50,
+    )
+
+    def __init__(self, vc: discord.VoiceChannel):
+        super().__init__()
+        self.vc = vc
+
+    async def on_submit(self, interaction: discord.Interaction):
+        faction = self.faction.value.strip()
+        server = self.server.value.strip()
+        owner = interaction.user.display_name
+        name = f"🎮 {faction} | {owner}"
+        if server:
+            name += f" [{server}]"
+        try:
+            await self.vc.edit(name=name[:100], reason="Настройка владельцем")
+        except discord.Forbidden:
+            return await interaction.response.send_message(
+                "❌ Не удалось переименовать канал.", ephemeral=True
+            )
+        await interaction.response.send_message(
+            f"✅ Канал обновлён: **{name}**", ephemeral=True
+        )
+
+
+class ChannelSetupView(discord.ui.View):
+    """Кнопка в DM, открывающая модалку настройки нового temp-канала."""
+
+    def __init__(self, vc: discord.VoiceChannel):
+        super().__init__(timeout=600)
+        self.vc = vc
+
+    @discord.ui.button(label="⚙️ Настроить канал", style=discord.ButtonStyle.primary)
+    async def setup(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != temp_channel_owners.get(self.vc.id):
+            return await interaction.response.send_message(
+                "Это не ваш канал.", ephemeral=True
+            )
+        await interaction.response.send_modal(ChannelSetupModal(self.vc))
+
+
 # ---------- Панель ----------
 
 class VoiceControlPanelView(discord.ui.View):
@@ -312,6 +369,15 @@ class TempVoiceCog(commands.Cog):
             if not moved:
                 temp_channel_owners.pop(vc.id, None)
                 await vc.delete(reason="Никто не перемещён")
+                return
+            try:
+                await member.send(
+                    f"🎙️ Ваш канал **{vc.name}** создан.\n"
+                    "Укажите фракцию и (по желанию) сервер — название подставится автоматически.",
+                    view=ChannelSetupView(vc),
+                )
+            except (discord.Forbidden, discord.HTTPException):
+                pass
         except Exception as e:
             log.error("Ошибка создания temp VC: %s", e)
 
