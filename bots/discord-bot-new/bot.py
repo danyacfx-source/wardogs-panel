@@ -187,6 +187,7 @@ COGS = [
     "cogs.trap_channel",
     "cogs.donation",
     "cogs.clans",
+    "cogs.clan_tickets",
     "cogs.seeding",
 ]
 
