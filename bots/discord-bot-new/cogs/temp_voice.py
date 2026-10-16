@@ -131,9 +131,6 @@ def _make_modals(vc):
 
 # ---------- Настройка нового канала ----------
 
-FACTION_CHOICES = ["ВС", "ТАК", "Спецназ", "Инженер", "Медик", "Другое"]
-
-
 class ChannelSetupModal(discord.ui.Modal, title="Настройка канала"):
     faction = discord.ui.TextInput(
         label="Фракция / роль",
