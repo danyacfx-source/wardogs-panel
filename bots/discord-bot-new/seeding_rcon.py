@@ -261,6 +261,22 @@ class WardogsRconClient:
             "map": str(parsed.get("map") or "")[:100],
         }
 
+    async def faction_scores(self) -> list[dict]:
+        """Список фракций из /v1/status: [{name, score}, ...]."""
+        result = await self._request("GET", "/v1/status")
+        parsed = result.get("parsed") or {}
+        raw = parsed.get("factionScores")
+        if not isinstance(raw, list):
+            return []
+        out = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            if name:
+                out.append({"name": name[:80], "score": item.get("score")})
+        return out
+
     async def players(self) -> list[dict]:
         result = await self._request("GET", "/v1/players")
         parsed = result.get("parsed") or {}
