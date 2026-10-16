@@ -17,6 +17,11 @@ __pycache__/
 .venv/
 venv/
 
+# Bundled bots runtime artifacts
+node_modules/
+bots/**/data/
+*.wdbak
+
 # Editor and OS files
 .idea/
 .vscode/

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>WARDOGS // Панель управления</title>
 <link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
-<link rel="stylesheet" href="/static/style.css?v=20261015-5" />
+<link rel="stylesheet" href="/static/style.css?v=20261016-1" />
 </head>
 <body data-panel-mode="panel">
 <div id="app" v-cloak>
@@ -938,6 +938,20 @@
         </template>
       </section>
 
+      <!-- ===== БОТЫ WARDOGS ===== -->
+      <section v-if="state.tab === 'bots'">
+        <header class="staff-page-head"><div><div class="admin-path">— /admin/bots</div><h2>Боты WARDOGS</h2><p>Шесть ботов проекта в каталоге <code>bots/</code> репозитория панели. Каждый изолирован: свой рантайм, свои зависимости, свой .env и свои данные — процессы не мешают друг другу.</p></div></header>
+        <div class="cards"><div class="card"><div class="k">Ботов</div><div class="v big">{{ botsCatalog.length }}</div></div><div class="card"><div class="k">Рантаймы</div><div class="v big">Python · Node · PHP</div></div><div class="card"><div class="k">Входящие порты</div><div class="v big">нет</div></div><div class="card"><div class="k">Данные</div><div class="v big">bots/&lt;имя&gt;/data</div></div></div>
+        <article v-for="bot in botsCatalog" :key="bot.id" class="panel" style="margin-bottom:12px;">
+          <div class="toolbar"><div><h2>{{ bot.name }}</h2><p class="muted"><code>bots/{{ bot.id }}/</code> · {{ bot.runtime }} · вход: <code>{{ bot.entry }}</code></p></div></div>
+          <p>{{ bot.purpose }}</p>
+          <p class="muted">Хранилище: {{ bot.storage }}</p>
+          <div><span v-for="key in bot.env" :key="key" class="badge" style="margin:0 4px 4px 0;">{{ key }}</span></div>
+          <pre style="margin-top:8px;">{{ bot.run.join("\n") }}</pre>
+        </article>
+        <div class="panel"><h2>Изоляция</h2><ul style="margin:0;padding-left:18px;line-height:1.7;"><li>Каждый бот — отдельный процесс со своим <code>.env</code> в своей папке; токены и ID не пересекаются.</li><li>Данные — в <code>bots/&lt;имя&gt;/data/</code> (в git не попадают).</li><li>Python-боты — свой venv, Node-боты — свой <code>node_modules</code>, PHP-бот — свой <code>config.php</code>.</li><li>Все боты работают только на исходящих соединениях (Discord, API, RCON) — конфликтов портов нет.</li></ul></div>
+      </section>
+
       <!-- ===== СОСТОЯНРЕ СРСТЕМ ===== -->
       <section v-if="state.tab === 'system'">
         <header class="staff-page-head"><div><div class="admin-path">— /admin/system</div><h2>Центр состояния</h2><p>Ргровые серверы, база, Steam, Discord и связь с «Асуной Юки» в одном месте.</p></div><div class="toolbar-actions"><button class="btn ghost" @click="testLogChannel" :disabled="busy">Тест лог-канала</button><button class="btn ghost" @click="loadSystemStatus" :disabled="systemStatus.loading">Проверить сейчас</button></div></header>
@@ -1384,7 +1398,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/panel.render.js?v=20261015-5"></script>
-<script src="/static/app.js?v=20261015-5"></script>
+<script src="/static/panel.render.js?v=20261016-1"></script>
+<script src="/static/app.js?v=20261016-1"></script>
 </body>
 </html>
