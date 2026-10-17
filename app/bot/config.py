@@ -8,7 +8,11 @@ import json
 import logging
 import os
 
-from .. import config as _panel
+try:
+    from .. import config as _panel  # package mode: app.bot.config
+except ImportError:
+    import importlib
+    _panel = importlib.import_module("app.config")
 
 log = logging.getLogger("bot.config")
 

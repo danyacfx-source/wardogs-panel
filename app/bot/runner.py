@@ -22,6 +22,9 @@ from discord.ext import commands  # noqa: E402
 
 from . import config  # noqa: E402
 
+# Cogs делают flat `import config` — регистрируем наш модуль под тем же именем.
+sys.modules.setdefault("config", config)
+
 log = logging.getLogger("bot")
 
 RUN_ID = uuid.uuid4().hex[:6]

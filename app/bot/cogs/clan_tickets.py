@@ -245,6 +245,107 @@ class ClanTicketCog(commands.Cog):
         await target.send(embed=embed, view=ClanTicketPanelView())
         await interaction.followup.send(f"Панель отправлена в {target.mention}.", ephemeral=True)
 
+    async def panel_submit_application(self, payload: dict) -> dict:
+        """Создаёт клановый тикет из заявки, пришедшей с панели."""
+        name = str(payload.get("name") or "").strip()
+        tag = str(payload.get("tag") or "").strip()
+        description = str(payload.get("description") or "").strip()
+        leader = str(payload.get("leader") or "").strip()
+        steam_id = str(payload.get("steam_id") or "").strip()
+        discord_name = str(payload.get("discord_name") or "").strip()
+        ticket_id = payload.get("ticket_id")
+
+        if not name or not tag:
+            return {"ok": False, "error": "missing_name_or_tag"}
+
+        if not config.GUILD_ID:
+            return {"ok": False, "error": "guild_not_configured"}
+        guild = self.bot.get_guild(int(config.GUILD_ID))
+        if not guild:
+            return {"ok": False, "error": "guild_not_found"}
+
+        category = guild.get_channel(config.CLAN_TICKET_CATEGORY)
+        if not category:
+            return {"ok": False, "error": "category_not_configured"}
+
+        # Ищем автора по привязке steam→discord (через панельную БД).
+        author = None
+        try:
+            import database as db
+            user = db.seed_get_user_by_steam(steam_id)
+            if user and user.get("discord_id"):
+                author = guild.get_member(int(user["discord_id"]))
+        except Exception:
+            pass
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        }
+        if author:
+            overwrites[author] = discord.PermissionOverwrite(
+                view_channel=True, send_messages=True, read_message_history=True,
+                attach_files=True, embed_links=True,
+            )
+        for staff_role_id in config.CLAN_TICKET_STAFF_ROLES:
+            staff = guild.get_role(staff_role_id)
+            if staff:
+                overwrites[staff] = discord.PermissionOverwrite(
+                    view_channel=True, send_messages=True, read_message_history=True
+                )
+
+        safe_tag = "".join(c for c in tag if c.isalnum())[:16] or "clan"
+        try:
+            channel = await guild.create_text_channel(
+                name=f"клан-{safe_tag}",
+                category=category,
+                overwrites=overwrites,
+                topic=f"Заявка с панели: [{tag}] {name} | Steam: {steam_id}",
+            )
+        except discord.HTTPException as e:
+            log.warning("Ошибка создания кланового тикета из панели: %s", e)
+            return {"ok": False, "error": "discord_error"}
+
+        embed = discord.Embed(
+            title=f"📝 ЗАЯВКА НА РЕГИСТРАЦИЮ КЛАНА [{tag}] {name}",
+            description=(
+                f"**Название:** {name}\n"
+                f"**Тег:** {tag}\n"
+                f"**Лидер:** {leader}\n"
+                f"**SteamID:** `{steam_id}`\n"
+                f"**Discord:** {discord_name}\n"
+                f"**ID заявки на панели:** `{ticket_id}`\n\n"
+                f"**Описание:**\n{description}"
+            ),
+            color=discord.Color.gold(),
+            timestamp=datetime.utcnow(),
+        )
+        if author:
+            embed.set_author(name=author.display_name, icon_url=author.display_avatar.url)
+            author_mention = author.mention
+        else:
+            author_mention = f"`{steam_id}`"
+
+        staff_mention = " ".join(f"<@&{r}>" for r in config.CLAN_TICKET_STAFF_ROLES)
+        await channel.send(
+            content=f"{staff_mention} {author_mention}",
+            embed=embed,
+            view=ClanTicketCloseView(),
+        )
+
+        conn = get_conn()
+        conn.execute(
+            "INSERT INTO tickets (user_id, channel_id, ticket_type, status, created_at) VALUES (?, ?, 'clan', 'open', ?)",
+            (author.id if author else 0, channel.id, datetime.utcnow().isoformat()),
+        )
+        conn.commit()
+
+        if config.CLAN_TICKET_LOG_CHANNEL:
+            log_ch = guild.get_channel(config.CLAN_TICKET_LOG_CHANNEL)
+            if log_ch:
+                await log_ch.send(f"📝 Заявка на клан с панели: {channel.mention} | [{tag}] {name} | {leader}")
+
+        return {"ok": True, "channel_id": channel.id}
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(ClanTicketCog(bot))

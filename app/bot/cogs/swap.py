@@ -45,13 +45,16 @@ async def _has_move_faction(member: discord.Member) -> bool:
 
 def _is_vip(steam_id: str) -> bool:
     """VIP: seed-подписка active или активный VIP-слот в панели (покупной)."""
-    # Seed VIP
+    # Seed VIP: seed_vip_memberships.user_id = seed_users.id (UUID), не SteamID.
     try:
-        member = db.seed_get_vip_membership(steam_id)
-        if member and member.get("state") == "active":
-            until = member.get("active_until")
-            if until is None or until > time.time():
-                return True
+        user = db.seed_get_user_by_steam(steam_id)
+        if user:
+            member = db.seed_get_vip_membership(user["id"])
+            if member and member.get("state") == "active":
+                until = member.get("active_until")
+                # active_until хранится в миллисекундах
+                if until is None or until > int(time.time() * 1000):
+                    return True
     except Exception:
         pass
     # Покупной VIP из site.db панели

@@ -558,20 +558,54 @@ class TempVoiceCog(commands.Cog):
         await target.send(embed=embed, view=VoiceControlPanelView())
         await interaction.followup.send(f"Панель отправлена в {target.mention}.", ephemeral=True)
 
+    async def panel_list_channels(self) -> dict:
+        rooms = []
+        members = []
+        for guild in self.bot.guilds:
+            for ch_id, owner_id in list(temp_channel_owners.items()):
+                ch = guild.get_channel(ch_id)
+                if not ch:
+                    temp_channel_owners.pop(ch_id, None)
+                    continue
+                rooms.append({
+                    "id": str(ch.id),
+                    "name": ch.name,
+                    "owner_id": str(owner_id),
+                    "guild_id": str(guild.id),
+                    "user_limit": ch.user_limit or 0,
+                    "members": len(ch.members),
+                })
+                for m in ch.members:
+                    members.append({
+                        "channel_id": str(ch.id),
+                        "user_id": str(m.id),
+                        "name": m.display_name,
+                    })
+        return {"rooms": rooms, "members": members}
+
+    async def panel_delete_channel(self, channel_id: int) -> dict:
+        for guild in self.bot.guilds:
+            ch = guild.get_channel(channel_id)
+            if ch and isinstance(ch, discord.VoiceChannel):
+                temp_channel_owners.pop(channel_id, None)
+                await ch.delete(reason="Удалено из панели")
+                return {"ok": True, "channel_id": channel_id}
+        return {"ok": False, "channel_id": channel_id, "error": "channel_not_found"}
+
+    async def panel_transfer_channel(self, channel_id: int, owner_id: int) -> dict:
+        for guild in self.bot.guilds:
+            ch = guild.get_channel(channel_id)
+            if ch and isinstance(ch, discord.VoiceChannel) and channel_id in temp_channel_owners:
+                member = guild.get_member(owner_id)
+                if not member:
+                    return {"ok": False, "channel_id": channel_id, "error": "member_not_found"}
+                if member not in ch.members:
+                    return {"ok": False, "channel_id": channel_id, "error": "member_not_in_channel"}
+                temp_channel_owners[channel_id] = owner_id
+                await ch.set_permissions(member, manage_channels=True, manage_roles=True)
+                return {"ok": True, "channel_id": channel_id, "owner_id": owner_id}
+        return {"ok": False, "channel_id": channel_id, "error": "channel_not_found"}
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(TempVoiceCog(bot))
-
-
-async def _panel_list_channels() -> dict:
-    import database as db
-    rows = db.fetchall_sync("SELECT * FROM tempvoice_channels") if hasattr(db, "fetchall_sync") else []
-    return {"channels": rows}
-
-
-async def _panel_delete_channel(channel_id: int) -> dict:
-    return {"ok": True, "channel_id": channel_id}
-
-
-async def _panel_transfer_channel(channel_id: int, owner_id: int) -> dict:
-    return {"ok": True, "channel_id": channel_id, "owner_id": owner_id}

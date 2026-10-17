@@ -451,7 +451,6 @@ def init_db():
             map TEXT NOT NULL DEFAULT '',
             created_at INTEGER NOT NULL
         );
-        );
     """)
     conn.commit()
 
@@ -2374,7 +2373,7 @@ def seed_log_swap(server_id: str, steam_id: str, source_faction: str, target_fac
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (server_id, steam_id, source_faction, target_faction, diff, player_count,
          _json.dumps(faction_counts, ensure_ascii=False), 1 if is_vip else 0,
-         actor_discord_id, map_name, int(time.time() * 1000)),
+         actor_discord_id, map_name, int(_time.time() * 1000)),
     )
 
 
