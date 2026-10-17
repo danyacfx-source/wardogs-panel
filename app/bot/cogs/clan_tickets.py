@@ -225,7 +225,7 @@ class ClanTicketCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    clan_group = app_commands.Group(name="clan", description="Управление заявками на регистрацию клана")
+    clan_group = app_commands.Group(name="clan-reg", description="Регистрация кланов (панель заявок)")
 
     @clan_group.command(name="panel", description="Отправить панель регистрации кланов")
     @app_commands.describe(channel="Канал для панели")

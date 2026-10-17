@@ -77,69 +77,6 @@ const ROLE_PRESETS = {
     perms: ["players_view", "player_notes", "player_tags", "clans", "tickets_view", "tickets_edit", "message", "broadcast", "kick", "kill", "move_faction", "ban_view", "ban_add", "ban_remove", "change_map", "change_lighting", "match_end", "match_restart", "reserved_view", "reserved_edit", "vip_view", "vip_edit", "audit", "config_view"],
   },
 };
-const WARDOGS_BOTS = [
-  {
-    id: "discord-bot-new",
-    name: "Основной Discord-бот",
-    runtime: "Python 3.12",
-    entry: "bot.py",
-    storage: "SQLite wardogs_v2.db в своей папке",
-    purpose: "Тикеты, розыгрыши, уровни/XP, автоперевод, Twitch, зеркала каналов, автомод, временные войсы, логи, бэкапы",
-    env: ["DISCORD_TOKEN", "GUILD_ID", "TICKET_*", "VC_*", "LOG_CHANNEL", "TRANSLATE_CHANNELS", "GEMINI_API_KEY", "GROQ_API_KEY", "TWITCH_CHANNELS", "BACKUP_CHANNEL_ID"],
-    run: ["cd bots\\discord-bot-new", "py -3.12 -m venv .venv", ".\\.venv\\Scripts\\pip install -r requirements.txt", ".\\.venv\\Scripts\\python.exe bot.py"],
-  },
-  {
-    id: "twitch-parser-bot",
-    name: "Twitch-парсер",
-    runtime: "Python 3.12",
-    entry: "bot.py",
-    storage: "нет (состояние в памяти)",
-    purpose: "Проверяет Twitch-каналы и анонсит переход offline→live, плюс перевод",
-    env: ["DISCORD_TOKEN", "GUILD_ID", "ANNOUNCE_CHANNEL_ID", "TWITCH_CLIENT_ID", "TWITCH_CLIENT_SECRET", "TWITCH_CHANNELS", "GEMINI_API_KEY"],
-    run: ["cd bots\\twitch-parser-bot", "py -3.12 -m venv .venv", ".\\.venv\\Scripts\\pip install -r requirements.txt", ".\\.venv\\Scripts\\python.exe bot.py"],
-  },
-  {
-    id: "clans-bot",
-    name: "Клановый бот",
-    runtime: "Node ≥20.11",
-    entry: "src/index.js",
-    storage: "JSON state.json в DATA_DIR (bots/clans-bot/data)",
-    purpose: "Клановые заявки, 5 ролей с иконками, штабы, форум набора, реестр на сайте, шифрованные бэкапы",
-    env: ["DISCORD_TOKEN", "GUILD_ID", "DATA_DIR", "BACKUP_DIR", "ADMIN_ROLE_ID", "SITE_SYNC_URL", "SITE_SYNC_SECRET", "BACKUP_SECRET", "BACKUP_CHANNEL_ID"],
-    run: ["cd bots\\clans-bot", "npm install", "npm start"],
-  },
-  {
-    id: "giveaways-bot",
-    name: "Синк розыгрышей",
-    runtime: "PHP 8.1+ CLI/cron",
-    entry: "sync.php",
-    storage: "JSON giveaways.json (output_file)",
-    purpose: "Read-only синк розыгрышей из Discord-канала для страницы wardogs-ru.ru/giveaways/",
-    env: ["config.php: bot_token", "guild_id", "channel_id", "giveaway_author_id", "output_file"],
-    run: ["cd bots\\giveaways-bot", "copy config.example.php config.php", "php sync.php --check", "php sync.php"],
-  },
-  {
-    id: "donation-bot",
-    name: "Донат-бот (ЮMoney)",
-    runtime: "Node ≥22.12",
-    entry: "src/index.js",
-    storage: "JSON donations.json в DATA_DIR (bots/donation-bot/data)",
-    purpose: "Карточки поддержки, оплаченный VIP, благодарности, топ-10 спонсоров, импорт платежей с сайта",
-    env: ["BOT_TOKEN", "CLIENT_ID", "GUILD_ID", "SITE_BASE_URL", "CHECKOUT_SECRET", "FEED_TOKEN", "DATA_DIR", "POLL_SECONDS"],
-    run: ["cd bots\\donation-bot", "npm install", "npm start"],
-  },
-  {
-    id: "seeding-bot",
-    name: "Сидинг-бот",
-    runtime: "Node 20.18–24",
-    entry: "index.js",
-    storage: "шифрованная SQLite seeding.sqlite в DATA_DIR (bots/seeding-bot/data)",
-    purpose: "Подтверждённый сидинг: баллы за голос/присутствие, рейтинг, магазин VIP, привязка Discord↔Steam, RCON",
-    env: ["DISCORD_TOKEN", "DISCORD_CLIENT_ID", "DISCORD_GUILD_ID", "WARDOGS_RCON_URL", "WARDOGS_RCON_PASSWORD", "WARDOGS_RCON_2_URL", "WARDOGS_RCON_2_PASSWORD", "DATA_ENCRYPTION_KEY", "BACKUP_ENCRYPTION_KEY", "DATA_DIR", "VIP_*_COST"],
-    run: ["cd bots\\seeding-bot", "npm install", "npm start"],
-  },
-];
-
 function pad(n) { return String(n).padStart(2, "0"); }
 
 const app = createApp({
@@ -262,7 +199,6 @@ const app = createApp({
     me() { return this.state.me; },
     perms() { return (this.me && this.me.permissions) || []; },
     hasPerms() { return this.perms.length > 0; },
-    botsCatalog() { return WARDOGS_BOTS; },
     tabs() {
       if (MODE === "monitor") {
         const t = [{ id: "status", label: "Мониторинг" }];
@@ -285,7 +221,6 @@ const app = createApp({
       if (any("config_view", "config_edit")) t.push({ id: "config", label: "Конфиг" });
       if (this.perms.includes("roles")) t.push({ id: "staff", label: "Администрация" });
       if (this.perms.includes("roles")) t.push({ id: "discord", label: "Боты и Discord" });
-      if (this.perms.includes("roles")) t.push({ id: "bots", label: "Боты WARDOGS" });
       if (any("audit", "roles", "config_view")) t.push({ id: "system", label: "Состояние" });
       if (this.perms.includes("roles")) t.push({ id: "roles", label: "Права ролей" });
       return t;

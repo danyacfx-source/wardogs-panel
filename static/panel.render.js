@@ -3188,48 +3188,6 @@ return function render(_ctx, _cache) {
                             : _createCommentVNode("", true)])])])])
                         ], 64))]))
                 : _createCommentVNode("", true),
-              (state.tab === 'bots')
-                ? (_openBlock(), _createElementBlock("section", _hoisted_542, [
-                    _cache[200] || (_cache[200] = _createElementVNode("header", { class: "staff-page-head" }, [_createElementVNode("div", null, [_createElementVNode("div", { class: "admin-path" }, "— /admin/bots"), _createElementVNode("h2", null, "Боты WARDOGS"), _createElementVNode("p", null, [_createTextVNode("Шесть ботов проекта в каталоге "), _createElementVNode("code", null, "bots/"), _createTextVNode(" репозитория панели. Каждый изолирован: свой рантайм, свои зависимости, свой .env и свои данные — процессы не мешают друг другу.")])])], -1)),
-                    _createElementVNode("div", _hoisted_543, [
-                      _createElementVNode("div", _hoisted_544, [_cache[196] || (_cache[196] = _createElementVNode("div", { class: "k" }, "Ботов", -1)), _createElementVNode("div", _hoisted_545, _toDisplayString(botsCatalog.length), 1)]),
-                      _cache[197] || (_cache[197] = _createElementVNode("div", { class: "card" }, [_createElementVNode("div", { class: "k" }, "Рантаймы"), _createElementVNode("div", { class: "v big" }, "Python · Node · PHP")], -1)),
-                      _cache[198] || (_cache[198] = _createElementVNode("div", { class: "card" }, [_createElementVNode("div", { class: "k" }, "Входящие порты"), _createElementVNode("div", { class: "v big" }, "нет")], -1)),
-                      _cache[199] || (_cache[199] = _createElementVNode("div", { class: "card" }, [_createElementVNode("div", { class: "k" }, "Данные"), _createElementVNode("div", { class: "v big" }, "bots/<имя>/data")], -1))
-                    ]),
-                    (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(botsCatalog, (bot) => {
-                      return (_openBlock(), _createElementBlock("article", {
-                        key: bot.id,
-                        class: "panel",
-                        style: {"margin-bottom":"12px"}
-                      }, [
-                        _createElementVNode("div", _hoisted_546, [_createElementVNode("div", null, [_createElementVNode("h2", null, _toDisplayString(bot.name), 1), _createElementVNode("p", _hoisted_547, [_createElementVNode("code", null, "bots/" + _toDisplayString(bot.id) + "/", 1), _createTextVNode(" · " + _toDisplayString(bot.runtime) + " · вход: ", 1), _createElementVNode("code", null, _toDisplayString(bot.entry), 1)])])]),
-                        _createElementVNode("p", null, _toDisplayString(bot.purpose), 1),
-                        _createElementVNode("p", _hoisted_548, "Хранилище: " + _toDisplayString(bot.storage), 1),
-                        _createElementVNode("div", null, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(bot.env, (key) => {
-                          return (_openBlock(), _createElementBlock("span", {
-                            key: key,
-                            class: "badge",
-                            style: {"margin":"0 4px 4px 0"}
-                          }, _toDisplayString(key), 1))
-                        }), 128))]),
-                        _createElementVNode("pre", _hoisted_549, _toDisplayString(bot.run.join("\n")), 1)
-                      ]))
-                    }), 128)),
-                    _cache[201] || (_cache[201] = _createElementVNode("div", { class: "panel" }, [_createElementVNode("h2", null, "Изоляция"), _createElementVNode("ul", { style: {"margin":"0","padding-left":"18px","line-height":"1.7"} }, [
-                      _createElementVNode("li", null, [_createTextVNode("Каждый бот — отдельный процесс со своим "), _createElementVNode("code", null, ".env"), _createTextVNode(" в своей папке; токены и ID не пересекаются.")]),
-                      _createElementVNode("li", null, [_createTextVNode("Данные — в "), _createElementVNode("code", null, "bots/<имя>/data/"), _createTextVNode(" (в git не попадают).")]),
-                      _createElementVNode("li", null, [
-                        _createTextVNode("Python-боты — свой venv, Node-боты — свой "),
-                        _createElementVNode("code", null, "node_modules"),
-                        _createTextVNode(", PHP-бот — свой "),
-                        _createElementVNode("code", null, "config.php"),
-                        _createTextVNode(".")
-                      ]),
-                      _createElementVNode("li", null, "Все боты работают только на исходящих соединениях (Discord, API, RCON) — конфликтов портов нет.")
-                    ])], -1))
-                  ]))
-                : _createCommentVNode("", true),
               (state.tab === 'system')
                 ? (_openBlock(), _createElementBlock("section", _hoisted_550, [_createElementVNode("header", _hoisted_551, [_cache[202] || (_cache[202] = _createElementVNode("div", null, [_createElementVNode("div", { class: "admin-path" }, "— /admin/system"), _createElementVNode("h2", null, "Центр состояния"), _createElementVNode("p", null, "Игровые серверы, база, Steam, Discord и связь с «Асуной Юки» в одном месте.")], -1)), _createElementVNode("div", _hoisted_552, [_createElementVNode("button", {
                     class: "btn ghost",
