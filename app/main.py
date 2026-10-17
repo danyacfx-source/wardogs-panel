@@ -101,11 +101,11 @@ async def lifespan(app):
     health_task = None
     maintenance_task = None
     backup_task = None
+    bot_task = None
     if not config.DISABLE_BACKGROUND:
         health_task = asyncio.create_task(monitor.health_loop(api.POOL, stop_health))
         maintenance_task = asyncio.create_task(maintenance_loop(stop_health))
         if config.BACKUP_CHANNEL_ID and config.DISCORD_BOT_TOKEN:
-            # Стартовый бэкап — сразу фиксируем текущее состояние.
             async def _initial_backup():
                 try:
                     await asyncio.sleep(30)
@@ -114,16 +114,22 @@ async def lifespan(app):
                     log.exception("Ошибка стартового бэкапа")
             backup_task = asyncio.create_task(backup.backup_loop(stop_health))
             asyncio.create_task(_initial_backup())
+        # Discord-бот работает внутри панели (один процесс, один .env).
+        if config.DISCORD_BOT_TOKEN:
+            from .bot.runner import start_bot
+            bot_task = asyncio.create_task(start_bot())
+            log.info("Discord-бот запускается как фоновая задача панели")
     log.info("WARDOGS-site запущен: %s (servers: %s)", config.PUBLIC_URL, ", ".join(s["id"] for s in config.SERVERS))
     yield
     stop_health.set()
-    # Финальный бэкап перед остановкой — фиксируем изменения с последнего цикла.
+    if bot_task is not None:
+        bot_task.cancel()
     if backup_task is not None:
         try:
             await asyncio.wait_for(backup.send_backup(), timeout=20)
         except Exception:
             log.exception("Ошибка финального бэкапа")
-    for task in (health_task, maintenance_task, backup_task):
+    for task in (health_task, maintenance_task, backup_task, bot_task):
         if task is None:
             continue
         try:

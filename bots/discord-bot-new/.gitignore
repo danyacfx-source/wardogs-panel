@@ -1,7 +1,0 @@
-.env
-.git/
-__pycache__/
-*.log
-*.db
-*.db-shm
-*.db-wal
