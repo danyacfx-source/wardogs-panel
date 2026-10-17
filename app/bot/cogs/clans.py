@@ -65,7 +65,7 @@ class ClansCog(commands.Cog):
         self._session = aiohttp.ClientSession()
         # Авто-refresh панелей/карточек на старте — чтобы уже настроенные
         # эмбеды подхватились без ручного /clan-setup.
-        self.bot.loop.create_task(self._startup_refresh())
+        asyncio.create_task(self._startup_refresh())
 
     async def _startup_refresh(self):
         await self.bot.wait_until_ready()

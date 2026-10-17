@@ -230,6 +230,27 @@ async def _periodic_backup_loop():
         await asyncio.sleep(random.randint(6 * 3600, 8 * 3600))
 
 
+@bot.event
+async def setup_hook():
+    """Загружается после bot.start() — loop доступен, wait_until_ready работает."""
+    for cog in COGS:
+        loaded = False
+        for attempt in range(3):
+            try:
+                await bot.load_extension(cog)
+                log.info("Загружен ког: %s", cog)
+                loaded = True
+                break
+            except Exception as e:
+                log.warning("Ошибка загрузки %s (попытка %d/3): %s", cog, attempt + 1, e)
+                if attempt < 2:
+                    await asyncio.sleep(2.0 * (attempt + 1))
+        if not loaded:
+            log.error("Ког %s не загрузился после 3 попыток — пропускаю", cog)
+    bot.loop.create_task(_lease_heartbeat())
+    bot.loop.create_task(_periodic_backup_loop())
+
+
 async def start_bot():
     """Точка входа — вызывается из main.py как asyncio-задача."""
     import database
@@ -250,22 +271,6 @@ async def start_bot():
         return
 
     try:
-        for cog in COGS:
-            loaded = False
-            for attempt in range(3):
-                try:
-                    await bot.load_extension(cog)
-                    log.info("Загружен ког: %s", cog)
-                    loaded = True
-                    break
-                except Exception as e:
-                    log.warning("Ошибка загрузки %s (попытка %d/3): %s", cog, attempt + 1, e)
-                    if attempt < 2:
-                        await asyncio.sleep(2.0 * (attempt + 1))
-            if not loaded:
-                log.error("Ког %s не загрузился после 3 попыток — пропускаю", cog)
-        bot.loop.create_task(_lease_heartbeat())
-        bot.loop.create_task(_periodic_backup_loop())
         await bot.start(config.TOKEN)
     except asyncio.CancelledError:
         log.info("Бот остановлен (CancelledError)")

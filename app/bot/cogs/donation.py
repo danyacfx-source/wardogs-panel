@@ -167,13 +167,13 @@ class DonationCog(commands.Cog):
         self.feed_token = getattr(config, "DONATION_FEED_TOKEN", "")
         self.poll_seconds = getattr(config, "DONATION_POLL_SECONDS", 45)
         self._ticking = False
-        if self.site_base and self.checkout_secret and self.feed_token:
-            self.feed_loop.start()
 
     async def cog_load(self):
+        if self.site_base and self.checkout_secret and self.feed_token:
+            self.feed_loop.start()
         # Авто-upsert панелей на старте: поддержать/VIP работают сразу после рестарта
         # без ручного /donation-admin setup.
-        self.bot.loop.create_task(self._startup_upsert())
+        asyncio.create_task(self._startup_upsert())
 
     async def _startup_upsert(self):
         await self.bot.wait_until_ready()

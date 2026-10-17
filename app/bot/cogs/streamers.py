@@ -35,6 +35,8 @@ class StreamersCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._live_messages: dict[str, tuple[int, int]] = {}
+
+    async def cog_load(self):
         self.twitch_loop.start()
 
     def cog_unload(self):
