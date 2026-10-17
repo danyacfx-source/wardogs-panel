@@ -100,12 +100,19 @@ CREATE TABLE IF NOT EXISTS server_health (
     detail TEXT DEFAULT '',
     checked_utc REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS seed_shop_config (
+    sku TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    cost INTEGER NOT NULL,
+    duration_seconds INTEGER NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1
+);
 """
 
 _audit_verify_cache = {"checked_at": 0.0, "result": None, "db_path": None}
 _pg_pool = None
 _pg_pool_lock = asyncio.Lock()
-REQUIRED_SCHEMA_VERSION = 16
+REQUIRED_SCHEMA_VERSION = 17
 
 
 class _ConfiguredConnection:

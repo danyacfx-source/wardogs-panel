@@ -37,11 +37,7 @@ WARDOGS_VIP_ROLE_ID=1552725871830503484
 
 # Путь к wardogs_v2.db бота сидинга (пусто — покупка VIP за баллы выключена).
 # На Bothost бот и панель на одном томе: /app/data/wardogs_v2.db
-WARDOGS_SEED_DB=
-# Цены VIP за баллы сидинга (по умолчанию 40/200/720 — как в боте).
-WARDOGS_SEED_VIP_1D_COST=40
-WARDOGS_SEED_VIP_7D_COST=200
-WARDOGS_SEED_VIP_30D_COST=720
+WARDOGS_SEED_DB=/app/data/wardogs_v2.db
 
 STEAM_API_KEY=
 DISCORD_CLIENT_ID=

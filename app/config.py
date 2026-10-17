@@ -187,10 +187,6 @@ if VIP_ROLE_ID and not re.fullmatch(r"\d{1,20}", VIP_ROLE_ID):
 SEED_DB_PATH = (os.environ.get("WARDOGS_SEED_DB") or "").strip()
 if SEED_DB_PATH:
     SEED_DB_PATH = Path(SEED_DB_PATH)
-# Цены VIP за баллы сидинга (по умолчанию совпадают с ботом).
-SEED_VIP_1_DAY_COST = int(os.environ.get("WARDOGS_SEED_VIP_1D_COST") or 40)
-SEED_VIP_7_DAY_COST = int(os.environ.get("WARDOGS_SEED_VIP_7D_COST") or 200)
-SEED_VIP_30_DAY_COST = int(os.environ.get("WARDOGS_SEED_VIP_30D_COST") or 720)
 
 ADMIN_ROLES = [
     part.strip()

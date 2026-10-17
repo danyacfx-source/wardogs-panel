@@ -5,7 +5,12 @@ import discord
 from dotenv import load_dotenv
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(override=True)
+
+# Один .env на Bothost: сначала локальный, потом ../../.env (панель).
+load_dotenv(override=False)
+_panel_env = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".env")
+if os.path.isfile(_panel_env):
+    load_dotenv(_panel_env, override=False)
 
 
 def _bootstrap_proxy():

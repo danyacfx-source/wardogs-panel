@@ -687,14 +687,15 @@ async def seed_balance(request: Request):
     info = seed_store.get_balance(discord_id)
     if info is None:
         return {"ok": False, "error": "Привязка Discord↔Steam не найдена. Используйте /seed link в Discord."}
+    shop = await seed_store.get_shop_config()
     return {
         "ok": True,
         "balance": info["balance"],
         "steam_id": info.get("steam_id") or "",
         "display_name": info.get("display_name") or "",
         "skus": [
-            {"sku": sku, "label": e["label"], "cost": e["cost"]}
-            for sku, e in seed_store.VIP_SKUS.items()
+            {"sku": sku, "label": e["label"], "cost": e["cost"], "enabled": e["enabled"]}
+            for sku, e in shop.items()
         ],
     }
 
@@ -705,13 +706,15 @@ async def seed_vip_purchase(request: Request):
     user = _require_user(await _current_user(request))
     body = await _json_object(request)
     sku = str(body.get("sku") or "").strip()
-    if sku not in seed_store.VIP_SKUS:
-        raise HTTPException(status_code=400, detail="Неизвестный SKU")
+    shop = await seed_store.get_shop_config()
+    entry = shop.get(sku)
+    if not entry or not entry["enabled"]:
+        raise HTTPException(status_code=400, detail="Неизвестный SKU или продажа закрыта")
     binding = await db.get_binding(user["steam_id"])
     discord_id = (binding or {}).get("discord_id") or ""
     if not discord_id:
         raise HTTPException(status_code=400, detail="Привяжите Discord в профиле")
-    result = seed_store.purchase_vip(discord_id, sku)
+    result = seed_store.purchase_vip(discord_id, sku, entry["cost"], entry["duration"])
     if not result["ok"]:
         raise HTTPException(status_code=400, detail=result["error"])
     duration = result["duration"]
@@ -728,6 +731,26 @@ async def seed_vip_purchase(request: Request):
     disclog.emit("vip.save", actor=steam_id, steam_id=steam_id,
                  detail=f"VIP за баллы сидинга ({sku}), баланс: {result['balance']}")
     return {"ok": True, "balance": result["balance"], "sku": sku, "expires_utc": expires_utc, "servers": created}
+
+
+@router.get("/config/seed-shop")
+async def seed_shop_get(request: Request):
+    """Настройки магазина VIP за баллы (админ)."""
+    await _require_perm(request, "config_edit")
+    return {"ok": True, "config": await seed_store.get_shop_config()}
+
+
+@router.put("/config/seed-shop")
+async def seed_shop_put(request: Request):
+    """Обновляет цены/названия/доступность SKU (админ)."""
+    user = await _require_perm(request, "config_edit")
+    body = await _json_object(request)
+    config_in = body.get("config")
+    if not isinstance(config_in, dict):
+        raise HTTPException(status_code=400, detail="поле config")
+    updated = await seed_store.save_shop_config(config_in)
+    await db.log_site_audit(user["steam_id"], None, "config.edit", "seed_shop")
+    return {"ok": True, "config": updated}
 
 
 @router.post("/donate/checkout")
