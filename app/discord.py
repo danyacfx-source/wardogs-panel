@@ -253,28 +253,39 @@ async def guild_voice_channels():
 
 
 async def bot_panel_request(method, path, payload=None):
-    """Запрос к внутреннему API «Асуны Юки» без передачи токена браузеру."""
-    if not (config.DISCORD_BOT_PANEL_URL and config.DISCORD_BOT_PANEL_TOKEN):
-        return None, "Связь с панелью бота не настроена"
-    if path not in {"/api/tempvoice", "/api/clan-applications"} and not path.startswith("/api/tempvoice/"):
-        return None, "Недопустимый маршрут API бота"
-    headers = {"X-Bridge-Token": config.DISCORD_BOT_PANEL_TOKEN}
-    timeout = aiohttp.ClientTimeout(total=15, connect=5)
+    """Вызов функционала бота напрямую (in-process) — бот встроен в панель."""
+    from .bot.runner import bot as _bot
+
+    if not _bot.is_ready():
+        return None, "Бот ещё не запущен"
     try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.request(
-                method,
-                f"{config.DISCORD_BOT_PANEL_URL}{path}",
-                headers=headers,
-                json=payload,
-            ) as response:
-                data = await response.json(content_type=None)
-                if response.status >= 400:
-                    return None, str(data.get("error") or f"HTTP {response.status}")
-                return data, ""
-    except (aiohttp.ClientError, OSError, asyncio.TimeoutError, ValueError) as exc:
-        log.warning("bot panel bridge failed: %s", exc)
-        return None, "API бота временно недоступен"
+        if path == "/api/tempvoice" and method == "GET":
+            cog = _bot.get_cog("TempVoiceCog")
+            if cog and hasattr(cog, "panel_list_channels"):
+                return await cog.panel_list_channels(), ""
+            return None, "TempVoiceCog недоступен"
+        if path.startswith("/api/tempvoice/") and path.endswith("/delete") and method == "POST":
+            channel_id = path.split("/")[3]
+            cog = _bot.get_cog("TempVoiceCog")
+            if cog and hasattr(cog, "panel_delete_channel"):
+                return await cog.panel_delete_channel(int(channel_id)), ""
+            return None, "TempVoiceCog недоступен"
+        if path.startswith("/api/tempvoice/") and path.endswith("/transfer") and method == "POST":
+            channel_id = path.split("/")[3]
+            owner_id = str((payload or {}).get("owner_id") or "")
+            cog = _bot.get_cog("TempVoiceCog")
+            if cog and hasattr(cog, "panel_transfer_channel"):
+                return await cog.panel_transfer_channel(int(channel_id), int(owner_id)), ""
+            return None, "TempVoiceCog недоступен"
+        if path == "/api/clan-applications" and method == "POST":
+            cog = _bot.get_cog("ClanTicketCog")
+            if cog and hasattr(cog, "panel_submit_application"):
+                return await cog.panel_submit_application(payload or {}), ""
+            return None, "ClanTicketCog недоступен"
+        return None, "Недопустимый маршрут API бота"
+    except Exception as exc:
+        log.warning("bot in-process call failed: %s", exc, exc_info=True)
+        return None, "Ошибка вызова бота"
 
 
 async def grant_vip_role(steam_id: str) -> bool:

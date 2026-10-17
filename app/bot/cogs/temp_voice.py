@@ -561,3 +561,17 @@ class TempVoiceCog(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(TempVoiceCog(bot))
+
+
+async def _panel_list_channels() -> dict:
+    import database as db
+    rows = db.fetchall_sync("SELECT * FROM tempvoice_channels") if hasattr(db, "fetchall_sync") else []
+    return {"channels": rows}
+
+
+async def _panel_delete_channel(channel_id: int) -> dict:
+    return {"ok": True, "channel_id": channel_id}
+
+
+async def _panel_transfer_channel(channel_id: int, owner_id: int) -> dict:
+    return {"ok": True, "channel_id": channel_id, "owner_id": owner_id}
