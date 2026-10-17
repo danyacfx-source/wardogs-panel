@@ -1,14 +1,22 @@
-"""Slash-команда /sw: смена стороны с проверкой перевеса (до +2, с VIP до +4)."""
+"""Slash-команда /sw: смена стороны с проверкой перевеса.
+
+Лимиты для обычных: до +2, кулдаун 1 свап за игру.
+VIP (seed или покупной): без лимита перевеса, без кулдауна.
+Каждый свап логируется в sw_log для отчёта по перевесам.
+"""
 
 from __future__ import annotations
 
+import json
 import logging
+import time
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 import config
+import database as db
 from seeding_rcon import WardogsRconClient, RconError
 
 log = logging.getLogger("swap")
@@ -26,7 +34,6 @@ def _get_rcon_client(sid: str) -> WardogsRconClient | None:
 
 
 async def _has_move_faction(member: discord.Member) -> bool:
-    """Право move_faction: administrator в Discord или роль из SW_ADMIN_ROLE_IDS."""
     if member.guild_permissions.administrator:
         return True
     if config.SW_ADMIN_ROLE_IDS:
@@ -36,18 +43,40 @@ async def _has_move_faction(member: discord.Member) -> bool:
     return False
 
 
-def _swap_allowed(diff: int, has_vip: bool) -> bool:
-    return diff <= (4 if has_vip else 2)
+def _is_vip(steam_id: str) -> bool:
+    """VIP: seed-подписка active или активный VIP-слот в панели (покупной)."""
+    # Seed VIP
+    try:
+        member = db.seed_get_vip_membership(steam_id)
+        if member and member.get("state") == "active":
+            until = member.get("active_until")
+            if until is None or until > time.time():
+                return True
+    except Exception:
+        pass
+    # Покупной VIP из site.db панели
+    try:
+        panel_db = db.get_panel_conn()
+        now = time.time()
+        row = panel_db.execute(
+            "SELECT 1 FROM vip_slots WHERE steam_id = ? AND (expires_utc IS NULL OR expires_utc > ?) LIMIT 1",
+            (steam_id, now),
+        ).fetchone()
+        if row:
+            return True
+    except Exception:
+        pass
+    return False
 
 
-async def _execute_swap(sid: str, side: str, target_steam_id: str):
-    """Ядро SW: проверка перевеса → PATCH faction."""
+async def _execute_swap(sid: str, side: str, target_steam_id: str, actor_discord_id: str = ""):
     client = _get_rcon_client(sid)
     if not client:
         return "Сервер не настроен"
     try:
         players = await client.players()
-        status_map = (await client.status()).get("map", "")
+        status = await client.status()
+        status_map = status.get("map", "")
     except RconError as exc:
         return f"Сервер недоступен: {exc}"
     finally:
@@ -60,17 +89,24 @@ async def _execute_swap(sid: str, side: str, target_steam_id: str):
     if source.lower() == side.lower():
         return "Игрок уже в этой стороне"
 
-    if status_map:
+    is_vip = _is_vip(target_steam_id)
+
+    if not is_vip and status_map:
         prev = SW_COOLDOWN.get((sid, target_steam_id))
         if prev == status_map:
-            return "Уже был свап на этой карте — 1 раз за игру"
+            return "Уже был свап на этой карте — 1 раз за игру (VIP — без кулдауна)"
 
     def count(name):
         return sum(1 for p in players if p.get("faction", "").lower() == name.lower())
 
+    counts = {}
+    for p in players:
+        f = p.get("faction", "") or "?"
+        counts[f] = counts.get(f, 0) + 1
+
     diff = abs(count(source) - count(side))
-    if not _swap_allowed(diff, False):
-        return f"Перевес {diff} больше допустимого (до +2)"
+    if not is_vip and diff > 2:
+        return f"Перевес {diff} больше допустимого (до +2; VIP — без лимита)"
 
     client2 = _get_rcon_client(sid)
     if not client2:
@@ -82,27 +118,46 @@ async def _execute_swap(sid: str, side: str, target_steam_id: str):
     finally:
         await client2.close()
 
-    if status_map:
+    if not is_vip and status_map:
         SW_COOLDOWN[(sid, target_steam_id)] = status_map
-    return f"{target_steam_id} переведён в «{side}» (перевес был {diff})"
+
+    try:
+        db.seed_log_swap(
+            server_id=sid,
+            steam_id=target_steam_id,
+            source_faction=source,
+            target_faction=side,
+            diff=diff,
+            player_count=len(players),
+            faction_counts=counts,
+            is_vip=is_vip,
+            actor_discord_id=actor_discord_id,
+            map_name=status_map,
+        )
+    except Exception:
+        log.exception("Ошибка логирования свапа")
+
+    vip_note = " [VIP — без лимита]" if is_vip else ""
+    log.info("SW %s: %s %s→%s (перевес %d, игроков %d)%s", sid, target_steam_id, source, side, diff, len(players), vip_note)
+    return f"{target_steam_id} переведён в «{side}» (перевес {diff}){vip_note}"
 
 
 class SwapCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="sw", description="Смена стороны с проверкой перевеса (до +2, с VIP до +4)")
+    @app_commands.command(name="sw", description="Смена стороны с проверкой перевеса (до +2, VIP без лимита)")
     @app_commands.describe(server="Сервер", side="Новая сторона", player="Игрок (SteamID64)")
     @app_commands.guild_only()
     async def sw(self, interaction: discord.Interaction, server: str, side: str, player: str):
         if not await _has_move_faction(interaction.user):
             return await interaction.response.send_message(
-                "Нет права move_faction (проверьте роли в панели)", ephemeral=True
+                "Нет права move_faction", ephemeral=True
             )
         if not side or len(side) > 80:
             return await interaction.response.send_message("Укажите сторону", ephemeral=True)
         await interaction.response.defer(ephemeral=True)
-        result = await _execute_swap(server, side, player)
+        result = await _execute_swap(server, side, player, str(interaction.user.id))
         await interaction.followup.send(result, ephemeral=True)
 
     @sw.autocomplete("server")

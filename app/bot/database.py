@@ -1,11 +1,26 @@
 import hashlib
 import sqlite3
 import threading
+import os
+from pathlib import Path
 
 DB_FILE = "wardogs_v2.db"
 _local = threading.local()
 _lock = threading.Lock()
 _conns: set[sqlite3.Connection] = set()
+
+# site.db панели (рядом с app/bot/ → ../../../site.db)
+_PANEL_DB = Path(__file__).resolve().parent.parent.parent / "site.db"
+_panel_local = threading.local()
+
+
+def get_panel_conn() -> sqlite3.Connection:
+    conn = getattr(_panel_local, "conn", None)
+    if conn is None:
+        conn = sqlite3.connect(str(_PANEL_DB), check_same_thread=False, isolation_level=None)
+        conn.row_factory = sqlite3.Row
+        _panel_local.conn = conn
+    return conn
 
 
 def _utcnow() -> str:
@@ -420,6 +435,22 @@ def init_db():
         CREATE TABLE IF NOT EXISTS seed_system_state (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS sw_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            server_id TEXT NOT NULL,
+            steam_id TEXT NOT NULL,
+            source_faction TEXT NOT NULL,
+            target_faction TEXT NOT NULL,
+            diff INTEGER NOT NULL,
+            player_count INTEGER NOT NULL,
+            faction_counts TEXT NOT NULL,
+            is_vip INTEGER NOT NULL DEFAULT 0,
+            actor_discord_id TEXT,
+            map TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL
+        );
         );
     """)
     conn.commit()
@@ -2332,6 +2363,25 @@ def seed_audit(kind: str, actor_id: str, details: dict):
         "INSERT INTO seed_audit_log (kind, actor_id, details, created_at) VALUES (?, ?, ?, ?)",
         (kind, str(actor_id or ""), _json.dumps(details, ensure_ascii=False, default=str), now),
     )
+
+
+def seed_log_swap(server_id: str, steam_id: str, source_faction: str, target_faction: str,
+                  diff: int, player_count: int, faction_counts: dict, is_vip: bool,
+                  actor_discord_id: str = "", map_name: str = ""):
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO sw_log (server_id, steam_id, source_faction, target_faction, diff, player_count, faction_counts, is_vip, actor_discord_id, map, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (server_id, steam_id, source_faction, target_faction, diff, player_count,
+         _json.dumps(faction_counts, ensure_ascii=False), 1 if is_vip else 0,
+         actor_discord_id, map_name, int(time.time() * 1000)),
+    )
+
+
+def seed_list_sw_logs(since_ms: int = 0) -> list[dict]:
+    conn = get_conn()
+    rows = conn.execute("SELECT * FROM sw_log WHERE created_at >= ? ORDER BY created_at DESC", (since_ms,)).fetchall()
+    return [dict(r) for r in rows]
 
 
 def seed_week_key(now_ms: int) -> str:
