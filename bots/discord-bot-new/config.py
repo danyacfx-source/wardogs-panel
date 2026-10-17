@@ -204,3 +204,15 @@ except json.JSONDecodeError:
     DONATION_TIERS = []
 if not isinstance(DONATION_TIERS, list):
     DONATION_TIERS = []
+
+# ---- SW (смена стороны) ----
+# Список серверов: JSON [{"id":"1","name":"Server 1"}, ...]
+try:
+    SERVERS = json.loads(os.getenv("SW_SERVERS") or "[]")
+except json.JSONDecodeError:
+    SERVERS = []
+if not isinstance(SERVERS, list):
+    SERVERS = []
+if not SERVERS:
+    SERVERS = [{"id": "1", "name": "Server 1"}, {"id": "2", "name": "Server 2"}]
+SW_ADMIN_ROLE_IDS = _ints("SW_ADMIN_ROLE_IDS")

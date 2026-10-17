@@ -18,6 +18,7 @@ _ALLOWED_ROUTE_RE = re.compile(
     r"^/v1/(?:capabilities|status|players|reserved-slots|config)$"
     r"|^/v1/players/7656119\d{10}/message$"
     r"|^/v1/reserved-slots/7656119\d{10}$"
+    r"|^/v1/players/7656119\d{10}$"
 )
 
 _TRANSIENT_STATUS = {429, 502, 503, 504}
@@ -294,7 +295,8 @@ class WardogsRconClient:
                 )
             name = str((player or {}).get("name") or "Игрок")
             name = re.sub(r"[\r\n\0]", "", name)[:80]
-            out.append({"steam_id": steam_id, "name": name})
+            faction = str((player or {}).get("faction") or "")[:80]
+            out.append({"steam_id": steam_id, "name": name, "faction": faction})
         return out
 
     async def whisper(self, steam_id: str, message: str):
@@ -304,6 +306,14 @@ class WardogsRconClient:
         if not safe:
             raise ValueError("RCON whisper cannot be empty")
         await self._request("POST", f"/v1/players/{steam_id}/message", json_body={"message": safe})
+
+    async def set_faction(self, steam_id: str, faction: str):
+        if not STEAM_ID_RE.match(str(steam_id)):
+            raise ValueError("Invalid SteamID64")
+        safe = re.sub(r"[\r\n\0]", " ", str(faction)).strip()[:80]
+        if not safe:
+            raise ValueError("RCON faction cannot be empty")
+        await self._request("PATCH", f"/v1/players/{steam_id}", json_body={"faction": safe})
 
     async def live_reserved_ids(self) -> list[str] | None:
         response = await self._request("GET", "/v1/reserved-slots", allow_failure=True)

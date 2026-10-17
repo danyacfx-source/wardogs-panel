@@ -3361,24 +3361,6 @@ async def server_player_swap(sid: str, steam_id: str, request: Request):
     return await _server_action(sid, request, "move_faction", action, f"{steam_id} -> {faction}")
 
 
-@router.post("/discord/interactions")
-async def discord_interactions(request: Request):
-    """Discord slash-команды (интеракции панели): подпись Ed25519."""
-    from . import interactions
-
-    body = await request.body()
-    key = await interactions.public_key()
-    if not interactions.verify(request.headers, body, key):
-        return JSONResponse({}, status_code=401)
-    try:
-        payload = json.loads(body)
-    except ValueError:
-        return JSONResponse({"error": "bad payload"}, status_code=400)
-    if not isinstance(payload, dict):
-        return JSONResponse({"error": "bad payload"}, status_code=400)
-    return await interactions.handle(payload)
-
-
 @router.post("/server/{sid}/match/map")
 async def server_match_map(sid: str, request: Request):
     async def action(srv):

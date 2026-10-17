@@ -18,14 +18,13 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 import aiohttp
 
 try:
-    from . import api, backup, config, db, donate, interactions, monitor
+    from . import api, backup, config, db, donate, monitor
 except ImportError:  # Поддержка прямого запуска: python app/main.py
     import api
     import backup
     import config
     import db
     import donate
-    import interactions
     import monitor
 
 log = logging.getLogger("main")
@@ -101,12 +100,10 @@ async def lifespan(app):
     stop_health = asyncio.Event()
     health_task = None
     maintenance_task = None
-    discord_task = None
     backup_task = None
     if not config.DISABLE_BACKGROUND:
         health_task = asyncio.create_task(monitor.health_loop(api.POOL, stop_health))
         maintenance_task = asyncio.create_task(maintenance_loop(stop_health))
-        discord_task = asyncio.create_task(interactions.startup())
         if config.BACKUP_CHANNEL_ID and config.DISCORD_BOT_TOKEN:
             # Стартовый бэкап — сразу фиксируем текущее состояние.
             async def _initial_backup():
@@ -126,7 +123,7 @@ async def lifespan(app):
             await asyncio.wait_for(backup.send_backup(), timeout=20)
         except Exception:
             log.exception("Ошибка финального бэкапа")
-    for task in (health_task, maintenance_task, discord_task, backup_task):
+    for task in (health_task, maintenance_task, backup_task):
         if task is None:
             continue
         try:
