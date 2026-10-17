@@ -166,6 +166,7 @@ const app = createApp({
       overviewAttention: { tickets: null, vips: [], error: '' },
       payments: { plans: [], items: [], loading: false, error: '', provider_connected: false },
       profile: { loading: false, error: "", data: null, open: false },
+      seedShop: { loading: false, error: "", data: null, buying: false, buyResult: "" },
       botWizard: { open: false, step: 1, id: '', busy: false },
       botScopeChoices: [{id:'heartbeat',label:'Состояние подключения'}, {id:'events.write',label:'Отправка событий'}],
       botEvents: [],
@@ -1257,6 +1258,32 @@ const app = createApp({
         this.profile.error = r.data?.detail || "Не удалось загрузить профиль";
       }
       this.profile.loading = false;
+      this.loadSeedShop();
+    },
+    async loadSeedShop() {
+      this.seedShop.loading = true;
+      this.seedShop.error = "";
+      const r = await this.api.request("GET", "/api/seed/balance");
+      if (r.status === 200) {
+        this.seedShop.data = r.data;
+      } else {
+        this.seedShop.error = r.data?.detail || "Не удалось загрузить баланс";
+      }
+      this.seedShop.loading = false;
+    },
+    async buySeedVip(sku) {
+      if (this.seedShop.buying) return;
+      this.seedShop.buying = true;
+      this.seedShop.buyResult = "";
+      const r = await this.api.request("POST", "/api/seed/vip", { sku });
+      if (r.status === 200 && r.data?.ok) {
+        this.seedShop.buyResult = `VIP куплен! Баланс: ${r.data.balance} баллов.`;
+        this.loadSeedShop();
+        this.loadProfile();
+      } else {
+        this.seedShop.buyResult = r.data?.detail || "Ошибка покупки";
+      }
+      this.seedShop.buying = false;
     },
     openProfileCard() {
       this.profile.open = true;

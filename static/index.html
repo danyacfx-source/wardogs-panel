@@ -278,6 +278,25 @@
           </section>
 
           <section class="player-section">
+            <div class="player-section-title">VIP за баллы сидинга</div>
+            <div v-if="seedShop.loading" class="muted">Загрузка…</div>
+            <div v-else-if="seedShop.error" class="err-box">{{ seedShop.error }}</div>
+            <template v-else-if="seedShop.data?.ok">
+              <p class="muted">Баланс: <b>{{ seedShop.data.balance }}</b> баллов</p>
+              <div class="player-tags">
+                <button v-for="s in (seedShop.data.skus || []).filter(x => x.enabled)" :key="s.sku"
+                        class="btn ghost" :disabled="seedShop.buying || seedShop.data.balance < s.cost"
+                        @click="buySeedVip(s.sku)">
+                  {{ s.label }} · {{ s.cost }} баллов
+                </button>
+              </div>
+              <p v-if="seedShop.buying" class="muted">Покупка…</p>
+              <p v-if="seedShop.buyResult" class="player-tag green">{{ seedShop.buyResult }}</p>
+            </template>
+            <p v-else class="muted">{{ seedShop.data?.error || 'Нет данных. Привяжите Discord и /seed link.' }}</p>
+          </section>
+
+          <section class="player-section">
             <div class="player-section-title">Мои обращения · {{ profile.data.tickets_total || 0 }}</div>
             <div v-if="(profile.data.tickets || []).length" class="player-tags">
               <span v-for="ticket in profile.data.tickets" :key="ticket.id" class="player-tag">{{ ticket.title }} · {{ ticketStatusLabel(ticket.status) }}</span>
