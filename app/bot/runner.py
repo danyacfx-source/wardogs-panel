@@ -186,6 +186,7 @@ async def on_ready():
     # Persistent-кнопки
     for mod_name, view_names in [
         ("cogs.tickets", ["TicketPanelView", "TicketCloseView", "TicketClosedView"]),
+        ("cogs.clan_tickets", ["ClanTicketPanelView", "ClanTicketCloseView", "ClanTicketClosedView"]),
         ("cogs.temp_voice", ["VoiceControlPanelView"]),
         ("cogs.embed", ["EmbedBuilderView"]),
     ]:

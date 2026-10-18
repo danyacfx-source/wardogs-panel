@@ -11,10 +11,12 @@ from datetime import datetime
 from io import BytesIO
 
 import config
+import database
 from database import get_conn
 
 log = logging.getLogger("clan_tickets")
 
+# Фолбэк, если БД с типами недоступна (текст формы по умолчанию).
 CLAN_APPLICATION_FORM = (
     "# ЗАЯВКА НА РЕГИСТРАЦИЮ КЛАНА\n\n"
     "1. Название клана.\n"
@@ -28,17 +30,57 @@ CLAN_APPLICATION_FORM = (
     "и согласен соблюдать установленные правила."
 )
 
-CLAN_EMBED_DESCRIPTION = CLAN_APPLICATION_FORM
+_CLAN_FALLBACK = {
+    "type_id": "clan",
+    "label": "Зарегистрировать клан",
+    "description": CLAN_APPLICATION_FORM,
+    "emoji": "📝",
+    "color": 16766720,
+    "enabled": 1,
+}
+
+
+def _clan_type():
+    """Тип 'clan' из панели (label=кнопка, description=форма, color=эмбед)."""
+    try:
+        row = database.get_ticket_type("clan")
+    except Exception:
+        log.exception("clan_ticket: не удалось прочитать тип clan из БД")
+        row = None
+    return row or dict(_CLAN_FALLBACK)
+
+
+def _clan_title(ttype: dict) -> str:
+    emoji = (ttype.get("emoji") or "").strip() or "📝"
+    first_line = (ttype.get("description") or CLAN_APPLICATION_FORM).strip().splitlines()[0].strip().lstrip("#").strip()
+    return f"{emoji} {first_line}" if first_line else f"{emoji} ЗАЯВКА НА РЕГИСТРАЦИЮ КЛАНА"
+
+
+def _clan_color(ttype: dict) -> discord.Color:
+    return discord.Color(int(ttype.get("color") or 0xFFD700) & 0xFFFFFF)
 
 
 class ClanTicketPanelView(discord.ui.View):
-    """Persistent-панель регистрации клана."""
+    """Persistent-панель регистрации клана (подписи/форма — из ticket_types)."""
 
     def __init__(self):
         super().__init__(timeout=None)
+        ttype = _clan_type()
+        button = discord.ui.Button(
+            label=(ttype.get("label") or "Зарегистрировать клан")[:80],
+            style=discord.ButtonStyle.primary,
+            custom_id="ck_create",
+            emoji=(ttype.get("emoji") or "").strip() or "📝",
+            disabled=not int(ttype.get("enabled") or 1),
+        )
+        button.callback = self._create_from_button
+        self.add_item(button)
 
-    @discord.ui.button(label="Зарегистрировать клан", style=discord.ButtonStyle.primary, custom_id="ck_create", emoji="📝")
-    async def create(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def _create_from_button(self, interaction: discord.Interaction):
+        if not int(_clan_type().get("enabled") or 1):
+            return await interaction.response.send_message(
+                "Регистрация кланов временно закрыта.", ephemeral=True
+            )
         await self._create_ticket(interaction)
 
     async def _create_ticket(self, interaction: discord.Interaction):
@@ -90,10 +132,11 @@ class ClanTicketPanelView(discord.ui.View):
                 "❌ Не удалось создать заявку.", ephemeral=True
             )
 
+        ttype = _clan_type()
         embed = discord.Embed(
-            title="📝 ЗАЯВКА НА РЕГИСТРАЦИЮ КЛАНА",
-            description=CLAN_EMBED_DESCRIPTION,
-            color=discord.Color.gold(),
+            title=_clan_title(ttype),
+            description=ttype.get("description") or CLAN_APPLICATION_FORM,
+            color=_clan_color(ttype),
             timestamp=datetime.utcnow(),
         )
         embed.set_author(name=user.display_name, icon_url=user.display_avatar.url)
@@ -237,10 +280,11 @@ class ClanTicketCog(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         target = channel or interaction.channel
 
+        ttype = _clan_type()
         embed = discord.Embed(
-            title="⚔️ ЗАЯВКА НА РЕГИСТРАЦИЮ КЛАНА",
-            description=CLAN_APPLICATION_FORM,
-            color=discord.Color.gold(),
+            title=_clan_title(ttype),
+            description=ttype.get("description") or CLAN_APPLICATION_FORM,
+            color=_clan_color(ttype),
         )
         await target.send(embed=embed, view=ClanTicketPanelView())
         await interaction.followup.send(f"Панель отправлена в {target.mention}.", ephemeral=True)

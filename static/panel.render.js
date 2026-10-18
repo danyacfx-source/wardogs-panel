@@ -2960,7 +2960,7 @@ return function render(_ctx, _cache) {
                               ], 64))
                             : (_openBlock(), _createElementBlock("div", _hoisted_452, [...(_cache[169] || (_cache[169] = [_createElementVNode("strong", null, "Выберите тикет", -1), _createElementVNode("span", null, "Здесь появятся детали, свойства и обсуждение.", -1)]))]))])])),
                     _createElementVNode("div", _hoisted_453, [
-                      _createElementVNode("div", _hoisted_454, [_cache[170] || (_cache[170] = _createElementVNode("div", null, [_createElementVNode("h2", null, "Типы тикетов Discord"), _createElementVNode("p", { class: "muted" }, "Пункты меню «Создать тикет» у бота. Правки подхватываются сразу, без перезапуска.")], -1)), (has('tickets_edit'))
+                      _createElementVNode("div", _hoisted_454, [_cache[170] || (_cache[170] = _createElementVNode("div", null, [_createElementVNode("h2", null, "Типы тикетов Discord"), _createElementVNode("p", { class: "muted" }, [_createTextVNode("Пункты меню «Создать тикет» у бота. Правки подхватываются сразу, без перезапуска. Тип "), _createElementVNode("b", null, "clan"), _createTextVNode(" — кнопка и форма регистрации клана (не в общем меню).")])], -1)), (has('tickets_edit'))
                         ? (_openBlock(), _createElementBlock("button", {
                             key: 0,
                             class: "btn primary",
@@ -3029,9 +3029,9 @@ return function render(_ctx, _cache) {
                             ]])]),
                             _createElementVNode("label", null, [_cache[176] || (_cache[176] = _createTextVNode("Описание", -1)), _withDirectives(_createElementVNode("textarea", {
                               "onUpdate:modelValue": $event => ((ticketTypeDraft.description) = $event),
-                              maxlength: "500",
-                              rows: "2",
-                              placeholder: "Подсказка в меню"
+                              maxlength: "2000",
+                              rows: "3",
+                              placeholder: "Подсказка в меню / текст формы (clan)"
                             }, null, 8, _hoisted_463), [[
                               _vModelText,
                               ticketTypeDraft.description,

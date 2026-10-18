@@ -1832,7 +1832,7 @@ async def ticket_type_create(request: Request):
         raise HTTPException(status_code=400, detail="Название: 1–100 символов")
     if bot_db.get_ticket_type(type_id):
         raise HTTPException(status_code=409, detail="Такой ID типа уже существует")
-    description = str(body.get("description") or "").strip()[:500]
+    description = str(body.get("description") or "").strip()[:2000]
     emoji = str(body.get("emoji") or "").strip()[:16]
     color = _ticket_type_color(body.get("color") or "#5865F2")
     position = int(body.get("position") or 0)
@@ -1852,7 +1852,7 @@ async def ticket_type_update(type_id: str, request: Request):
     label = str(body.get("label", current["label"])).strip()
     if not 1 <= len(label) <= 100:
         raise HTTPException(status_code=400, detail="Название: 1–100 символов")
-    description = str(body.get("description", current["description"]) or "").strip()[:500]
+    description = str(body.get("description", current["description"]) or "").strip()[:2000]
     emoji = str(body.get("emoji", current["emoji"]) or "").strip()[:16]
     color = _ticket_type_color(body.get("color") or f"#{int(current['color'] or 0):06X}")
     position = int(body.get("position", current["position"] or 0))

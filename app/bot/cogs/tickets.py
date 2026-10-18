@@ -26,9 +26,12 @@ _FALLBACK_TYPE = {
 
 
 def _load_types():
-    """Типы тикетов из БД (правятся в панели). Пусто/ошибка — фолбэк."""
+    """Типы тикетов из БД (правятся в панели). Пусто/ошибка — фолбэк.
+
+    'clan' исключён: у регистрации клана своя кнопка и своя категория.
+    """
     try:
-        rows = database.list_ticket_types()
+        rows = [r for r in database.list_ticket_types() if r.get("type_id") != "clan"]
     except Exception:
         log.exception("ticket_types: не удалось прочитать типы из БД")
         rows = []

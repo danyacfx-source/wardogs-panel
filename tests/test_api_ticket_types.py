@@ -43,16 +43,21 @@ def test_ticket_types_crud(monkeypatch, tmp_path):
 
         response = client.get("/api/ticket-types")
         assert response.status_code == 200, response.text
-        defaults = response.json()["types"]
-        assert {t["type_id"] for t in defaults} >= {"complaint", "suggestion"}
+        defaults = {t["type_id"]: t for t in response.json()["types"]}
+        assert {"complaint", "suggestion", "vip_bonuses", "clan"} <= set(defaults)
+        assert "Магазина" in defaults["vip_bonuses"]["description"] or "магазина" in defaults["vip_bonuses"]["description"]
+        assert "ЗАЯВКА НА РЕГИСТРАЦИЮ КЛАНА" in defaults["clan"]["description"]
+        assert defaults["clan"]["label"] == "Зарегистрировать клан"
 
+        long_desc = "Т" * 1990
         response = client.post("/api/ticket-types", json={
-            "type_id": "support", "label": "Поддержка", "description": "Помощь по игре",
+            "type_id": "support", "label": "Поддержка", "description": long_desc,
             "emoji": "🎧", "color": "#00AAFF", "position": 5, "enabled": True,
         }, headers=headers)
         assert response.status_code == 200, response.text
         created = response.json()["type"]
         assert created["label"] == "Поддержка"
+        assert created["description"] == long_desc
         assert created["color"] == "#00AAFF"
         assert created["enabled"] is True
 
@@ -70,7 +75,7 @@ def test_ticket_types_crud(monkeypatch, tmp_path):
         assert updated["label"] == "Поддержка игроков"
         assert updated["enabled"] is False
         assert updated["color"] == "#FF0000"
-        assert updated["description"] == "Помощь по игре"
+        assert updated["description"] == long_desc
 
         response = client.get("/api/ticket-types")
         visible = {t["type_id"] for t in response.json()["types"] if t["enabled"]}

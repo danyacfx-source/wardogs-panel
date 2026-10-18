@@ -857,7 +857,7 @@
           <div class="toolbar">
             <div>
               <h2>Типы тикетов Discord</h2>
-              <p class="muted">Пункты меню «Создать тикет» у бота. Правки подхватываются сразу, без перезапуска.</p>
+              <p class="muted">Пункты меню «Создать тикет» у бота. Правки подхватываются сразу, без перезапуска. Тип <b>clan</b> — кнопка и форма регистрации клана (не в общем меню).</p>
             </div>
             <button v-if="has('tickets_edit')" class="btn primary" @click="startTicketTypeDraft()">+ Добавить тип</button>
           </div>
@@ -868,7 +868,7 @@
             <label>Эмодзи<input v-model.trim="ticketTypeDraft.emoji" maxlength="16" placeholder="🎧"></label>
             <label>Цвет (hex)<input v-model.trim="ticketTypeDraft.color" maxlength="7" placeholder="#5865F2"></label>
             <label>Порядок<input v-model.number="ticketTypeDraft.position" type="number"></label>
-            <label>Описание<textarea v-model.trim="ticketTypeDraft.description" maxlength="500" rows="2" placeholder="Подсказка в меню"></textarea></label>
+            <label>Описание<textarea v-model.trim="ticketTypeDraft.description" maxlength="2000" rows="3" placeholder="Подсказка в меню / текст формы (clan)"></textarea></label>
             <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" v-model="ticketTypeDraft.enabled"> Виден в меню</label>
             <div class="toolbar-actions">
               <button class="btn primary" type="submit" :disabled="ticketTypes.busy">{{ ticketTypes.busy ? 'Сохранение…' : 'Сохранить' }}</button>
