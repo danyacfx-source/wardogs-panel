@@ -93,11 +93,22 @@ class ClansCog(commands.Cog):
                 await self._update_clan_artifacts(guild, clan, sync=False)
             except Exception as e:
                 log.warning("Не удалось обновить карточку клана %s: %s", clan.get("name"), e)
-        # Синк в сайт (один раз на старте).
-        try:
-            await sync_site(list(self.store.state.get("clans", {}).values()))
-        except Exception as e:
-            log.warning("Site sync on startup failed: %s", e)
+        # Синк в сайт — фоном с ретраями: на старте прокси/сайт может подниматься позже бота.
+        asyncio.create_task(self._site_sync_with_retries())
+
+    async def _site_sync_with_retries(self, attempts: int = 10, delay: float = 20.0):
+        for attempt in range(1, attempts + 1):
+            try:
+                await sync_site(list(self.store.state.get("clans", {}).values()))
+                if attempt > 1:
+                    log.info("Синк кланов в сайт выполнен (попытка %d)", attempt)
+                return
+            except Exception as e:
+                if attempt == attempts:
+                    log.warning("Site sync on startup failed after %d attempts: %s", attempts, e)
+                else:
+                    log.warning("Site sync attempt %d/%d failed: %s — retry через %ds", attempt, attempts, e, int(delay))
+                    await asyncio.sleep(delay)
 
     async def _ensure_channel(self, guild: discord.Guild, stored_id, **kwargs):
         if stored_id:
