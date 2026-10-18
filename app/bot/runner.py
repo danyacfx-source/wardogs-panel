@@ -276,9 +276,17 @@ async def start_bot():
         _fresh = not database.db_file_exists()
         database.init_db()
 
+        # Lease живёт 30 секунд: при деплое старый контейнер умирает посреди
+        # работы и не успевает его освободить — ждём протухания, а не сдуваемся.
         if not database.acquire_lease(RUN_ID):
-            log.warning("Второй инстанс бота уже работает — бот не запущен.")
-            return
+            for attempt in range(9):
+                log.info("Lease занят предыдущим инстансом, жду освобождения (%d/9)...", attempt + 1)
+                await asyncio.sleep(10)
+                if database.acquire_lease(RUN_ID):
+                    break
+            else:
+                log.warning("Второй инстанс бота уже работает — бот не запущен.")
+                return
     except Exception:
         log.exception("Бот не смог инициализировать базу (BOT_DATABASE_URL/psycopg?)")
         return
