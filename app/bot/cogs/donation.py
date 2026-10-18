@@ -493,7 +493,7 @@ class DonationCog(commands.Cog):
         e = discord.Embed(color=0xE0B75B, title="🏆 Топ 10 спонсоров", description=desc)
         e.set_author(name="WARDOGS RU · ЗАЛ СЛАВЫ")
         if self.site_base:
-            e.set_thumbnail(url=f"{self.site_base.rstrip('/')}/static/donate/assets/legend.png")
+            e.set_thumbnail(url=f"{self.site_base.rstrip('/')}/static/donate/assets/legend.png?v=20261018")
         e.set_footer(text="Рейтинг обновляется после каждого подтверждённого доната · суммы накопительные")
         return e
 
@@ -531,7 +531,7 @@ class DonationCog(commands.Cog):
                               description="Добровольная поддержка помогает оплачивать и развивать игровой сервер, развивать сообщество, проводить события и создавать новые возможности для игроков. Минимальный перевод — 50 ₽. Каждый подтверждённый перевод прибавляется к вашей общей сумме.")
         embed.set_author(name="WARDOGS RU · СООБЩЕСТВО")
         if self.site_base:
-            embed.set_thumbnail(url=f"{self.site_base.rstrip('/')}/static/donate/assets/paw.png")
+            embed.set_thumbnail(url=f"{self.site_base.rstrip('/')}/static/donate/assets/paw.png?v=20261018")
         embed.add_field(name="🎖️ Спонсорские роли", value=tiers_text)
         embed.add_field(name="💎 Преимущества", value="Закрытый чат спонсоров. Возможность попросить администратора выбрать команду, если он онлайн и переход не создаст явного дисбаланса. Спонсорская роль сама по себе не выдаёт reserved slot.")
         embed.add_field(name="🔗 SteamID и игровой доступ", value="Для обычной поддержки Steam-привязка не нужна. Если покупаете VIP, привяжите Steam через `/vip-link link steam_id` и `/vip-link verify code`. Привязка сидера также подходит для VIP.")
@@ -544,7 +544,7 @@ class DonationCog(commands.Cog):
                               description=f"VIP действует указанный срок с момента подтверждения оплаты. Участник получает готовую роль <@&{VIP_ROLE_ID}> и reserved slot при привязанном SteamID. Покупка также входит в общую сумму донатов **покупателя**.")
         embed.set_author(name="WARDOGS RU · VIP")
         if self.site_base:
-            embed.set_thumbnail(url=f"{self.site_base.rstrip('/')}/static/donate/assets/vip.png")
+            embed.set_thumbnail(url=f"{self.site_base.rstrip('/')}/static/donate/assets/vip.png?v=20261018")
         embed.add_field(name="👤 Личный VIP", value="1 месяц — **500 ₽**\n3 месяца — **1 200 ₽**\n12 месяцев — **4 800 ₽**", inline=True)
         embed.add_field(name="🛡️ VIP для клана", value="10 участников / 1 месяц — **4 500 ₽**\n20 участников / 1 месяц — **8 500 ₽**\n30 участников / 1 месяц — **12 000 ₽**", inline=True)
         embed.add_field(name="📌 Порядок", value="Выберите вариант ниже. Для кланового пакета отметьте всех получателей до оплаты. Каждый получатель привязывает SteamID через `/vip-link link steam_id` и `/vip-link verify code`; уже привязанным сидерам повторять это не нужно. Без привязки слот не появится. Повторная покупка продлевает срок.")
