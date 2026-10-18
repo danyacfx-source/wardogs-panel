@@ -219,69 +219,96 @@ class DonationCog(commands.Cog):
 
     # ---- Slash commands ----
 
-    @app_commands.command(name="donate", description="Поддержка WARDOGS RU")
-    async def donate(self, interaction: discord.Interaction):
+    donate_group = app_commands.Group(name="donate", description="Поддержка WARDOGS RU")
+
+    @donate_group.command(name="status", description="Проверка статуса и VIP")
+    async def donate_status(self, interaction: discord.Interaction):
         await self._cmd_status(interaction)
 
-    @app_commands.command(name="donation-admin", description="Управление донатным ботом")
-    @app_commands.default_permissions(manage_guild=True)
-    @app_commands.describe(
-        action="Действие",
-        user="Пользователь (для add/remove)",
-        amount="Сумма в рублях (для add/remove)",
-        reason="Причина (для add/remove)",
-        operation_id="ID операции ЮMoney (для add, необязательно)",
+    donation_admin = app_commands.Group(
+        name="donation-admin",
+        description="Управление донатным ботом",
+        default_permissions=discord.Permissions(manage_guild=True),
     )
-    @app_commands.choices(action=[
-        app_commands.Choice(name="setup", value="setup"),
-        app_commands.Choice(name="check", value="check"),
-        app_commands.Choice(name="review", value="review"),
-        app_commands.Choice(name="add", value="add"),
-        app_commands.Choice(name="remove", value="remove"),
-    ])
-    async def donation_admin(self, interaction: discord.Interaction, action: str,
-                             user: discord.User = None, amount: str = None,
-                             reason: str = None, operation_id: str = None):
+
+    async def _admin_guild(self, interaction: discord.Interaction):
         member_perms = interaction.member.permissions if interaction.member else None
         if not member_perms or not member_perms.manage_guild:
             await interaction.response.send_message("Недостаточно прав", ephemeral=True)
-            return
+            return None
         await interaction.response.defer(ephemeral=True)
-        guild = interaction.guild or self.bot.get_guild(config.GUILD_ID)
-        if action == "setup":
-            try:
-                vip_role_id, sponsor_ch_id = await self._do_setup(guild)
-                await interaction.followup.send(
-                    f"Карточки опубликованы. VIP роль: <@&{vip_role_id}>. Чат спонсоров: <#{sponsor_ch_id}>. "
-                    "Выдачей общей VIP роли за оплату и баллы управляет бот сидеров.")
-            except Exception as e:
-                await interaction.followup.send(f"Ошибка setup: {e}")
-        elif action == "check":
-            try:
-                msg = await self._tick_summary(guild)
-                await interaction.followup.send(msg)
-            except Exception as e:
-                log.error("Donation check failed", exc_info=True)
-                await interaction.followup.send(f"Не удалось прочитать журнал платежей: {e}.")
-        elif action == "review":
-            reasons = {
-                "unknown_order": "нет заказа в данных бота",
-                "order_already_paid": "ссылка заказа уже оплачивалась",
-                "amount_mismatch": "сумма отличается от заказа",
-                "time_mismatch": "время перевода вне срока заказа",
-                "invalid_event": "ошибка формата уведомления",
-                "missing_order_token": "нет сохранённого подписанного VIP заказа",
-                "order_token_mismatch": "подписанный VIP заказ не совпадает",
-            }
-            reviews = list_donation_reviews()
-            lines = [f"• {r['operation_id']}: {reasons.get(r['reason'], r['reason'])}" for r in reviews[:20]]
-            await interaction.followup.send("\n".join(lines) if lines else "нет")
-        elif action == "add" and user and amount and reason:
-            await self._cmd_admin_add(interaction, guild, user.id, amount, reason, operation_id)
-        elif action == "remove" and user and amount and reason:
-            await self._cmd_admin_remove(interaction, guild, user.id, amount, reason)
-        else:
-            await interaction.followup.send("Укажите user, amount и reason для add/remove.")
+        return interaction.guild or self.bot.get_guild(config.GUILD_ID)
+
+    @donation_admin.command(name="setup", description="Настроить VIP роль, создать или обновить донат-канал")
+    async def admin_setup(self, interaction: discord.Interaction):
+        guild = await self._admin_guild(interaction)
+        if guild is None:
+            return
+        try:
+            vip_role_id, sponsor_ch_id = await self._do_setup(guild)
+            await interaction.followup.send(
+                f"Карточки опубликованы. VIP роль: <@&{vip_role_id}>. Чат спонсоров: <#{sponsor_ch_id}>. "
+                "Выдачей общей VIP роли за оплату и баллы управляет бот сидеров.")
+        except Exception as e:
+            await interaction.followup.send(f"Ошибка setup: {e}")
+
+    @donation_admin.command(name="check", description="Проверить журнал платежей и баланс")
+    async def admin_check(self, interaction: discord.Interaction):
+        guild = await self._admin_guild(interaction)
+        if guild is None:
+            return
+        try:
+            msg = await self._tick_summary(guild)
+            await interaction.followup.send(msg)
+        except Exception as e:
+            log.error("Donation check failed", exc_info=True)
+            await interaction.followup.send(
+                f"Не удалось прочитать журнал платежей: {e}. Проверьте SITE_BASE_URL и FEED_TOKEN.")
+
+    @donation_admin.command(name="review", description="Проверить платежи, требующие ручной проверки")
+    async def admin_review(self, interaction: discord.Interaction):
+        guild = await self._admin_guild(interaction)
+        if guild is None:
+            return
+        reasons = {
+            "unknown_order": "нет заказа в данных бота",
+            "order_already_paid": "ссылка заказа уже оплачивалась",
+            "amount_mismatch": "сумма отличается от заказа",
+            "time_mismatch": "время перевода вне срока заказа",
+            "invalid_event": "ошибка формата уведомления",
+            "missing_order_token": "нет сохранённого подписанного VIP заказа",
+            "order_token_mismatch": "подписанный VIP заказ не совпадает",
+        }
+        reviews = list_donation_reviews()
+        lines = [f"• {r['operation_id']}: {reasons.get(r['reason'], r['reason'])}" for r in reviews[:20]]
+        await interaction.followup.send("\n".join(lines) if lines else "нет")
+
+    @donation_admin.command(name="add", description="Ручное добавление доната: сумма, роль, ранги и баллы")
+    @app_commands.describe(
+        user="Пользователь, чей донат будет учтён",
+        amount="Сумма в рублях от 50 до 100 000, например 500 или 500,50",
+        reason="Причина ручного доната; пишется только в официальных целях",
+        operation_id="ID операции ЮMoney; если не указан — формируется автоматически",
+    )
+    async def admin_add(self, interaction: discord.Interaction, user: discord.User,
+                        amount: str, reason: str, operation_id: str = None):
+        guild = await self._admin_guild(interaction)
+        if guild is None:
+            return
+        await self._cmd_admin_add(interaction, guild)
+
+    @donation_admin.command(name="remove", description="Ручное списание доната с возвратом роли и баллов")
+    @app_commands.describe(
+        user="Пользователь, у которого снижается донат",
+        amount="Сумма списания в рублях от 0,01 до 100 000, например 500 или 0,50",
+        reason="Причина списания; пишется только в официальных целях",
+    )
+    async def admin_remove(self, interaction: discord.Interaction, user: discord.User,
+                           amount: str, reason: str):
+        guild = await self._admin_guild(interaction)
+        if guild is None:
+            return
+        await self._cmd_admin_remove(interaction, guild)
 
     def cog_unload(self):
         if self.feed_loop.is_running():
@@ -780,45 +807,6 @@ class DonationCog(commands.Cog):
                    "Спонсорская роль не даёт игровой слот. Для оплаченного VIP используйте /vip-link link steam_id и /vip-link verify code; "
                    "действующая привязка сидера тоже подходит.")
         await interaction.response.send_message(content, ephemeral=True)
-
-    async def _cmd_admin(self, interaction):
-        member_perms = interaction.member.permissions if interaction.member else None
-        if not member_perms or not member_perms.manage_guild:
-            await interaction.response.send_message("Недостаточно прав", ephemeral=True)
-            return
-        await interaction.response.defer(ephemeral=True)
-        sub = interaction.data.get("options", [{}])[0].get("name", "")
-        guild = interaction.guild or self.bot.get_guild(config.GUILD_ID)
-        if sub == "setup":
-            vip_role_id, sponsor_ch_id = await self._do_setup(guild)
-            await interaction.followup.send(
-                f"Карточки опубликованы. VIP роль: <@&{vip_role_id}>. Чат спонсоров: <#{sponsor_ch_id}>. "
-                "Выдачей общей VIP роли за оплату и баллы управляет бот сидеров.")
-        elif sub == "check":
-            try:
-                msg = await self._tick_summary(guild)
-                await interaction.followup.send(msg)
-            except Exception as e:
-                log.error("Donation check failed", exc_info=True)
-                await interaction.followup.send(
-                    f"Не удалось прочитать журнал платежей: {e}. Проверьте SITE_BASE_URL и FEED_TOKEN.")
-        elif sub == "add":
-            await self._cmd_admin_add(interaction, guild)
-        elif sub == "remove":
-            await self._cmd_admin_remove(interaction, guild)
-        elif sub == "review":
-            reasons = {
-                "unknown_order": "нет заказа в данных бота",
-                "order_already_paid": "ссылка заказа уже оплачивалась",
-                "amount_mismatch": "сумма отличается от заказа",
-                "time_mismatch": "время перевода вне срока заказа",
-                "invalid_event": "ошибка формата уведомления",
-                "missing_order_token": "нет сохранённого подписанного VIP заказа",
-                "order_token_mismatch": "подписанный VIP заказ не совпадает",
-            }
-            reviews = list_donation_reviews()
-            lines = [f"• {r['operation_id']}: {reasons.get(r['reason'], r['reason'])}" for r in reviews[:20]]
-            await interaction.followup.send("\n".join(lines) if lines else "нет")
 
     async def _tick_summary(self, guild):
         imported = None
