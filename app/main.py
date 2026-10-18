@@ -117,7 +117,16 @@ async def lifespan(app):
         # Discord-бот работает внутри панели (один процесс, один .env).
         if config.DISCORD_BOT_TOKEN:
             from .bot.runner import start_bot
-            bot_task = asyncio.create_task(start_bot())
+
+            async def _run_bot():
+                try:
+                    await start_bot()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    log.exception("Бот упал при запуске или работе")
+
+            bot_task = asyncio.create_task(_run_bot())
             log.info("Discord-бот запускается как фоновая задача панели")
     log.info("WARDOGS-site запущен: %s (servers: %s)", config.PUBLIC_URL, ", ".join(s["id"] for s in config.SERVERS))
     yield

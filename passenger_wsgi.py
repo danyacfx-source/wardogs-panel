@@ -8,6 +8,16 @@ deployments do not use this file.
 import asyncio
 import atexit
 import logging
+import sys
+
+# Passenger не настраивает root-логгинг — без этого бот и asyncio-задачи
+# умирают полностью молча. Всё пишем в stderr, Passenger уводит его в свой лог.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    datefmt="%H:%M:%S",
+    stream=sys.stderr,
+)
 
 from a2wsgi import ASGIMiddleware
 

@@ -270,13 +270,17 @@ async def _shutdown_bot():
 
 async def start_bot():
     """Точка входа — вызывается из main.py как asyncio-задача."""
-    import database
+    try:
+        import database
 
-    _fresh = not database.db_file_exists()
-    database.init_db()
+        _fresh = not database.db_file_exists()
+        database.init_db()
 
-    if not database.acquire_lease(RUN_ID):
-        log.warning("Второй инстанс бота уже работает — бот не запущен.")
+        if not database.acquire_lease(RUN_ID):
+            log.warning("Второй инстанс бота уже работает — бот не запущен.")
+            return
+    except Exception:
+        log.exception("Бот не смог инициализировать базу (BOT_DATABASE_URL/psycopg?)")
         return
 
     global _fresh_db
