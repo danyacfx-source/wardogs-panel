@@ -1586,10 +1586,28 @@ class ClansCog(commands.Cog):
             await interaction.response.send_message("Команда доступна администрации.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True)
+        errors = []
         for clan in list(self.store.state["clans"].values()):
-            await self._update_clan_artifacts(interaction.guild, clan, sync=False)
-        await sync_site(list(self.store.state["clans"].values()))
-        await interaction.followup.send("Счётчики, карточки Discord и данные сайта синхронизированы.")
+            try:
+                await self._update_clan_artifacts(interaction.guild, clan, sync=False)
+            except Exception as e:
+                log.warning("clan sync: карточка %s не обновилась: %s", clan.get("name") or clan.get("id"), e)
+                errors.append(f"{clan.get('name') or clan.get('id')}: {e}")
+        site_status = "ok"
+        try:
+            await sync_site(list(self.store.state["clans"].values()))
+        except Exception as e:
+            log.warning("clan sync: сайт не принял данные: %s", e)
+            site_status = f"ошибка — {e}"
+        if errors or site_status != "ok":
+            lines = "\n".join(f"• {x}" for x in errors[:5])
+            more = f"\n…и ещё {len(errors) - 5}" if len(errors) > 5 else ""
+            await interaction.followup.send(
+                f"Синк завершён частично.\n**Сайт:** {site_status}\n**Карточки Discord ({len(errors)} ошиб.):**\n{lines}{more}",
+                ephemeral=True,
+            )
+        else:
+            await interaction.followup.send("Счётчики, карточки Discord и данные сайта синхронизированы.")
 
     async def _handle_clan_sub(self, interaction: discord.Interaction, sub: str, member, role_key: str, tag: str):
         clan = None
