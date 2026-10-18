@@ -25,10 +25,21 @@ FALLBACK_FACTIONS = ["Valkyra", "Lonestar", "Manticore"]
 SW_COOLDOWN: dict[tuple[str, str], str] = {}
 
 
+def _server_index(sid: str) -> int | None:
+    """Нормализует id сервера: ru1/main/1 -> 0, ru2/second/2 -> 1."""
+    ids = [str(s.get("id")) for s in config.SERVERS]
+    if sid in ids:
+        idx = ids.index(sid)
+        return idx if idx < 2 else None
+    aliases = {"1": 0, "main": 0, "ru1": 0, "2": 1, "second": 1, "ru2": 1}
+    return aliases.get(sid)
+
+
 def _get_rcon_client(sid: str) -> WardogsRconClient | None:
-    if sid == "1" and config.SEED_RCON_URL and config.SEED_RCON_PASSWORD:
+    idx = _server_index(sid)
+    if idx == 0 and config.SEED_RCON_URL and config.SEED_RCON_PASSWORD:
         return WardogsRconClient(config.SEED_RCON_URL, config.SEED_RCON_PASSWORD, label="sw")
-    if sid == "2" and config.SEED_RCON_2_URL and config.SEED_RCON_2_PASSWORD:
+    if idx == 1 and config.SEED_RCON_2_URL and config.SEED_RCON_2_PASSWORD:
         return WardogsRconClient(config.SEED_RCON_2_URL, config.SEED_RCON_2_PASSWORD, label="sw")
     return None
 
