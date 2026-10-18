@@ -3140,7 +3140,7 @@ return function render(_ctx, _cache) {
                             ? (_openBlock(), _createElementBlock("div", _hoisted_528, "Комнаты не получены."))
                             : _createCommentVNode("", true)])])]),
                           (!discordAdmin.tempvoice_error)
-                            ? (_openBlock(), _createElementBlock("div", _hoisted_529, [_cache[192] || (_cache[192] = _createElementVNode("div", { class: "toolbar" }, [_createElementVNode("h2", null, "Временные комнаты «Асуны Юки»")], -1)), _createElementVNode("div", _hoisted_530, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList((discordAdmin.tempvoice?.rooms || []), (room) => {
+                            ? (_openBlock(), _createElementBlock("div", _hoisted_529, [_cache[192] || (_cache[192] = _createElementVNode("div", { class: "toolbar" }, [_createElementVNode("h2", null, "Временные комнаты бота")], -1)), _createElementVNode("div", _hoisted_530, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList((discordAdmin.tempvoice?.rooms || []), (room) => {
                                 return (_openBlock(), _createElementBlock("article", {
                                   key: room.channel_id,
                                   class: "reserve-row tempvoice-row"
@@ -3181,7 +3181,7 @@ return function render(_ctx, _cache) {
                         ], 64))]))
                 : _createCommentVNode("", true),
               (state.tab === 'system')
-                ? (_openBlock(), _createElementBlock("section", _hoisted_542, [_createElementVNode("header", _hoisted_543, [_cache[196] || (_cache[196] = _createElementVNode("div", null, [_createElementVNode("div", { class: "admin-path" }, "— /admin/system"), _createElementVNode("h2", null, "Центр состояния"), _createElementVNode("p", null, "Игровые серверы, база, Steam, Discord и связь с «Асуной Юки» в одном месте.")], -1)), _createElementVNode("div", _hoisted_544, [_createElementVNode("button", {
+                ? (_openBlock(), _createElementBlock("section", _hoisted_542, [_createElementVNode("header", _hoisted_543, [_cache[196] || (_cache[196] = _createElementVNode("div", null, [_createElementVNode("div", { class: "admin-path" }, "— /admin/system"), _createElementVNode("h2", null, "Центр состояния"), _createElementVNode("p", null, "Игровые серверы, база, Steam, Discord и связь с панельным ботом в одном месте.")], -1)), _createElementVNode("div", _hoisted_544, [_createElementVNode("button", {
                     class: "btn ghost",
                     onClick: testLogChannel,
                     disabled: busy

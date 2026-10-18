@@ -815,9 +815,11 @@ async def system_status(request: Request):
 
     bridge, _bridge_error = await dmod.bot_panel_request("GET", "/api/tempvoice")
     if bridge is not None:
-        bridge_row = {"id": "asuna", "ok": True, "detail": f"временных комнат: {len((bridge or {}).get('rooms') or [])}"}
-        services.append(bridge_row)
-        _record_service_state("asuna", True, bridge_row["detail"])
+        bridge_row = {"id": "panel_bot", "name": "Панельный бот", "ok": True, "detail": f"временных комнат: {len((bridge or {}).get('rooms') or [])}"}
+    else:
+        bridge_row = {"id": "panel_bot", "name": "Панельный бот", "ok": False, "detail": _bridge_error or "бот недоступен"}
+    services.append(bridge_row)
+    _record_service_state("panel_bot", bridge_row["ok"], bridge_row["detail"])
 
     steam_ok = bool(config.STEAM_API_KEY)
     steam_row = {"id": "steam", "ok": steam_ok, "detail": "Steam Web API настроен" if steam_ok else "STEAM_API_KEY не задан"}
