@@ -11,6 +11,7 @@ os.environ.setdefault("WARDOGS_DISABLE_BACKGROUND", "1")
 os.environ["WARDOGS_ENV"] = "development"
 os.environ["WARDOGS_DATABASE_URL"] = ""
 os.environ["DATABASE_URL"] = ""
+os.environ["BOT_DATABASE_URL"] = ""
 os.environ["WARDOGS_DB"] = str(pathlib.Path(tempfile.mkdtemp(prefix="wardogs-test-")) / "test.db")
 # HTTP-база, чтобы тестовые сессионные куки не были Secure и реально шли в TestClient.
 os.environ["WARDOGS_PUBLIC_URL"] = "http://127.0.0.1:8236"

@@ -4,17 +4,24 @@ import threading
 import os
 from pathlib import Path
 
+try:
+    import db_backend
+except ImportError:  # package import (app.bot.database)
+    from . import db_backend
+
 DB_FILE = "wardogs_v2.db"
 _local = threading.local()
 _lock = threading.Lock()
-_conns: set[sqlite3.Connection] = set()
+_conns: set = set()
 
 # site.db панели (рядом с app/bot/ → ../../../site.db)
 _PANEL_DB = Path(__file__).resolve().parent.parent.parent / "site.db"
 _panel_local = threading.local()
 
 
-def get_panel_conn() -> sqlite3.Connection:
+def get_panel_conn():
+    if db_backend.panel_using_pg():
+        return db_backend.get_panel_conn()
     conn = getattr(_panel_local, "conn", None)
     if conn is None:
         conn = sqlite3.connect(str(_PANEL_DB), check_same_thread=False, isolation_level=None)
@@ -33,7 +40,9 @@ def _time_ago(seconds: int) -> str:
     return (datetime.now(timezone.utc) - timedelta(seconds=seconds)).isoformat()
 
 
-def get_conn() -> sqlite3.Connection:
+def get_conn():
+    if db_backend.using_pg():
+        return db_backend.get_bot_conn()
     if not hasattr(_local, "conn") or _local.conn is None:
         _local.conn = sqlite3.connect(DB_FILE, check_same_thread=False, isolation_level=None)
         _local.conn.row_factory = sqlite3.Row
@@ -56,11 +65,24 @@ def close_all_connections():
                 pass
         _conns = set()
     _local.conn = None
+    db_backend.close_all()
 
 
 def db_file_exists() -> bool:
+    if db_backend.using_pg():
+        return db_backend.bot_ready()
     import os
     return os.path.isfile(DB_FILE) or os.path.isfile(DB_FILE + "-wal") or os.path.isfile(DB_FILE + "-shm")
+
+
+def _insert_returning_id(conn, sql: str, params) -> int:
+    """INSERT c получением id: sqlite lastrowid либо PG RETURNING id."""
+    if getattr(conn, "is_pg", False):
+        cur = conn.execute(sql + " RETURNING id", params)
+        row = cur.fetchone()
+        return row["id"] if row else 0
+    cur = conn.execute(sql, params)
+    return cur.lastrowid
 
 
 def _ensure_column(conn, table: str, column: str, ddl: str):
@@ -796,12 +818,11 @@ def try_claim_log(fingerprint: str, ttl_seconds: int = 6) -> bool:
 
 def add_warning(user_id: int, guild_id: int, reason: str, moderator_id: int) -> int:
     conn = get_conn()
-    cur = conn.execute(
+    return _insert_returning_id(
+        conn,
         "INSERT INTO warnings (user_id, guild_id, reason, moderator_id, created_at) VALUES (?, ?, ?, ?, ?)",
         (user_id, guild_id, reason, moderator_id, _utcnow()),
     )
-    conn.commit()
-    return cur.lastrowid
 
 
 def get_warnings(user_id: int, guild_id: int) -> list[dict]:
@@ -988,7 +1009,10 @@ def release_lease(run_id: str) -> None:
 
 def automatic_backup(max_kept: int = 30) -> str | None:
     """Создаёт копию текущей БД (с учётом WAL) в папке backups/.
-    Возвращает путь к бэкапу или None. Старые копии сверх max_kept удаляются."""
+    Возвращает путь к бэкапу или None. Старые копии сверх max_kept удаляются.
+    В PG-режиме файловых бэкапов нет — дампы делает хостинг/pg_dump."""
+    if db_backend.using_pg():
+        return None
     import os
     import shutil
     from datetime import datetime, timezone
@@ -1024,12 +1048,11 @@ def automatic_backup(max_kept: int = 30) -> str | None:
 
 def create_giveaway(channel_id: int, guild_id: int, prize: str, ends_at: str, winners: int, created_by: int) -> int:
     conn = get_conn()
-    cur = conn.execute(
+    return _insert_returning_id(
+        conn,
         "INSERT INTO giveaways (channel_id, guild_id, prize, ends_at, winners, created_by) VALUES (?, ?, ?, ?, ?, ?)",
         (channel_id, guild_id, prize, ends_at, winners, created_by),
     )
-    conn.commit()
-    return cur.lastrowid
 
 
 def get_active_giveaways() -> list[dict]:
@@ -1057,13 +1080,12 @@ def insert_recovered_giveaway(channel_id: int, guild_id: int, prize: str, ends_a
     """Восстанавливает розыгрыш, когда он пропал из БД, но сообщение на сервере ещё есть.
     Сохраняет message_id для персистентной кнопки. Возвращает новый id."""
     conn = get_conn()
-    cur = conn.execute(
+    return _insert_returning_id(
+        conn,
         "INSERT INTO giveaways (channel_id, guild_id, prize, ends_at, winners, created_by, message_id, done) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
         (channel_id, guild_id, prize, ends_at, winners, created_by, message_id),
     )
-    conn.commit()
-    return cur.lastrowid
 
 
 def set_giveaway_done(giveaway_id: int):
@@ -1180,6 +1202,23 @@ def upsert_member(user_id: int, guild_id: int, username: str | None, display_nam
     conn.commit()
 
 
+def upsert_members_batch(rows: list[tuple]) -> None:
+    """Пакетный upsert участников одним executemany (server_sync).
+    Каждая строка: (user_id, guild_id, username, display_name, joined_at_joined_iso,
+    roles, is_bot_0_1, last_seen, last_seen_fallback_now)."""
+    if not rows:
+        return
+    conn = get_conn()
+    conn.executemany(
+        "INSERT INTO server_members (user_id, guild_id, username, display_name, joined_at, roles, is_bot, last_seen) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, ?)) "
+        "ON CONFLICT(user_id, guild_id) DO UPDATE SET "
+        "username=excluded.username, display_name=excluded.display_name, roles=excluded.roles, last_seen=COALESCE(excluded.last_seen, server_members.last_seen)",
+        rows,
+    )
+    conn.commit()
+
+
 def remove_member(user_id: int, guild_id: int):
     conn = get_conn()
     conn.execute("DELETE FROM server_members WHERE user_id = ? AND guild_id = ?", (user_id, guild_id))
@@ -1244,12 +1283,11 @@ def get_channels(guild_id: int) -> list[dict]:
 
 def log_server_event(guild_id: int, event_type: str, target_id: int | None, actor_id: int | None, details: str = "") -> int:
     conn = get_conn()
-    cur = conn.execute(
+    return _insert_returning_id(
+        conn,
         "INSERT INTO server_events (guild_id, event_type, target_id, actor_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?)",
         (guild_id, event_type, target_id, actor_id, details, _utcnow()),
     )
-    conn.commit()
-    return cur.lastrowid
 
 
 def get_recent_events(guild_id: int, limit: int = 50) -> list[dict]:

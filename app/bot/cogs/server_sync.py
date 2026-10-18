@@ -11,8 +11,10 @@ from database import (
     remove_channel,
     remove_member,
     remove_role,
+    sf_joined_at,
     upsert_channel,
     upsert_member,
+    upsert_members_batch,
     upsert_role,
 )
 
@@ -37,11 +39,20 @@ class ServerSyncCog(commands.Cog):
         """Разовый/фоновый прогон: участники, роли, каналы — в БД."""
         try:
             members = [m async for m in guild.fetch_members(limit=None)]
-            for m in members:
-                upsert_member(
+            from datetime import datetime, timezone
+            now_iso = datetime.now(timezone.utc).isoformat()
+            rows = [
+                (
                     m.id, guild.id, m.name, m.display_name,
-                    getattr(m, "joined_at", None), _role_ids(m), m.bot,
+                    sf_joined_at(getattr(m, "joined_at", None)), _role_ids(m),
+                    1 if m.bot else 0, None, now_iso,
                 )
+                for m in members
+            ]
+            chunk = 500
+            for i in range(0, len(rows), chunk):
+                upsert_members_batch(rows[i:i + chunk])
+                await asyncio.sleep(0)
         except discord.Forbidden:
             log.warning("Нет прав на fetch_members в %s", guild.name)
         except Exception as e:

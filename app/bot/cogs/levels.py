@@ -159,7 +159,7 @@ class LevelsCog(commands.Cog):
         conn.execute(
             "INSERT INTO member_stats (user_id, messages, voice_seconds, voice_joins) "
             "VALUES (?, 1, 0, 0) "
-            "ON CONFLICT(user_id) DO UPDATE SET messages = messages + 1",
+            "ON CONFLICT(user_id) DO UPDATE SET messages = member_stats.messages + 1",
             (message.author.id,),
         )
         conn.commit()
@@ -190,7 +190,7 @@ class LevelsCog(commands.Cog):
             conn.execute(
                 "INSERT INTO member_stats (user_id, messages, voice_seconds, voice_joins) "
                 "VALUES (?, 0, 0, 1) "
-                "ON CONFLICT(user_id) DO UPDATE SET voice_joins = voice_joins + 1",
+                "ON CONFLICT(user_id) DO UPDATE SET voice_joins = member_stats.voice_joins + 1",
                 (member.id,),
             )
             conn.commit()
@@ -218,7 +218,7 @@ class LevelsCog(commands.Cog):
                         conn.execute(
                             "INSERT INTO member_stats (user_id, messages, voice_seconds, voice_joins) "
                             "VALUES (?, 0, ?, 0) "
-                            "ON CONFLICT(user_id) DO UPDATE SET voice_seconds = voice_seconds + ?",
+                            "ON CONFLICT(user_id) DO UPDATE SET voice_seconds = member_stats.voice_seconds + ?",
                             (member.id, int(seconds), int(seconds)),
                         )
                         conn.commit()
@@ -255,7 +255,7 @@ class LevelsCog(commands.Cog):
             # Отнимаем напрямую через отрицательный xp невозможно — откат через БД
             conn = get_conn()
             conn.execute(
-                "UPDATE user_xp SET xp = MAX(0, xp - ?) WHERE user_id = ? AND guild_id = ?",
+                "UPDATE user_xp SET xp = GREATEST(0, xp - ?) WHERE user_id = ? AND guild_id = ?",
                 (-amount, user.id, interaction.guild.id),
             )
             conn.commit()

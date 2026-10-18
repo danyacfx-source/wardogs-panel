@@ -20,6 +20,12 @@ _DEFAULT_SKUS = {
 
 
 def _seed_conn():
+    try:
+        from .bot import db_backend
+    except ImportError:
+        from bot import db_backend
+    if db_backend.using_pg():
+        return db_backend.open_bot_connection()
     if not SEED_DB:
         return None
     from pathlib import Path
