@@ -25,24 +25,28 @@ jobs:
 
   bot-checks:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: bots/discord-bot-new
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: bots/discord-bot-new/requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Syntax check
-        run: python -m compileall -q .
-      - name: Import check
+      - name: Syntax check (embedded bot)
+        run: python -m compileall -q app/bot
+      - name: Import check (embedded bot)
         env:
-          DISCORD_TOKEN: "dummy"
-          GUILD_ID: "0"
-        run: python -c "import config; print('config ok')"
-      - name: Run bot tests
-        run: python -m pytest tests/ -q || echo "no bot tests yet"
+          WARDOGS_ENV: development
+          WARDOGS_DISABLE_BACKGROUND: "1"
+        run: python -c "import app.bot.runner as runner; print('cogs:', len(runner.COGS))"
+
+  render-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Precompiled Vue renders match their templates
+        run: node tools/build-vue-render.mjs --check

@@ -36,3 +36,21 @@ PassengerStartupFile passenger_wsgi.py
 
 Не добавляйте секреты в Git. Создайте `.env` только на хостинге по примеру
 `.env.example`, а `servers.json` скопируйте из локальной панели.
+
+## Фоновые задачи и встроенный бот
+
+Passenger не прокидывает ASGI lifespan-события, поэтому `passenger_wsgi.py`
+запускает lifespan вручную на рабочем цикле `a2wsgi`. На нём же стартуют:
+
+* инициализация базы и `prune_sessions`;
+* health-check, maintenance и бэкапы;
+* встроенный Discord-бот (`app/bot/runner.py`) — один процесс, один `.env`.
+
+Два замечания:
+
+1. Бот требует `DISCORD_BOT_TOKEN` в `.env`. Привилегированные намерения
+   (SERVER MEMBERS INTENT, MESSAGE CONTENT INTENT) включаются в Discord
+   Developer Portal -> Bot; без них подключение отклоняется, а в логе
+   появляется сообщение с инструкцией.
+2. Несколько процессов Passenger безопасны: бот защищён lease-блокировкой в
+   базе, второй инстанс не запускается.

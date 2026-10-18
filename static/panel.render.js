@@ -861,421 +861,413 @@ const _hoisted_539 = { class: "mono" }
 const _hoisted_540 = { class: "mono" }
 const _hoisted_541 = { key: 0 }
 const _hoisted_542 = { key: 16 }
-const _hoisted_543 = { class: "cards" }
-const _hoisted_544 = { class: "card" }
-const _hoisted_545 = { class: "v big" }
-const _hoisted_546 = { class: "toolbar" }
-const _hoisted_547 = { class: "muted" }
-const _hoisted_548 = { class: "muted" }
-const _hoisted_549 = { style: {"margin-top":"8px"} }
-const _hoisted_550 = { key: 17 }
-const _hoisted_551 = { class: "staff-page-head" }
-const _hoisted_552 = { class: "toolbar-actions" }
-const _hoisted_553 = ["onClick", "disabled"]
-const _hoisted_554 = ["onClick", "disabled"]
-const _hoisted_555 = {
+const _hoisted_543 = { class: "staff-page-head" }
+const _hoisted_544 = { class: "toolbar-actions" }
+const _hoisted_545 = ["onClick", "disabled"]
+const _hoisted_546 = ["onClick", "disabled"]
+const _hoisted_547 = {
   key: 0,
   class: "skeleton-grid"
 }
-const _hoisted_556 = {
+const _hoisted_548 = {
   key: 1,
   class: "panel err-box"
 }
-const _hoisted_557 = { class: "status-service-grid" }
-const _hoisted_558 = { class: "panel" }
-const _hoisted_559 = { class: "table-scroll" }
-const _hoisted_560 = { class: "tbl" }
-const _hoisted_561 = { key: 0 }
-const _hoisted_562 = { key: 18 }
-const _hoisted_563 = { class: "panel" }
-const _hoisted_564 = { class: "toolbar" }
-const _hoisted_565 = { class: "toolbar-actions" }
-const _hoisted_566 = ["onClick", "disabled"]
-const _hoisted_567 = ["onClick", "disabled"]
-const _hoisted_568 = {
+const _hoisted_549 = { class: "status-service-grid" }
+const _hoisted_550 = { class: "panel" }
+const _hoisted_551 = { class: "table-scroll" }
+const _hoisted_552 = { class: "tbl" }
+const _hoisted_553 = { key: 0 }
+const _hoisted_554 = { key: 17 }
+const _hoisted_555 = { class: "panel" }
+const _hoisted_556 = { class: "toolbar" }
+const _hoisted_557 = { class: "toolbar-actions" }
+const _hoisted_558 = ["onClick", "disabled"]
+const _hoisted_559 = ["onClick", "disabled"]
+const _hoisted_560 = {
   key: 0,
   class: "warn-strip",
   style: {"padding":"8px 10px","border-radius":"8px"}
 }
-const _hoisted_569 = {
+const _hoisted_561 = {
   key: 1,
   class: "err-box"
 }
-const _hoisted_570 = {
+const _hoisted_562 = {
   key: 2,
   class: "muted"
 }
-const _hoisted_571 = { class: "mono" }
-const _hoisted_572 = {
+const _hoisted_563 = { class: "mono" }
+const _hoisted_564 = {
   key: 3,
   class: "warn-box"
 }
-const _hoisted_573 = ["onUpdate:modelValue", "disabled"]
-const _hoisted_574 = {
+const _hoisted_565 = ["onUpdate:modelValue", "disabled"]
+const _hoisted_566 = {
   key: 0,
   class: "err"
 }
-const _hoisted_575 = { key: 1 }
-const _hoisted_576 = { key: 2 }
-const _hoisted_577 = {
+const _hoisted_567 = { key: 1 }
+const _hoisted_568 = { key: 2 }
+const _hoisted_569 = {
   key: 3,
   class: "muted"
 }
-const _hoisted_578 = { key: 19 }
-const _hoisted_579 = { class: "panel" }
-const _hoisted_580 = { class: "roles-page-head" }
-const _hoisted_581 = { class: "toolbar-actions" }
-const _hoisted_582 = ["onClick"]
+const _hoisted_570 = { key: 18 }
+const _hoisted_571 = { class: "panel" }
+const _hoisted_572 = { class: "roles-page-head" }
+const _hoisted_573 = { class: "toolbar-actions" }
+const _hoisted_574 = ["onClick"]
+const _hoisted_575 = ["onClick", "disabled"]
+const _hoisted_576 = ["onClick", "disabled"]
+const _hoisted_577 = ["onClick", "disabled"]
+const _hoisted_578 = { class: "roles-toolbar" }
+const _hoisted_579 = ["onUpdate:modelValue"]
+const _hoisted_580 = ["onUpdate:modelValue"]
+const _hoisted_581 = { class: "muted" }
+const _hoisted_582 = ["onClick", "disabled"]
 const _hoisted_583 = ["onClick", "disabled"]
-const _hoisted_584 = ["onClick", "disabled"]
-const _hoisted_585 = ["onClick", "disabled"]
-const _hoisted_586 = { class: "roles-toolbar" }
-const _hoisted_587 = ["onUpdate:modelValue"]
-const _hoisted_588 = ["onUpdate:modelValue"]
-const _hoisted_589 = { class: "muted" }
-const _hoisted_590 = ["onClick", "disabled"]
-const _hoisted_591 = ["onClick", "disabled"]
-const _hoisted_592 = {
+const _hoisted_584 = {
   key: 0,
   class: "empty"
 }
-const _hoisted_593 = {
+const _hoisted_585 = {
   key: 1,
   class: "empty"
 }
-const _hoisted_594 = {
+const _hoisted_586 = {
   key: 2,
   class: "roles-grid"
 }
-const _hoisted_595 = { class: "role-card-head" }
-const _hoisted_596 = ["checked", "onChange", "aria-label"]
-const _hoisted_597 = { class: "mono" }
-const _hoisted_598 = { class: "role-card-badges" }
-const _hoisted_599 = {
+const _hoisted_587 = { class: "role-card-head" }
+const _hoisted_588 = ["checked", "onChange", "aria-label"]
+const _hoisted_589 = { class: "mono" }
+const _hoisted_590 = { class: "role-card-badges" }
+const _hoisted_591 = {
   key: 0,
   class: "badge"
 }
-const _hoisted_600 = {
+const _hoisted_592 = {
   key: 1,
   class: "badge warn"
 }
-const _hoisted_601 = {
+const _hoisted_593 = {
   key: 2,
   class: "role-unsaved"
 }
-const _hoisted_602 = { class: "role-summary" }
-const _hoisted_603 = {
+const _hoisted_594 = { class: "role-summary" }
+const _hoisted_595 = {
   key: 0,
   class: "warn-strip"
 }
-const _hoisted_604 = { class: "role-tools" }
-const _hoisted_605 = { class: "role-presets" }
+const _hoisted_596 = { class: "role-tools" }
+const _hoisted_597 = { class: "role-presets" }
+const _hoisted_598 = ["onClick"]
+const _hoisted_599 = ["onClick"]
+const _hoisted_600 = ["onClick"]
+const _hoisted_601 = { class: "role-copy" }
+const _hoisted_602 = ["onUpdate:modelValue"]
+const _hoisted_603 = ["value"]
+const _hoisted_604 = ["onClick", "disabled"]
+const _hoisted_605 = { class: "role-groups" }
 const _hoisted_606 = ["onClick"]
-const _hoisted_607 = ["onClick"]
-const _hoisted_608 = ["onClick"]
-const _hoisted_609 = { class: "role-copy" }
-const _hoisted_610 = ["onUpdate:modelValue"]
-const _hoisted_611 = ["value"]
-const _hoisted_612 = ["onClick", "disabled"]
-const _hoisted_613 = { class: "role-groups" }
-const _hoisted_614 = ["onClick"]
-const _hoisted_615 = ["title"]
-const _hoisted_616 = ["checked", "onChange"]
-const _hoisted_617 = { class: "role-card-foot" }
-const _hoisted_618 = ["onClick"]
-const _hoisted_619 = ["onClick", "disabled"]
-const _hoisted_620 = {
+const _hoisted_607 = ["title"]
+const _hoisted_608 = ["checked", "onChange"]
+const _hoisted_609 = { class: "role-card-foot" }
+const _hoisted_610 = ["onClick"]
+const _hoisted_611 = ["onClick", "disabled"]
+const _hoisted_612 = {
   key: 1,
   class: "muted"
 }
-const _hoisted_621 = ["onClick", "disabled"]
-const _hoisted_622 = ["onClick"]
-const _hoisted_623 = {
+const _hoisted_613 = ["onClick", "disabled"]
+const _hoisted_614 = ["onClick"]
+const _hoisted_615 = {
   class: "player-card",
   role: "dialog",
   "aria-modal": "true",
   "aria-label": "Личный профиль"
 }
-const _hoisted_624 = { class: "player-card-top" }
-const _hoisted_625 = ["onClick"]
-const _hoisted_626 = { class: "player-card-body" }
-const _hoisted_627 = {
+const _hoisted_616 = { class: "player-card-top" }
+const _hoisted_617 = ["onClick"]
+const _hoisted_618 = { class: "player-card-body" }
+const _hoisted_619 = {
   key: 0,
   class: "empty"
 }
-const _hoisted_628 = {
+const _hoisted_620 = {
   key: 1,
   class: "err-box"
 }
-const _hoisted_629 = ["onClick"]
-const _hoisted_630 = { class: "player-card-head" }
-const _hoisted_631 = { class: "player-identity" }
-const _hoisted_632 = ["src"]
-const _hoisted_633 = {
+const _hoisted_621 = ["onClick"]
+const _hoisted_622 = { class: "player-card-head" }
+const _hoisted_623 = { class: "player-identity" }
+const _hoisted_624 = ["src"]
+const _hoisted_625 = {
   key: 1,
   class: "player-avatar",
   "aria-hidden": "true"
 }
-const _hoisted_634 = { class: "mono muted" }
-const _hoisted_635 = {
+const _hoisted_626 = { class: "mono muted" }
+const _hoisted_627 = {
   class: "player-tags",
   style: {"margin-top":"12px"}
 }
-const _hoisted_636 = {
+const _hoisted_628 = {
   key: 0,
   class: "player-tag"
 }
-const _hoisted_637 = {
+const _hoisted_629 = {
   class: "toolbar-actions",
   style: {"margin-top":"12px"}
 }
-const _hoisted_638 = ["href"]
-const _hoisted_639 = {
+const _hoisted_630 = ["href"]
+const _hoisted_631 = {
   key: 0,
   class: "btn primary",
   href: "/api/auth/discord/start"
 }
-const _hoisted_640 = ["onClick", "disabled"]
-const _hoisted_641 = {
+const _hoisted_632 = ["onClick", "disabled"]
+const _hoisted_633 = {
   key: 0,
   class: "player-card-content"
 }
-const _hoisted_642 = { class: "player-stat-grid" }
-const _hoisted_643 = { class: "player-stat" }
-const _hoisted_644 = { class: "player-stat" }
-const _hoisted_645 = { class: "player-stat" }
-const _hoisted_646 = { key: 0 }
-const _hoisted_647 = { class: "player-stat" }
-const _hoisted_648 = {
+const _hoisted_634 = { class: "player-stat-grid" }
+const _hoisted_635 = { class: "player-stat" }
+const _hoisted_636 = { class: "player-stat" }
+const _hoisted_637 = { class: "player-stat" }
+const _hoisted_638 = { key: 0 }
+const _hoisted_639 = { class: "player-stat" }
+const _hoisted_640 = {
   key: 0,
   class: "player-section"
 }
-const _hoisted_649 = { class: "player-section-title" }
-const _hoisted_650 = { class: "player-tags" }
+const _hoisted_641 = { class: "player-section-title" }
+const _hoisted_642 = { class: "player-tags" }
+const _hoisted_643 = { class: "player-section" }
+const _hoisted_644 = { class: "player-section-title" }
+const _hoisted_645 = {
+  key: 0,
+  class: "player-tags"
+}
+const _hoisted_646 = {
+  key: 1,
+  class: "muted"
+}
+const _hoisted_647 = { class: "player-section" }
+const _hoisted_648 = { class: "player-section-title" }
+const _hoisted_649 = {
+  key: 0,
+  class: "player-tags"
+}
+const _hoisted_650 = {
+  key: 1,
+  class: "muted"
+}
 const _hoisted_651 = { class: "player-section" }
-const _hoisted_652 = { class: "player-section-title" }
-const _hoisted_653 = {
-  key: 0,
-  class: "player-tags"
-}
-const _hoisted_654 = {
-  key: 1,
-  class: "muted"
-}
-const _hoisted_655 = { class: "player-section" }
-const _hoisted_656 = { class: "player-section-title" }
-const _hoisted_657 = {
-  key: 0,
-  class: "player-tags"
-}
-const _hoisted_658 = {
-  key: 1,
-  class: "muted"
-}
-const _hoisted_659 = { class: "player-section" }
-const _hoisted_660 = {
+const _hoisted_652 = {
   key: 0,
   class: "player-tags",
   style: {"flex-direction":"column","align-items":"stretch"}
 }
-const _hoisted_661 = { class: "mono" }
-const _hoisted_662 = {
+const _hoisted_653 = { class: "mono" }
+const _hoisted_654 = {
   key: 1,
   class: "muted"
 }
-const _hoisted_663 = { class: "player-card-footer" }
-const _hoisted_664 = ["onClick"]
-const _hoisted_665 = ["onClick"]
-const _hoisted_666 = {
+const _hoisted_655 = { class: "player-card-footer" }
+const _hoisted_656 = ["onClick"]
+const _hoisted_657 = ["onClick"]
+const _hoisted_658 = {
   class: "player-card",
   role: "dialog",
   "aria-modal": "true",
   "aria-label": "Карточка игрока"
 }
-const _hoisted_667 = { class: "player-card-top" }
-const _hoisted_668 = ["onClick"]
-const _hoisted_669 = { class: "player-card-body" }
-const _hoisted_670 = { class: "player-card-head" }
-const _hoisted_671 = { class: "player-identity" }
-const _hoisted_672 = ["src"]
-const _hoisted_673 = {
+const _hoisted_659 = { class: "player-card-top" }
+const _hoisted_660 = ["onClick"]
+const _hoisted_661 = { class: "player-card-body" }
+const _hoisted_662 = { class: "player-card-head" }
+const _hoisted_663 = { class: "player-identity" }
+const _hoisted_664 = ["src"]
+const _hoisted_665 = {
   key: 1,
   class: "player-avatar",
   "aria-hidden": "true"
 }
-const _hoisted_674 = { class: "mono muted" }
-const _hoisted_675 = { class: "player-card-badges" }
-const _hoisted_676 = { class: "player-chip" }
-const _hoisted_677 = {
+const _hoisted_666 = { class: "mono muted" }
+const _hoisted_667 = { class: "player-card-badges" }
+const _hoisted_668 = { class: "player-chip" }
+const _hoisted_669 = {
   key: 0,
   class: "player-chip danger"
 }
-const _hoisted_678 = {
+const _hoisted_670 = {
   class: "player-tabs",
   "aria-label": "Разделы карточки игрока"
 }
-const _hoisted_679 = ["onClick"]
-const _hoisted_680 = ["onClick"]
-const _hoisted_681 = ["onClick"]
-const _hoisted_682 = ["onClick"]
-const _hoisted_683 = { class: "player-card-content" }
-const _hoisted_684 = {
+const _hoisted_671 = ["onClick"]
+const _hoisted_672 = ["onClick"]
+const _hoisted_673 = ["onClick"]
+const _hoisted_674 = ["onClick"]
+const _hoisted_675 = { class: "player-card-content" }
+const _hoisted_676 = {
   key: 0,
   class: "empty"
 }
-const _hoisted_685 = {
+const _hoisted_677 = {
   key: 1,
   class: "err-box"
 }
-const _hoisted_686 = { class: "player-stat-grid" }
-const _hoisted_687 = { class: "player-stat" }
-const _hoisted_688 = { key: 0 }
-const _hoisted_689 = { class: "player-stat" }
-const _hoisted_690 = { class: "player-stat" }
-const _hoisted_691 = { class: "player-stat" }
-const _hoisted_692 = { class: "player-stat" }
-const _hoisted_693 = { class: "player-stat" }
-const _hoisted_694 = { class: "player-stat" }
-const _hoisted_695 = { class: "player-positive" }
-const _hoisted_696 = { class: "player-stat" }
-const _hoisted_697 = { class: "player-section" }
-const _hoisted_698 = { class: "player-tags" }
-const _hoisted_699 = ["href"]
-const _hoisted_700 = {
+const _hoisted_678 = { class: "player-stat-grid" }
+const _hoisted_679 = { class: "player-stat" }
+const _hoisted_680 = { key: 0 }
+const _hoisted_681 = { class: "player-stat" }
+const _hoisted_682 = { class: "player-stat" }
+const _hoisted_683 = { class: "player-stat" }
+const _hoisted_684 = { class: "player-stat" }
+const _hoisted_685 = { class: "player-stat" }
+const _hoisted_686 = { class: "player-stat" }
+const _hoisted_687 = { class: "player-positive" }
+const _hoisted_688 = { class: "player-stat" }
+const _hoisted_689 = { class: "player-section" }
+const _hoisted_690 = { class: "player-tags" }
+const _hoisted_691 = ["href"]
+const _hoisted_692 = {
   key: 0,
   class: "player-tag"
 }
-const _hoisted_701 = { class: "player-tag green" }
-const _hoisted_702 = {
+const _hoisted_693 = { class: "player-tag green" }
+const _hoisted_694 = {
   key: 1,
   class: "player-tag red"
 }
-const _hoisted_703 = { class: "player-tag" }
-const _hoisted_704 = { class: "player-section" }
-const _hoisted_705 = { class: "player-card-actions" }
-const _hoisted_706 = ["onClick"]
-const _hoisted_707 = ["disabled", "onClick"]
-const _hoisted_708 = ["disabled", "onClick"]
-const _hoisted_709 = ["onUpdate:modelValue", "onChange"]
-const _hoisted_710 = ["value"]
-const _hoisted_711 = {
+const _hoisted_695 = { class: "player-tag" }
+const _hoisted_696 = { class: "player-section" }
+const _hoisted_697 = { class: "player-card-actions" }
+const _hoisted_698 = ["onClick"]
+const _hoisted_699 = ["disabled", "onClick"]
+const _hoisted_700 = ["disabled", "onClick"]
+const _hoisted_701 = ["onUpdate:modelValue", "onChange"]
+const _hoisted_702 = ["value"]
+const _hoisted_703 = {
   key: 4,
   class: "btn ghost",
   disabled: ""
 }
-const _hoisted_712 = ["disabled", "onClick"]
-const _hoisted_713 = ["disabled", "onClick"]
-const _hoisted_714 = ["disabled", "onClick"]
-const _hoisted_715 = { class: "player-section" }
-const _hoisted_716 = { class: "player-tags" }
-const _hoisted_717 = { class: "player-tag" }
-const _hoisted_718 = { class: "player-tag" }
-const _hoisted_719 = ["title", "onClick"]
-const _hoisted_720 = { key: 0 }
-const _hoisted_721 = ["onClick"]
-const _hoisted_722 = { class: "player-section player-history" }
-const _hoisted_723 = ["href"]
-const _hoisted_724 = {
+const _hoisted_704 = ["disabled", "onClick"]
+const _hoisted_705 = ["disabled", "onClick"]
+const _hoisted_706 = ["disabled", "onClick"]
+const _hoisted_707 = { class: "player-section" }
+const _hoisted_708 = { class: "player-tags" }
+const _hoisted_709 = { class: "player-tag" }
+const _hoisted_710 = { class: "player-tag" }
+const _hoisted_711 = ["title", "onClick"]
+const _hoisted_712 = { key: 0 }
+const _hoisted_713 = ["onClick"]
+const _hoisted_714 = { class: "player-section player-history" }
+const _hoisted_715 = ["href"]
+const _hoisted_716 = {
   key: 1,
   class: "punishment-list"
 }
-const _hoisted_725 = {
+const _hoisted_717 = {
   key: 2,
   class: "muted"
 }
-const _hoisted_726 = {
+const _hoisted_718 = {
   key: 3,
   class: "muted"
 }
-const _hoisted_727 = {
+const _hoisted_719 = {
   key: 1,
   class: "player-section"
 }
-const _hoisted_728 = { class: "table-scroll" }
-const _hoisted_729 = { class: "tbl player-history-table" }
-const _hoisted_730 = { class: "muted" }
-const _hoisted_731 = {
+const _hoisted_720 = { class: "table-scroll" }
+const _hoisted_721 = { class: "tbl player-history-table" }
+const _hoisted_722 = { class: "muted" }
+const _hoisted_723 = {
   key: 0,
   class: "status-dot online",
   title: "Сейчас онлайн"
 }
-const _hoisted_732 = {
+const _hoisted_724 = {
   key: 2,
   class: "player-clan"
 }
-const _hoisted_733 = {
+const _hoisted_725 = {
   key: 0,
   class: "player-clan-card"
 }
-const _hoisted_734 = { class: "player-tags" }
-const _hoisted_735 = { class: "player-tag" }
-const _hoisted_736 = { class: "player-tag" }
-const _hoisted_737 = {
+const _hoisted_726 = { class: "player-tags" }
+const _hoisted_727 = { class: "player-tag" }
+const _hoisted_728 = { class: "player-tag" }
+const _hoisted_729 = {
   key: 1,
   class: "player-empty-tab compact"
 }
-const _hoisted_738 = {
+const _hoisted_730 = {
   key: 2,
   class: "player-clan-manage"
 }
-const _hoisted_739 = ["onUpdate:modelValue", "onChange"]
-const _hoisted_740 = ["value"]
-const _hoisted_741 = ["onClick"]
-const _hoisted_742 = {
+const _hoisted_731 = ["onUpdate:modelValue", "onChange"]
+const _hoisted_732 = ["value"]
+const _hoisted_733 = ["onClick"]
+const _hoisted_734 = {
   key: 3,
   class: "player-notes"
 }
-const _hoisted_743 = ["onSubmit"]
-const _hoisted_744 = ["onUpdate:modelValue"]
-const _hoisted_745 = ["disabled"]
-const _hoisted_746 = {
+const _hoisted_735 = ["onSubmit"]
+const _hoisted_736 = ["onUpdate:modelValue"]
+const _hoisted_737 = ["disabled"]
+const _hoisted_738 = {
   key: 1,
   class: "info-strip"
 }
-const _hoisted_747 = {
+const _hoisted_739 = {
   key: 2,
   class: "empty"
 }
-const _hoisted_748 = {
+const _hoisted_740 = {
   key: 3,
   class: "err-box"
 }
-const _hoisted_749 = {
+const _hoisted_741 = {
   key: 4,
   class: "player-notes-list"
 }
-const _hoisted_750 = ["onClick"]
-const _hoisted_751 = {
+const _hoisted_742 = ["onClick"]
+const _hoisted_743 = {
   key: 5,
   class: "player-empty-tab"
 }
-const _hoisted_752 = { class: "player-card-footer" }
-const _hoisted_753 = ["href"]
-const _hoisted_754 = {
+const _hoisted_744 = { class: "player-card-footer" }
+const _hoisted_745 = ["href"]
+const _hoisted_746 = {
   key: 1,
   class: "muted"
 }
-const _hoisted_755 = ["onClick"]
-const _hoisted_756 = ["onClick"]
-const _hoisted_757 = ["aria-label", "onSubmit"]
-const _hoisted_758 = ["onClick"]
-const _hoisted_759 = {
+const _hoisted_747 = ["onClick"]
+const _hoisted_748 = ["onClick"]
+const _hoisted_749 = ["aria-label", "onSubmit"]
+const _hoisted_750 = ["onClick"]
+const _hoisted_751 = {
   key: 0,
   class: "action-dialog-message"
 }
-const _hoisted_760 = { key: 0 }
-const _hoisted_761 = ["onUpdate:modelValue", "maxlength", "placeholder"]
-const _hoisted_762 = ["onUpdate:modelValue"]
-const _hoisted_763 = ["value"]
-const _hoisted_764 = ["onUpdate:modelValue", "type", "maxlength", "placeholder"]
-const _hoisted_765 = { key: 3 }
-const _hoisted_766 = {
+const _hoisted_752 = { key: 0 }
+const _hoisted_753 = ["onUpdate:modelValue", "maxlength", "placeholder"]
+const _hoisted_754 = ["onUpdate:modelValue"]
+const _hoisted_755 = ["value"]
+const _hoisted_756 = ["onUpdate:modelValue", "type", "maxlength", "placeholder"]
+const _hoisted_757 = { key: 3 }
+const _hoisted_758 = {
   key: 1,
   class: "err-box"
 }
-const _hoisted_767 = ["onClick"]
-const _hoisted_768 = ["disabled"]
-const _hoisted_769 = {
+const _hoisted_759 = ["onClick"]
+const _hoisted_760 = ["disabled"]
+const _hoisted_761 = {
   key: 5,
   class: "toasts"
 }
@@ -3189,29 +3181,29 @@ return function render(_ctx, _cache) {
                         ], 64))]))
                 : _createCommentVNode("", true),
               (state.tab === 'system')
-                ? (_openBlock(), _createElementBlock("section", _hoisted_550, [_createElementVNode("header", _hoisted_551, [_cache[202] || (_cache[202] = _createElementVNode("div", null, [_createElementVNode("div", { class: "admin-path" }, "— /admin/system"), _createElementVNode("h2", null, "Центр состояния"), _createElementVNode("p", null, "Игровые серверы, база, Steam, Discord и связь с «Асуной Юки» в одном месте.")], -1)), _createElementVNode("div", _hoisted_552, [_createElementVNode("button", {
+                ? (_openBlock(), _createElementBlock("section", _hoisted_542, [_createElementVNode("header", _hoisted_543, [_cache[196] || (_cache[196] = _createElementVNode("div", null, [_createElementVNode("div", { class: "admin-path" }, "— /admin/system"), _createElementVNode("h2", null, "Центр состояния"), _createElementVNode("p", null, "Игровые серверы, база, Steam, Discord и связь с «Асуной Юки» в одном месте.")], -1)), _createElementVNode("div", _hoisted_544, [_createElementVNode("button", {
                     class: "btn ghost",
                     onClick: testLogChannel,
                     disabled: busy
-                  }, "Тест лог-канала", 8, _hoisted_553), _createElementVNode("button", {
+                  }, "Тест лог-канала", 8, _hoisted_545), _createElementVNode("button", {
                     class: "btn ghost",
                     onClick: loadSystemStatus,
                     disabled: systemStatus.loading
-                  }, "Проверить сейчас", 8, _hoisted_554)])]), (systemStatus.loading)
-                    ? (_openBlock(), _createElementBlock("div", _hoisted_555, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(5, (n) => {
+                  }, "Проверить сейчас", 8, _hoisted_546)])]), (systemStatus.loading)
+                    ? (_openBlock(), _createElementBlock("div", _hoisted_547, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(5, (n) => {
                         return (_openBlock(), _createElementBlock("i", {
                           key: n,
                           class: "skeleton-card"
                         }))
                       }), 128))]))
                     : (systemStatus.error)
-                      ? (_openBlock(), _createElementBlock("div", _hoisted_556, _toDisplayString(systemStatus.error), 1))
-                      : (_openBlock(), _createElementBlock(_Fragment, { key: 2 }, [_createElementVNode("div", _hoisted_557, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(systemStatus.services, (service) => {
+                      ? (_openBlock(), _createElementBlock("div", _hoisted_548, _toDisplayString(systemStatus.error), 1))
+                      : (_openBlock(), _createElementBlock(_Fragment, { key: 2 }, [_createElementVNode("div", _hoisted_549, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(systemStatus.services, (service) => {
                           return (_openBlock(), _createElementBlock("article", {
                             key: service.id,
                             class: _normalizeClass(["panel status-service", {failed: !service.ok}])
                           }, [_createElementVNode("span", { class: _normalizeClass(["dot", {on: service.ok}]) }, null, 2), _createElementVNode("div", null, [_createElementVNode("h3", null, _toDisplayString(service.name || service.id), 1), _createElementVNode("p", null, _toDisplayString(service.detail || (service.ok ? 'Работает' : 'Недоступен')), 1)]), _createElementVNode("b", null, _toDisplayString(service.ok ? 'OK' : 'СБОЙ'), 1)], 2))
-                        }), 128))]), _createElementVNode("div", _hoisted_558, [_cache[205] || (_cache[205] = _createElementVNode("h2", null, "История изменений состояния", -1)), _createElementVNode("div", _hoisted_559, [_createElementVNode("table", _hoisted_560, [_cache[204] || (_cache[204] = _createElementVNode("thead", null, [_createElementVNode("tr", null, [
+                        }), 128))]), _createElementVNode("div", _hoisted_550, [_cache[199] || (_cache[199] = _createElementVNode("h2", null, "История изменений состояния", -1)), _createElementVNode("div", _hoisted_551, [_createElementVNode("table", _hoisted_552, [_cache[198] || (_cache[198] = _createElementVNode("thead", null, [_createElementVNode("tr", null, [
                           _createElementVNode("th", null, "Время"),
                           _createElementVNode("th", null, "Сервис"),
                           _createElementVNode("th", null, "Состояние"),
@@ -3224,37 +3216,37 @@ return function render(_ctx, _cache) {
                             _createElementVNode("td", null, _toDisplayString(item.detail), 1)
                           ]))
                         }), 128)), (!systemStatus.history.length)
-                          ? (_openBlock(), _createElementBlock("tr", _hoisted_561, [...(_cache[203] || (_cache[203] = [_createElementVNode("td", {
+                          ? (_openBlock(), _createElementBlock("tr", _hoisted_553, [...(_cache[197] || (_cache[197] = [_createElementVNode("td", {
                               colspan: "4",
                               class: "muted"
                             }, "Изменений состояния пока нет.", -1)]))]))
                           : _createCommentVNode("", true)])])])])], 64))]))
                 : _createCommentVNode("", true),
               (state.tab === 'config')
-                ? (_openBlock(), _createElementBlock("section", _hoisted_562, [_createElementVNode("div", _hoisted_563, [
-                    _createElementVNode("div", _hoisted_564, [_cache[206] || (_cache[206] = _createElementVNode("h2", null, [_createTextVNode("Конфиг сервера "), _createElementVNode("span", { class: "muted" }, "(ServerSettings.ini)")], -1)), _createElementVNode("div", _hoisted_565, [_createElementVNode("button", {
+                ? (_openBlock(), _createElementBlock("section", _hoisted_554, [_createElementVNode("div", _hoisted_555, [
+                    _createElementVNode("div", _hoisted_556, [_cache[200] || (_cache[200] = _createElementVNode("h2", null, [_createTextVNode("Конфиг сервера "), _createElementVNode("span", { class: "muted" }, "(ServerSettings.ini)")], -1)), _createElementVNode("div", _hoisted_557, [_createElementVNode("button", {
                       class: "btn ghost",
                       onClick: loadConfig,
                       disabled: busy
-                    }, "Обновить", 8, _hoisted_566), (has('config_edit'))
+                    }, "Обновить", 8, _hoisted_558), (has('config_edit'))
                       ? (_openBlock(), _createElementBlock("button", {
                           key: 0,
                           class: "btn danger",
                           onClick: applyConfig,
                           disabled: busy || !cfg.loaded
-                        }, "Применить", 8, _hoisted_567))
+                        }, "Применить", 8, _hoisted_559))
                       : _createCommentVNode("", true)])]),
                     (!has('config_edit'))
-                      ? (_openBlock(), _createElementBlock("div", _hoisted_568, "У вас просмотр конфига. Запись — только с правом «config_edit»."))
+                      ? (_openBlock(), _createElementBlock("div", _hoisted_560, "У вас просмотр конфига. Запись — только с правом «config_edit»."))
                       : _createCommentVNode("", true),
                     (!cfg.writable)
-                      ? (_openBlock(), _createElementBlock("div", _hoisted_569, "Сервер не разрешает запись конфига (config.writable = false)."))
+                      ? (_openBlock(), _createElementBlock("div", _hoisted_561, "Сервер не разрешает запись конфига (config.writable = false)."))
                       : _createCommentVNode("", true),
                     (cfg.revision)
-                      ? (_openBlock(), _createElementBlock("div", _hoisted_570, [_cache[207] || (_cache[207] = _createTextVNode("Ревизия: ", -1)), _createElementVNode("span", _hoisted_571, _toDisplayString(cfg.revision), 1)]))
+                      ? (_openBlock(), _createElementBlock("div", _hoisted_562, [_cache[201] || (_cache[201] = _createTextVNode("Ревизия: ", -1)), _createElementVNode("span", _hoisted_563, _toDisplayString(cfg.revision), 1)]))
                       : _createCommentVNode("", true),
                     (cfg.warnings && cfg.warnings.length)
-                      ? (_openBlock(), _createElementBlock("div", _hoisted_572, [_cache[208] || (_cache[208] = _createElementVNode("b", null, "Предупреждения сервера:", -1)), (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(cfg.warnings, (w, i) => {
+                      ? (_openBlock(), _createElementBlock("div", _hoisted_564, [_cache[202] || (_cache[202] = _createElementVNode("b", null, "Предупреждения сервера:", -1)), (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(cfg.warnings, (w, i) => {
                           return (_openBlock(), _createElementBlock("div", {
                             key: i,
                             class: "mono"
@@ -3268,147 +3260,147 @@ return function render(_ctx, _cache) {
                       spellcheck: "false",
                       disabled: !cfg.writable || !has('config_edit'),
                       placeholder: "Загрузка конфига…"
-                    }, null, 8, _hoisted_573), [[_vModelText, cfg.text]]),
+                    }, null, 8, _hoisted_565), [[_vModelText, cfg.text]]),
                     cfgResult
                       ? (_openBlock(), _createElementBlock("div", {
                           key: 4,
                           class: _normalizeClass(["result monospace", cfgResultStatus])
                         }, [
                           (cfgResult.error)
-                            ? (_openBlock(), _createElementBlock("div", _hoisted_574, _toDisplayString(cfgResult.error.code) + ": " + _toDisplayString(cfgResult.error.message), 1))
+                            ? (_openBlock(), _createElementBlock("div", _hoisted_566, _toDisplayString(cfgResult.error.code) + ": " + _toDisplayString(cfgResult.error.message), 1))
                             : _createCommentVNode("", true),
                           (cfgResult.errors && cfgResult.errors.length)
-                            ? (_openBlock(), _createElementBlock("div", _hoisted_575, [_cache[209] || (_cache[209] = _createElementVNode("b", null, "Ошибки:", -1)), (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(cfgResult.errors, (e, i) => {
+                            ? (_openBlock(), _createElementBlock("div", _hoisted_567, [_cache[203] || (_cache[203] = _createElementVNode("b", null, "Ошибки:", -1)), (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(cfgResult.errors, (e, i) => {
                                 return (_openBlock(), _createElementBlock("div", { key: i }, _toDisplayString(e.section) + " › " + _toDisplayString(e.key) + ": " + _toDisplayString(e.message) + " (" + _toDisplayString(e.code) + ")", 1))
                               }), 128))]))
                             : _createCommentVNode("", true),
                           (cfgResult.changed && cfgResult.changed.length)
-                            ? (_openBlock(), _createElementBlock("div", _hoisted_576, [_cache[210] || (_cache[210] = _createElementVNode("b", null, "Изменено:", -1)), (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(cfgResult.changed, (c, i) => {
+                            ? (_openBlock(), _createElementBlock("div", _hoisted_568, [_cache[204] || (_cache[204] = _createElementVNode("b", null, "Изменено:", -1)), (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(cfgResult.changed, (c, i) => {
                                 return (_openBlock(), _createElementBlock("div", { key: i }, _toDisplayString(c.section) + ": +" + _toDisplayString(c.added) + " −" + _toDisplayString(c.removed) + " " + _toDisplayString(JSON.stringify(c.keys)), 1))
                               }), 128))]))
                             : _createCommentVNode("", true),
                           (cfgResult.status >= 400 && !cfgResult.changed)
-                            ? (_openBlock(), _createElementBlock("div", _hoisted_577, "HTTP " + _toDisplayString(cfgResult.status), 1))
+                            ? (_openBlock(), _createElementBlock("div", _hoisted_569, "HTTP " + _toDisplayString(cfgResult.status), 1))
                             : _createCommentVNode("", true)
                         ], 2))
                       : _createCommentVNode("", true)
                   ])]))
                 : _createCommentVNode("", true),
               (state.tab === 'roles')
-                ? (_openBlock(), _createElementBlock("section", _hoisted_578, [_createElementVNode("div", _hoisted_579, [
-                    _createElementVNode("div", _hoisted_580, [_cache[211] || (_cache[211] = _createElementVNode("div", null, [_createElementVNode("div", { class: "admin-path" }, "— /admin/roles"), _createElementVNode("h2", null, "Права ролей Discord"), _createElementVNode("p", { class: "muted" }, "Настройте доступ один раз — пользователи получают сумму прав всех своих ролей.")], -1)), _createElementVNode("div", _hoisted_581, [
+                ? (_openBlock(), _createElementBlock("section", _hoisted_570, [_createElementVNode("div", _hoisted_571, [
+                    _createElementVNode("div", _hoisted_572, [_cache[205] || (_cache[205] = _createElementVNode("div", null, [_createElementVNode("div", { class: "admin-path" }, "— /admin/roles"), _createElementVNode("h2", null, "Права ролей Discord"), _createElementVNode("p", { class: "muted" }, "Настройте доступ один раз — пользователи получают сумму прав всех своих ролей.")], -1)), _createElementVNode("div", _hoisted_573, [
                       _createElementVNode("button", {
                         class: "btn ghost",
                         onClick: previewUserPermissions
-                      }, "Права пользователя", 8, _hoisted_582),
+                      }, "Права пользователя", 8, _hoisted_574),
                       _createElementVNode("button", {
                         class: "btn ghost",
                         onClick: grantPersonalAccess,
                         disabled: busy
-                      }, "Личный доступ", 8, _hoisted_583),
+                      }, "Личный доступ", 8, _hoisted_575),
                       dirtyRolesCount
                         ? (_openBlock(), _createElementBlock("button", {
                             key: 0,
                             class: "btn primary",
                             onClick: saveAllRoles,
                             disabled: busy
-                          }, "Сохранить все · " + _toDisplayString(dirtyRolesCount), 9, _hoisted_584))
+                          }, "Сохранить все · " + _toDisplayString(dirtyRolesCount), 9, _hoisted_576))
                         : _createCommentVNode("", true),
                       _createElementVNode("button", {
                         class: "btn ghost",
                         onClick: $event => (loadRoles(true)),
                         disabled: busy
-                      }, "Обновить роли", 8, _hoisted_585)
+                      }, "Обновить роли", 8, _hoisted_577)
                     ])]),
-                    _cache[216] || (_cache[216] = _createElementVNode("div", { class: "roles-info" }, [_createElementVNode("b", null, "Подсказка"), _createElementVNode("span", null, [_createTextVNode("Изменения применяются только после нажатия «Сохранить». Legacy-роли из "), _createElementVNode("span", { class: "mono" }, "WARDOGS_ADMIN_ROLES"), _createTextVNode(" получают полный доступ, пока для них не задана ручная настройка.")])], -1)),
-                    _createElementVNode("div", _hoisted_586, [
+                    _cache[210] || (_cache[210] = _createElementVNode("div", { class: "roles-info" }, [_createElementVNode("b", null, "Подсказка"), _createElementVNode("span", null, [_createTextVNode("Изменения применяются только после нажатия «Сохранить». Legacy-роли из "), _createElementVNode("span", { class: "mono" }, "WARDOGS_ADMIN_ROLES"), _createTextVNode(" получают полный доступ, пока для них не задана ручная настройка.")])], -1)),
+                    _createElementVNode("div", _hoisted_578, [
                       _withDirectives(_createElementVNode("input", {
                         "onUpdate:modelValue": $event => ((roleSearch) = $event),
                         type: "search",
                         placeholder: "Поиск роли…",
                         "aria-label": "Поиск роли"
-                      }, null, 8, _hoisted_587), [[_vModelText, roleSearch]]),
+                      }, null, 8, _hoisted_579), [[_vModelText, roleSearch]]),
                       _withDirectives(_createElementVNode("select", {
                         "onUpdate:modelValue": $event => ((rolePermissionFilter) = $event),
                         "aria-label": "Фильтр ролей"
-                      }, [...(_cache[212] || (_cache[212] = [
+                      }, [...(_cache[206] || (_cache[206] = [
                         _createElementVNode("option", { value: "all" }, "Все роли", -1),
                         _createElementVNode("option", { value: "configured" }, "С ручной настройкой", -1),
                         _createElementVNode("option", { value: "legacy" }, "Legacy-роли", -1),
                         _createElementVNode("option", { value: "changed" }, "Есть несохранённые изменения", -1)
-                      ]))], 8, _hoisted_588), [[_vModelSelect, rolePermissionFilter]]),
-                      _createElementVNode("span", _hoisted_589, _toDisplayString(visibleRoles().length) + " из " + _toDisplayString(rolesList.length), 1),
+                      ]))], 8, _hoisted_580), [[_vModelSelect, rolePermissionFilter]]),
+                      _createElementVNode("span", _hoisted_581, _toDisplayString(visibleRoles().length) + " из " + _toDisplayString(rolesList.length), 1),
                       _createElementVNode("button", {
                         class: "mini-btn",
                         onClick: bulkRolePreset,
                         disabled: !selectedRolesCount
-                      }, "Шаблон выбранным · " + _toDisplayString(selectedRolesCount), 9, _hoisted_590),
+                      }, "Шаблон выбранным · " + _toDisplayString(selectedRolesCount), 9, _hoisted_582),
                       _createElementVNode("button", {
                         class: "mini-btn",
                         onClick: compareSelectedRoles,
                         disabled: selectedRolesCount !== 2
-                      }, "Сравнить две", 8, _hoisted_591)
+                      }, "Сравнить две", 8, _hoisted_583)
                     ]),
                     (!rolesList.length)
-                      ? (_openBlock(), _createElementBlock("div", _hoisted_592, "Роли не получены (бот не добавлен в гильдию или неверно указан GUILD_ID/BOT_TOKEN)."))
+                      ? (_openBlock(), _createElementBlock("div", _hoisted_584, "Роли не получены (бот не добавлен в гильдию или неверно указан GUILD_ID/BOT_TOKEN)."))
                       : (!visibleRoles().length)
-                        ? (_openBlock(), _createElementBlock("div", _hoisted_593, "Роли по текущему фильтру не найдены."))
-                        : (_openBlock(), _createElementBlock("div", _hoisted_594, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(visibleRoles(), (r) => {
+                        ? (_openBlock(), _createElementBlock("div", _hoisted_585, "Роли по текущему фильтру не найдены."))
+                        : (_openBlock(), _createElementBlock("div", _hoisted_586, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(visibleRoles(), (r) => {
                             return (_openBlock(), _createElementBlock("article", {
                               key: r.id,
                               class: "role-card"
                             }, [
-                              _createElementVNode("header", _hoisted_595, [_createElementVNode("div", null, [_createElementVNode("h3", null, [_createElementVNode("input", {
+                              _createElementVNode("header", _hoisted_587, [_createElementVNode("div", null, [_createElementVNode("h3", null, [_createElementVNode("input", {
                                 type: "checkbox",
                                 checked: roleSelected.includes(r.id),
                                 onChange: $event => (toggleRoleSelected(r.id)),
                                 "aria-label": `Выбрать роль ${r.name}`
-                              }, null, 40, _hoisted_596), _createTextVNode(" " + _toDisplayString(r.name), 1)]), _createElementVNode("div", _hoisted_597, _toDisplayString(r.id), 1)]), _createElementVNode("div", _hoisted_598, [(r.configured)
-                                ? (_openBlock(), _createElementBlock("span", _hoisted_599, "ручная настройка"))
+                              }, null, 40, _hoisted_588), _createTextVNode(" " + _toDisplayString(r.name), 1)]), _createElementVNode("div", _hoisted_589, _toDisplayString(r.id), 1)]), _createElementVNode("div", _hoisted_590, [(r.configured)
+                                ? (_openBlock(), _createElementBlock("span", _hoisted_591, "ручная настройка"))
                                 : (r.legacy)
-                                  ? (_openBlock(), _createElementBlock("span", _hoisted_600, "всё… legacy: полный доступ"))
+                                  ? (_openBlock(), _createElementBlock("span", _hoisted_592, "всё… legacy: полный доступ"))
                                   : _createCommentVNode("", true), (roleDirty(r))
-                                ? (_openBlock(), _createElementBlock("span", _hoisted_601, "не сохранено"))
+                                ? (_openBlock(), _createElementBlock("span", _hoisted_593, "не сохранено"))
                                 : _createCommentVNode("", true)])]),
-                              _createElementVNode("div", _hoisted_602, [_createElementVNode("b", null, _toDisplayString(draftFor(r).length) + " / " + _toDisplayString(allPerms.length), 1), _cache[213] || (_cache[213] = _createElementVNode("span", null, "прав выдано", -1))]),
+                              _createElementVNode("div", _hoisted_594, [_createElementVNode("b", null, _toDisplayString(draftFor(r).length) + " / " + _toDisplayString(allPerms.length), 1), _cache[207] || (_cache[207] = _createElementVNode("span", null, "прав выдано", -1))]),
                               (roleConflicts(r).length)
-                                ? (_openBlock(), _createElementBlock("div", _hoisted_603, "Конфликты: " + _toDisplayString(roleConflicts(r).join('; ')), 1))
+                                ? (_openBlock(), _createElementBlock("div", _hoisted_595, "Конфликты: " + _toDisplayString(roleConflicts(r).join('; ')), 1))
                                 : _createCommentVNode("", true),
-                              _createElementVNode("div", _hoisted_604, [_createElementVNode("div", _hoisted_605, [
-                                _cache[214] || (_cache[214] = _createElementVNode("span", null, "Шаблон:", -1)),
+                              _createElementVNode("div", _hoisted_596, [_createElementVNode("div", _hoisted_597, [
+                                _cache[208] || (_cache[208] = _createElementVNode("span", null, "Шаблон:", -1)),
                                 _createElementVNode("button", {
                                   class: "mini-btn",
                                   onClick: $event => (roleApplyPreset(r, 'observer'))
-                                }, "Наблюдатель", 8, _hoisted_606),
+                                }, "Наблюдатель", 8, _hoisted_598),
                                 _createElementVNode("button", {
                                   class: "mini-btn",
                                   onClick: $event => (roleApplyPreset(r, 'moderator'))
-                                }, "Модератор", 8, _hoisted_607),
+                                }, "Модератор", 8, _hoisted_599),
                                 _createElementVNode("button", {
                                   class: "mini-btn",
                                   onClick: $event => (roleApplyPreset(r, 'administrator'))
-                                }, "Администратор", 8, _hoisted_608)
-                              ]), _createElementVNode("div", _hoisted_609, [_withDirectives(_createElementVNode("select", {
+                                }, "Администратор", 8, _hoisted_600)
+                              ]), _createElementVNode("div", _hoisted_601, [_withDirectives(_createElementVNode("select", {
                                 "onUpdate:modelValue": $event => ((roleCopySources[r.id]) = $event),
                                 "aria-label": "Роль-источник"
-                              }, [_cache[215] || (_cache[215] = _createElementVNode("option", { value: "" }, "Скопировать из роли…", -1)), (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(rolesList.filter((item) => item.id !== r.id), (source) => {
+                              }, [_cache[209] || (_cache[209] = _createElementVNode("option", { value: "" }, "Скопировать из роли…", -1)), (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(rolesList.filter((item) => item.id !== r.id), (source) => {
                                 return (_openBlock(), _createElementBlock("option", {
                                   key: source.id,
                                   value: source.id
-                                }, _toDisplayString(source.name), 9, _hoisted_611))
-                              }), 128))], 8, _hoisted_610), [[_vModelSelect, roleCopySources[r.id]]]), _createElementVNode("button", {
+                                }, _toDisplayString(source.name), 9, _hoisted_603))
+                              }), 128))], 8, _hoisted_602), [[_vModelSelect, roleCopySources[r.id]]]), _createElementVNode("button", {
                                 class: "mini-btn",
                                 onClick: $event => (roleCopyFrom(r)),
                                 disabled: !roleCopySources[r.id]
-                              }, "Копировать", 8, _hoisted_612)])]),
-                              _createElementVNode("div", _hoisted_613, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(rolePermissionGroups(), (group) => {
+                              }, "Копировать", 8, _hoisted_604)])]),
+                              _createElementVNode("div", _hoisted_605, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(rolePermissionGroups(), (group) => {
                                 return (_openBlock(), _createElementBlock("details", {
                                   key: group.id,
                                   open: ""
                                 }, [_createElementVNode("summary", null, [_createElementVNode("span", null, _toDisplayString(group.label), 1), _createElementVNode("small", null, _toDisplayString(roleGroupCount(r, group)) + " / " + _toDisplayString(group.perms.length), 1), _createElementVNode("button", {
                                   class: "mini-btn",
                                   onClick: _withModifiers($event => (roleToggleGroup(r, group, !roleGroupChecked(r, group))), ["prevent"])
-                                }, _toDisplayString(roleGroupChecked(r, group) ? 'Снять всё' : 'Выдать всё'), 9, _hoisted_614)]), (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(group.perms, (p) => {
+                                }, _toDisplayString(roleGroupChecked(r, group) ? 'Снять всё' : 'Выдать всё'), 9, _hoisted_606)]), (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(group.perms, (p) => {
                                   return (_openBlock(), _createElementBlock("label", {
                                     key: p,
                                     class: "permission-option",
@@ -3417,24 +3409,24 @@ return function render(_ctx, _cache) {
                                     type: "checkbox",
                                     checked: roleHas(r, p),
                                     onChange: $event => (roleTog(r, p, $event.target.checked))
-                                  }, null, 40, _hoisted_616), _createElementVNode("span", null, [_createElementVNode("b", null, _toDisplayString(permLabel(p)), 1), _createElementVNode("small", null, _toDisplayString(permHint(p)), 1)])], 8, _hoisted_615))
+                                  }, null, 40, _hoisted_608), _createElementVNode("span", null, [_createElementVNode("b", null, _toDisplayString(permLabel(p)), 1), _createElementVNode("small", null, _toDisplayString(permHint(p)), 1)])], 8, _hoisted_607))
                                 }), 128))]))
                               }), 128))]),
-                              _createElementVNode("footer", _hoisted_617, [_createElementVNode("button", {
+                              _createElementVNode("footer", _hoisted_609, [_createElementVNode("button", {
                                 class: "btn ghost small",
                                 onClick: $event => (showRoleHistory(r))
-                              }, "История роли", 8, _hoisted_618), (roleDirty(r))
+                              }, "История роли", 8, _hoisted_610), (roleDirty(r))
                                 ? (_openBlock(), _createElementBlock("button", {
                                     key: 0,
                                     class: "btn ghost small",
                                     onClick: $event => (roleReset(r)),
                                     disabled: busy
-                                  }, "Сбросить", 8, _hoisted_619))
-                                : (_openBlock(), _createElementBlock("span", _hoisted_620, "Настройки сохранены")), _createElementVNode("button", {
+                                  }, "Сбросить", 8, _hoisted_611))
+                                : (_openBlock(), _createElementBlock("span", _hoisted_612, "Настройки сохранены")), _createElementVNode("button", {
                                 class: "btn primary small",
                                 onClick: $event => (saveRole(r)),
                                 disabled: busy || !roleDirty(r)
-                              }, "Сохранить права", 8, _hoisted_621)])
+                              }, "Сохранить права", 8, _hoisted_613)])
                             ]))
                           }), 128))]))
                   ])]))
@@ -3446,31 +3438,31 @@ return function render(_ctx, _cache) {
             key: 2,
             class: "player-card-backdrop",
             onClick: _withModifiers(closeProfileCard, ["self"])
-          }, [_createElementVNode("aside", _hoisted_623, [
-            _createElementVNode("header", _hoisted_624, [_cache[217] || (_cache[217] = _createElementVNode("strong", null, "Личный профиль", -1)), _createElementVNode("button", {
+          }, [_createElementVNode("aside", _hoisted_615, [
+            _createElementVNode("header", _hoisted_616, [_cache[211] || (_cache[211] = _createElementVNode("strong", null, "Личный профиль", -1)), _createElementVNode("button", {
               class: "player-card-close",
               onClick: closeProfileCard,
               "aria-label": "Закрыть"
-            }, "×", 8, _hoisted_625)]),
-            _createElementVNode("div", _hoisted_626, [(profile.loading && !profile.data)
-              ? (_openBlock(), _createElementBlock("div", _hoisted_627, "Загрузка профиля…"))
+            }, "×", 8, _hoisted_617)]),
+            _createElementVNode("div", _hoisted_618, [(profile.loading && !profile.data)
+              ? (_openBlock(), _createElementBlock("div", _hoisted_619, "Загрузка профиля…"))
               : (profile.error)
-                ? (_openBlock(), _createElementBlock("div", _hoisted_628, [_cache[218] || (_cache[218] = _createElementVNode("b", null, "Не удалось загрузить профиль.", -1)), _createTextVNode(" " + _toDisplayString(profile.error) + " ", 1), _createElementVNode("button", {
+                ? (_openBlock(), _createElementBlock("div", _hoisted_620, [_cache[212] || (_cache[212] = _createElementVNode("b", null, "Не удалось загрузить профиль.", -1)), _createTextVNode(" " + _toDisplayString(profile.error) + " ", 1), _createElementVNode("button", {
                     class: "mini-btn",
                     onClick: loadProfile
-                  }, "Повторить", 8, _hoisted_629)]))
+                  }, "Повторить", 8, _hoisted_621)]))
                 : (profile.data)
-                  ? (_openBlock(), _createElementBlock(_Fragment, { key: 2 }, [_createElementVNode("div", _hoisted_630, [_createElementVNode("div", _hoisted_631, [(profile.data.steam?.avatar_url)
+                  ? (_openBlock(), _createElementBlock(_Fragment, { key: 2 }, [_createElementVNode("div", _hoisted_622, [_createElementVNode("div", _hoisted_623, [(profile.data.steam?.avatar_url)
                       ? (_openBlock(), _createElementBlock("img", {
                           key: 0,
                           class: "player-avatar image",
                           src: profile.data.steam.avatar_url,
                           alt: "Аватар Steam"
-                        }, null, 8, _hoisted_632))
-                      : (_openBlock(), _createElementBlock("div", _hoisted_633, _toDisplayString((profile.data.me?.persona || profile.data.me?.steam_id || '?').slice(0, 1).toUpperCase()), 1)), _createElementVNode("div", null, [_createElementVNode("h2", null, _toDisplayString(profile.data.me?.persona || 'Игрок'), 1), _createElementVNode("div", _hoisted_634, _toDisplayString(profile.data.me?.steam_id), 1)])])]), _createElementVNode("div", _hoisted_635, [
+                        }, null, 8, _hoisted_624))
+                      : (_openBlock(), _createElementBlock("div", _hoisted_625, _toDisplayString((profile.data.me?.persona || profile.data.me?.steam_id || '?').slice(0, 1).toUpperCase()), 1)), _createElementVNode("div", null, [_createElementVNode("h2", null, _toDisplayString(profile.data.me?.persona || 'Игрок'), 1), _createElementVNode("div", _hoisted_626, _toDisplayString(profile.data.me?.steam_id), 1)])])]), _createElementVNode("div", _hoisted_627, [
                       _createElementVNode("span", { class: _normalizeClass(["player-tag", {green: !!profile.data.binding}]) }, _toDisplayString(profile.data.binding ? `Discord: ${profile.data.binding.discord_name || profile.data.binding.discord_id}` : 'Discord не привязан'), 3),
                       (profile.data.binding?.guild_member)
-                        ? (_openBlock(), _createElementBlock("span", _hoisted_636, "участник гильдии"))
+                        ? (_openBlock(), _createElementBlock("span", _hoisted_628, "участник гильдии"))
                         : _createCommentVNode("", true),
                       _createElementVNode("span", { class: _normalizeClass(["player-tag", profile.data.me?.admin ? 'purple' : '']) }, _toDisplayString(profile.data.me?.admin ? `прав: ${profile.data.me.permissions.length}` : 'без прав панели'), 3),
                       (_openBlock(true), _createElementBlock(_Fragment, null, _renderList((profile.data.vip_slots || []).filter(v => v.active), (vipItem) => {
@@ -3479,145 +3471,145 @@ return function render(_ctx, _cache) {
                           class: "player-tag green"
                         }, "VIP · " + _toDisplayString(vipItem.server_name), 1))
                       }), 128))
-                    ]), _createElementVNode("div", _hoisted_637, [_createElementVNode("a", {
+                    ]), _createElementVNode("div", _hoisted_629, [_createElementVNode("a", {
                       class: "btn ghost",
                       href: profile.data.steam?.profile_url,
                       target: "_blank",
                       rel: "noopener"
-                    }, "Профиль Steam ↗", 8, _hoisted_638), (!profile.data.binding)
-                      ? (_openBlock(), _createElementBlock("a", _hoisted_639, "Привязать Discord"))
+                    }, "Профиль Steam ↗", 8, _hoisted_630), (!profile.data.binding)
+                      ? (_openBlock(), _createElementBlock("a", _hoisted_631, "Привязать Discord"))
                       : _createCommentVNode("", true), _createElementVNode("button", {
                       class: "btn ghost",
                       onClick: loadProfile,
                       disabled: profile.loading
-                    }, _toDisplayString(profile.loading ? 'Обновление…' : 'Обновить'), 9, _hoisted_640)])], 64))
+                    }, _toDisplayString(profile.loading ? 'Обновление…' : 'Обновить'), 9, _hoisted_632)])], 64))
                   : _createCommentVNode("", true)]),
             (profile.data && !profile.error)
-              ? (_openBlock(), _createElementBlock("div", _hoisted_641, [
-                  _createElementVNode("div", _hoisted_642, [
-                    _createElementVNode("div", _hoisted_643, [_cache[219] || (_cache[219] = _createElementVNode("span", null, "K / D всего", -1)), _createElementVNode("b", null, _toDisplayString(profile.data.activity ? kd(profile.data.activity) : '—'), 1), _createElementVNode("small", null, "K " + _toDisplayString(profile.data.activity?.kills || 0) + " · D " + _toDisplayString(profile.data.activity?.deaths || 0), 1)]),
-                    _createElementVNode("div", _hoisted_644, [_cache[220] || (_cache[220] = _createElementVNode("span", null, "Времени у нас", -1)), _createElementVNode("b", null, _toDisplayString(fmtPlaytime(profile.data.activity?.total_seconds || 0)), 1), _createElementVNode("small", null, "сессий: " + _toDisplayString(profile.data.activity?.session_count || 0), 1)]),
-                    _createElementVNode("div", _hoisted_645, [_cache[221] || (_cache[221] = _createElementVNode("span", null, "Серверов", -1)), _createElementVNode("b", null, _toDisplayString(profile.data.activity?.server_count || 0), 1), (profile.data.activity?.first_seen_utc)
-                      ? (_openBlock(), _createElementBlock("small", _hoisted_646, "с " + _toDisplayString(fmtDate(profile.data.activity.first_seen_utc * 1000)), 1))
+              ? (_openBlock(), _createElementBlock("div", _hoisted_633, [
+                  _createElementVNode("div", _hoisted_634, [
+                    _createElementVNode("div", _hoisted_635, [_cache[213] || (_cache[213] = _createElementVNode("span", null, "K / D всего", -1)), _createElementVNode("b", null, _toDisplayString(profile.data.activity ? kd(profile.data.activity) : '—'), 1), _createElementVNode("small", null, "K " + _toDisplayString(profile.data.activity?.kills || 0) + " · D " + _toDisplayString(profile.data.activity?.deaths || 0), 1)]),
+                    _createElementVNode("div", _hoisted_636, [_cache[214] || (_cache[214] = _createElementVNode("span", null, "Времени у нас", -1)), _createElementVNode("b", null, _toDisplayString(fmtPlaytime(profile.data.activity?.total_seconds || 0)), 1), _createElementVNode("small", null, "сессий: " + _toDisplayString(profile.data.activity?.session_count || 0), 1)]),
+                    _createElementVNode("div", _hoisted_637, [_cache[215] || (_cache[215] = _createElementVNode("span", null, "Серверов", -1)), _createElementVNode("b", null, _toDisplayString(profile.data.activity?.server_count || 0), 1), (profile.data.activity?.first_seen_utc)
+                      ? (_openBlock(), _createElementBlock("small", _hoisted_638, "с " + _toDisplayString(fmtDate(profile.data.activity.first_seen_utc * 1000)), 1))
                       : _createCommentVNode("", true)]),
-                    _createElementVNode("div", _hoisted_647, [_cache[222] || (_cache[222] = _createElementVNode("span", null, "Обращений", -1)), _createElementVNode("b", null, _toDisplayString(profile.data.tickets_total || 0), 1), _createElementVNode("small", null, "действий: " + _toDisplayString((profile.data.audit || []).length), 1)])
+                    _createElementVNode("div", _hoisted_639, [_cache[216] || (_cache[216] = _createElementVNode("span", null, "Обращений", -1)), _createElementVNode("b", null, _toDisplayString(profile.data.tickets_total || 0), 1), _createElementVNode("small", null, "действий: " + _toDisplayString((profile.data.audit || []).length), 1)])
                   ]),
                   ((profile.data.me?.permissions || []).length)
-                    ? (_openBlock(), _createElementBlock("section", _hoisted_648, [_createElementVNode("div", _hoisted_649, "Мои права в панели · " + _toDisplayString(profile.data.me.permissions.length), 1), _createElementVNode("div", _hoisted_650, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(profile.data.me.permissions, (p) => {
+                    ? (_openBlock(), _createElementBlock("section", _hoisted_640, [_createElementVNode("div", _hoisted_641, "Мои права в панели · " + _toDisplayString(profile.data.me.permissions.length), 1), _createElementVNode("div", _hoisted_642, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(profile.data.me.permissions, (p) => {
                         return (_openBlock(), _createElementBlock("span", {
                           key: p,
                           class: "player-tag"
                         }, _toDisplayString(permLabel(p)), 1))
                       }), 128))])]))
                     : _createCommentVNode("", true),
-                  _createElementVNode("section", _hoisted_651, [_createElementVNode("div", _hoisted_652, "VIP-слоты · " + _toDisplayString((profile.data.vip_slots || []).length), 1), ((profile.data.vip_slots || []).length)
-                    ? (_openBlock(), _createElementBlock("div", _hoisted_653, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(profile.data.vip_slots, (vipItem) => {
+                  _createElementVNode("section", _hoisted_643, [_createElementVNode("div", _hoisted_644, "VIP-слоты · " + _toDisplayString((profile.data.vip_slots || []).length), 1), ((profile.data.vip_slots || []).length)
+                    ? (_openBlock(), _createElementBlock("div", _hoisted_645, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(profile.data.vip_slots, (vipItem) => {
                         return (_openBlock(), _createElementBlock("span", {
                           key: vipItem.id,
                           class: _normalizeClass(["player-tag", vipItem.active ? 'green' : 'red'])
                         }, _toDisplayString(vipItem.server_name) + " · " + _toDisplayString(vipItem.expires_utc ? `до ${fmtDate(vipItem.expires_utc * 1000)}` : 'бессрочный') + " · " + _toDisplayString(vipItem.active ? 'активен' : 'истёк'), 3))
                       }), 128))]))
-                    : (_openBlock(), _createElementBlock("p", _hoisted_654, "VIP-слотов нет."))]),
-                  _createElementVNode("section", _hoisted_655, [_createElementVNode("div", _hoisted_656, "Мои обращения · " + _toDisplayString(profile.data.tickets_total || 0), 1), ((profile.data.tickets || []).length)
-                    ? (_openBlock(), _createElementBlock("div", _hoisted_657, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(profile.data.tickets, (ticket) => {
+                    : (_openBlock(), _createElementBlock("p", _hoisted_646, "VIP-слотов нет."))]),
+                  _createElementVNode("section", _hoisted_647, [_createElementVNode("div", _hoisted_648, "Мои обращения · " + _toDisplayString(profile.data.tickets_total || 0), 1), ((profile.data.tickets || []).length)
+                    ? (_openBlock(), _createElementBlock("div", _hoisted_649, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(profile.data.tickets, (ticket) => {
                         return (_openBlock(), _createElementBlock("span", {
                           key: ticket.id,
                           class: "player-tag"
                         }, _toDisplayString(ticket.title) + " · " + _toDisplayString(ticketStatusLabel(ticket.status)), 1))
                       }), 128))]))
-                    : (_openBlock(), _createElementBlock("p", _hoisted_658, "Обращений нет."))]),
-                  _createElementVNode("section", _hoisted_659, [_cache[223] || (_cache[223] = _createElementVNode("div", { class: "player-section-title" }, "Последние действия", -1)), ((profile.data.audit || []).length)
-                    ? (_openBlock(), _createElementBlock("div", _hoisted_660, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(profile.data.audit, (entry, i) => {
+                    : (_openBlock(), _createElementBlock("p", _hoisted_650, "Обращений нет."))]),
+                  _createElementVNode("section", _hoisted_651, [_cache[217] || (_cache[217] = _createElementVNode("div", { class: "player-section-title" }, "Последние действия", -1)), ((profile.data.audit || []).length)
+                    ? (_openBlock(), _createElementBlock("div", _hoisted_652, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(profile.data.audit, (entry, i) => {
                         return (_openBlock(), _createElementBlock("div", {
                           key: i,
                           class: "ticket-comment"
-                        }, [_createElementVNode("header", null, [_createElementVNode("b", null, _toDisplayString(entry.event), 1), _createElementVNode("small", null, _toDisplayString(fmtDate(entry.timestamp_utc * 1000)), 1)]), _createElementVNode("p", _hoisted_661, _toDisplayString(entry.detail), 1)]))
+                        }, [_createElementVNode("header", null, [_createElementVNode("b", null, _toDisplayString(entry.event), 1), _createElementVNode("small", null, _toDisplayString(fmtDate(entry.timestamp_utc * 1000)), 1)]), _createElementVNode("p", _hoisted_653, _toDisplayString(entry.detail), 1)]))
                       }), 128))]))
-                    : (_openBlock(), _createElementBlock("p", _hoisted_662, "Действий пока не было."))])
+                    : (_openBlock(), _createElementBlock("p", _hoisted_654, "Действий пока не было."))])
                 ]))
               : _createCommentVNode("", true),
-            _createElementVNode("footer", _hoisted_663, [_createElementVNode("button", {
+            _createElementVNode("footer", _hoisted_655, [_createElementVNode("button", {
               class: "btn ghost",
               onClick: closeProfileCard
-            }, "Закрыть", 8, _hoisted_664)])
-          ])], 8, _hoisted_622))
+            }, "Закрыть", 8, _hoisted_656)])
+          ])], 8, _hoisted_614))
         : _createCommentVNode("", true),
       (playerCard.open)
         ? (_openBlock(), _createElementBlock("div", {
             key: 3,
             class: "player-card-backdrop",
             onClick: _withModifiers(closePlayerCard, ["self"])
-          }, [_createElementVNode("aside", _hoisted_666, [
-            _createElementVNode("header", _hoisted_667, [_cache[224] || (_cache[224] = _createElementVNode("strong", null, "Игрок", -1)), _createElementVNode("button", {
+          }, [_createElementVNode("aside", _hoisted_658, [
+            _createElementVNode("header", _hoisted_659, [_cache[218] || (_cache[218] = _createElementVNode("strong", null, "Игрок", -1)), _createElementVNode("button", {
               class: "player-card-close",
               onClick: closePlayerCard,
               "aria-label": "Закрыть"
-            }, "×", 8, _hoisted_668)]),
-            _createElementVNode("div", _hoisted_669, [_createElementVNode("div", _hoisted_670, [_createElementVNode("div", _hoisted_671, [(playerCard.profile?.avatar_url)
+            }, "×", 8, _hoisted_660)]),
+            _createElementVNode("div", _hoisted_661, [_createElementVNode("div", _hoisted_662, [_createElementVNode("div", _hoisted_663, [(playerCard.profile?.avatar_url)
               ? (_openBlock(), _createElementBlock("img", {
                   key: 0,
                   class: "player-avatar image",
                   src: playerCard.profile.avatar_url,
                   alt: "Аватар Steam"
-                }, null, 8, _hoisted_672))
-              : (_openBlock(), _createElementBlock("div", _hoisted_673, _toDisplayString((playerCard.profile?.name || playerCard.live?.name || 'И').slice(0, 1).toUpperCase()), 1)), _createElementVNode("div", null, [_createElementVNode("h2", null, _toDisplayString(playerCard.profile?.name || playerCard.live?.name || 'Игрок'), 1), _createElementVNode("div", _hoisted_674, _toDisplayString(playerCard.profile?.steam_id || playerCard.live?.steamId), 1)])]), _createElementVNode("div", _hoisted_675, [_createElementVNode("span", _hoisted_676, _toDisplayString(playerCard.live ? 'онлайн сейчас' : (playerCard.profile?.last_seen_utc ? `был ${fmtDate(playerCard.profile.last_seen_utc * 1000)}` : 'история панели')), 1), (playerCard.profile?.steam?.vac_banned || playerCard.profile?.steam?.game_bans)
-              ? (_openBlock(), _createElementBlock("span", _hoisted_677, "game-ban"))
-              : _createCommentVNode("", true)])]), _createElementVNode("nav", _hoisted_678, [
+                }, null, 8, _hoisted_664))
+              : (_openBlock(), _createElementBlock("div", _hoisted_665, _toDisplayString((playerCard.profile?.name || playerCard.live?.name || 'И').slice(0, 1).toUpperCase()), 1)), _createElementVNode("div", null, [_createElementVNode("h2", null, _toDisplayString(playerCard.profile?.name || playerCard.live?.name || 'Игрок'), 1), _createElementVNode("div", _hoisted_666, _toDisplayString(playerCard.profile?.steam_id || playerCard.live?.steamId), 1)])]), _createElementVNode("div", _hoisted_667, [_createElementVNode("span", _hoisted_668, _toDisplayString(playerCard.live ? 'онлайн сейчас' : (playerCard.profile?.last_seen_utc ? `был ${fmtDate(playerCard.profile.last_seen_utc * 1000)}` : 'история панели')), 1), (playerCard.profile?.steam?.vac_banned || playerCard.profile?.steam?.game_bans)
+              ? (_openBlock(), _createElementBlock("span", _hoisted_669, "game-ban"))
+              : _createCommentVNode("", true)])]), _createElementVNode("nav", _hoisted_670, [
               _createElementVNode("button", {
                 class: _normalizeClass({active: playerCardTab === 'overview'}),
                 onClick: $event => (playerCardTab = 'overview')
-              }, "Обзор", 10, _hoisted_679),
+              }, "Обзор", 10, _hoisted_671),
               _createElementVNode("button", {
                 class: _normalizeClass({active: playerCardTab === 'stats'}),
                 onClick: $event => (playerCardTab = 'stats')
-              }, "Статистика", 10, _hoisted_680),
+              }, "Статистика", 10, _hoisted_672),
               _createElementVNode("button", {
                 class: _normalizeClass({active: playerCardTab === 'clan'}),
                 onClick: $event => (playerCardTab = 'clan')
-              }, "Клан", 10, _hoisted_681),
+              }, "Клан", 10, _hoisted_673),
               (has('player_notes'))
                 ? (_openBlock(), _createElementBlock("button", {
                     key: 0,
                     class: _normalizeClass({active: playerCardTab === 'notes'}),
                     onClick: $event => (playerCardTab = 'notes')
-                  }, "Заметки", 10, _hoisted_682))
+                  }, "Заметки", 10, _hoisted_674))
                 : _createCommentVNode("", true)
             ])]),
-            _createElementVNode("div", _hoisted_683, [(playerCard.loading)
-              ? (_openBlock(), _createElementBlock("div", _hoisted_684, "Загрузка карточки…"))
+            _createElementVNode("div", _hoisted_675, [(playerCard.loading)
+              ? (_openBlock(), _createElementBlock("div", _hoisted_676, "Загрузка карточки…"))
               : (playerCard.error)
-                ? (_openBlock(), _createElementBlock("div", _hoisted_685, _toDisplayString(playerCard.error), 1))
+                ? (_openBlock(), _createElementBlock("div", _hoisted_677, _toDisplayString(playerCard.error), 1))
                 : (playerCard.profile)
                   ? (_openBlock(), _createElementBlock(_Fragment, { key: 2 }, [(playerCardTab === 'overview')
                       ? (_openBlock(), _createElementBlock(_Fragment, { key: 0 }, [
-                          _createElementVNode("div", _hoisted_686, [
-                            _createElementVNode("div", _hoisted_687, [_cache[225] || (_cache[225] = _createElementVNode("span", null, "K / D сессия", -1)), _createElementVNode("b", null, _toDisplayString(playerCard.live ? kd(playerCard.live) : '—'), 1), (playerCard.live)
-                              ? (_openBlock(), _createElementBlock("small", _hoisted_688, "K " + _toDisplayString(playerCard.live.kills || 0) + " · D " + _toDisplayString(playerCard.live.deaths || 0), 1))
+                          _createElementVNode("div", _hoisted_678, [
+                            _createElementVNode("div", _hoisted_679, [_cache[219] || (_cache[219] = _createElementVNode("span", null, "K / D сессия", -1)), _createElementVNode("b", null, _toDisplayString(playerCard.live ? kd(playerCard.live) : '—'), 1), (playerCard.live)
+                              ? (_openBlock(), _createElementBlock("small", _hoisted_680, "K " + _toDisplayString(playerCard.live.kills || 0) + " · D " + _toDisplayString(playerCard.live.deaths || 0), 1))
                               : _createCommentVNode("", true)]),
-                            _createElementVNode("div", _hoisted_689, [_cache[226] || (_cache[226] = _createElementVNode("span", null, "K / D всего", -1)), _createElementVNode("b", null, _toDisplayString(kd(playerCard.profile)), 1), _createElementVNode("small", null, "K " + _toDisplayString(playerCard.profile.kills || 0) + " · D " + _toDisplayString(playerCard.profile.deaths || 0), 1)]),
-                            _createElementVNode("div", _hoisted_690, [_cache[227] || (_cache[227] = _createElementVNode("span", null, "Cash / дельта", -1)), _createElementVNode("b", null, _toDisplayString(playerCard.live?.cash ?? '—'), 1)]),
-                            _createElementVNode("div", _hoisted_691, [_cache[228] || (_cache[228] = _createElementVNode("span", null, "Времени у нас", -1)), _createElementVNode("b", null, _toDisplayString(fmtPlaytime(playerCard.profile.total_seconds)), 1)]),
-                            _createElementVNode("div", _hoisted_692, [_cache[229] || (_cache[229] = _createElementVNode("span", null, "Серверов всего", -1)), _createElementVNode("b", null, _toDisplayString(playerCard.profile.server_count), 1)]),
-                            _createElementVNode("div", _hoisted_693, [_cache[230] || (_cache[230] = _createElementVNode("span", null, "Текущая сессия", -1)), _createElementVNode("b", null, _toDisplayString(playerCard.live ? fmtPlaytime(playerCard.profile.current_session_seconds) : '—'), 1)]),
-                            _createElementVNode("div", _hoisted_694, [_cache[231] || (_cache[231] = _createElementVNode("span", null, "Любимая фракция", -1)), _createElementVNode("b", _hoisted_695, _toDisplayString(playerCard.live?.faction || '—'), 1)]),
-                            _createElementVNode("div", _hoisted_696, [_cache[232] || (_cache[232] = _createElementVNode("span", null, "Сессий", -1)), _createElementVNode("b", null, _toDisplayString(playerCard.profile.session_count), 1)])
+                            _createElementVNode("div", _hoisted_681, [_cache[220] || (_cache[220] = _createElementVNode("span", null, "K / D всего", -1)), _createElementVNode("b", null, _toDisplayString(kd(playerCard.profile)), 1), _createElementVNode("small", null, "K " + _toDisplayString(playerCard.profile.kills || 0) + " · D " + _toDisplayString(playerCard.profile.deaths || 0), 1)]),
+                            _createElementVNode("div", _hoisted_682, [_cache[221] || (_cache[221] = _createElementVNode("span", null, "Cash / дельта", -1)), _createElementVNode("b", null, _toDisplayString(playerCard.live?.cash ?? '—'), 1)]),
+                            _createElementVNode("div", _hoisted_683, [_cache[222] || (_cache[222] = _createElementVNode("span", null, "Времени у нас", -1)), _createElementVNode("b", null, _toDisplayString(fmtPlaytime(playerCard.profile.total_seconds)), 1)]),
+                            _createElementVNode("div", _hoisted_684, [_cache[223] || (_cache[223] = _createElementVNode("span", null, "Серверов всего", -1)), _createElementVNode("b", null, _toDisplayString(playerCard.profile.server_count), 1)]),
+                            _createElementVNode("div", _hoisted_685, [_cache[224] || (_cache[224] = _createElementVNode("span", null, "Текущая сессия", -1)), _createElementVNode("b", null, _toDisplayString(playerCard.live ? fmtPlaytime(playerCard.profile.current_session_seconds) : '—'), 1)]),
+                            _createElementVNode("div", _hoisted_686, [_cache[225] || (_cache[225] = _createElementVNode("span", null, "Любимая фракция", -1)), _createElementVNode("b", _hoisted_687, _toDisplayString(playerCard.live?.faction || '—'), 1)]),
+                            _createElementVNode("div", _hoisted_688, [_cache[226] || (_cache[226] = _createElementVNode("span", null, "Сессий", -1)), _createElementVNode("b", null, _toDisplayString(playerCard.profile.session_count), 1)])
                           ]),
-                          _createElementVNode("section", _hoisted_697, [_cache[233] || (_cache[233] = _createElementVNode("div", { class: "player-section-title" }, "Аккаунт Steam", -1)), _createElementVNode("div", _hoisted_698, [
+                          _createElementVNode("section", _hoisted_689, [_cache[227] || (_cache[227] = _createElementVNode("div", { class: "player-section-title" }, "Аккаунт Steam", -1)), _createElementVNode("div", _hoisted_690, [
                             _createElementVNode("a", {
                               class: "player-tag steam-profile",
                               href: playerCard.profile.steam_profile_url,
                               target: "_blank",
                               rel: "noopener"
-                            }, "профиль открыт ↗", 8, _hoisted_699),
+                            }, "профиль открыт ↗", 8, _hoisted_691),
                             (playerCard.profile.steam?.time_created_utc)
-                              ? (_openBlock(), _createElementBlock("span", _hoisted_700, "аккаунт с " + _toDisplayString(fmtDate(playerCard.profile.steam.time_created_utc * 1000)), 1))
+                              ? (_openBlock(), _createElementBlock("span", _hoisted_692, "аккаунт с " + _toDisplayString(fmtDate(playerCard.profile.steam.time_created_utc * 1000)), 1))
                               : _createCommentVNode("", true),
-                            _createElementVNode("span", _hoisted_701, "VAC: " + _toDisplayString(playerCard.profile.steam?.vac_bans || 0), 1),
+                            _createElementVNode("span", _hoisted_693, "VAC: " + _toDisplayString(playerCard.profile.steam?.vac_bans || 0), 1),
                             _createElementVNode("span", { class: _normalizeClass(["player-tag", {'red': (playerCard.profile.steam?.game_bans || 0) > 0}]) }, "game-баны: " + _toDisplayString(playerCard.profile.steam?.game_bans || 0), 3),
                             (playerCard.profile.steam?.days_since_last_ban)
-                              ? (_openBlock(), _createElementBlock("span", _hoisted_702, "последний бан " + _toDisplayString(playerCard.profile.steam.days_since_last_ban) + " дн. назад", 1))
+                              ? (_openBlock(), _createElementBlock("span", _hoisted_694, "последний бан " + _toDisplayString(playerCard.profile.steam.days_since_last_ban) + " дн. назад", 1))
                               : _createCommentVNode("", true),
-                            _createElementVNode("span", _hoisted_703, _toDisplayString(playerCard.profile.last_seen_utc ? `проверено ${fmtDate(playerCard.profile.last_seen_utc * 1000)}` : 'дата проверки неизвестна'), 1),
+                            _createElementVNode("span", _hoisted_695, _toDisplayString(playerCard.profile.last_seen_utc ? `проверено ${fmtDate(playerCard.profile.last_seen_utc * 1000)}` : 'дата проверки неизвестна'), 1),
                             (_openBlock(true), _createElementBlock(_Fragment, null, _renderList((playerCard.profile.vip_slots || []).filter((item) => item.active), (vipItem) => {
                               return (_openBlock(), _createElementBlock("span", {
                                 key: vipItem.id,
@@ -3625,13 +3617,13 @@ return function render(_ctx, _cache) {
                               }, " VIP " + _toDisplayString(vipItem.server_id) + " · " + _toDisplayString(vipItem.expires_utc ? fmtDate(vipItem.expires_utc * 1000) : 'бессрочно'), 1))
                             }), 128))
                           ])]),
-                          _createElementVNode("section", _hoisted_704, [_cache[234] || (_cache[234] = _createElementVNode("div", { class: "player-section-title" }, "Действия", -1)), _createElementVNode("div", _hoisted_705, [
+                          _createElementVNode("section", _hoisted_696, [_cache[228] || (_cache[228] = _createElementVNode("div", { class: "player-section-title" }, "Действия", -1)), _createElementVNode("div", _hoisted_697, [
                             (has('vip_edit'))
                               ? (_openBlock(), _createElementBlock("button", {
                                   key: 0,
                                   class: "btn ghost",
                                   onClick: $event => (saveVipSlot({steam_id:playerCard.profile.steam_id,display_name:playerCard.profile.name}))
-                                }, "Выдать VIP", 8, _hoisted_706))
+                                }, "Выдать VIP", 8, _hoisted_698))
                               : _createCommentVNode("", true),
                             (has('message'))
                               ? (_openBlock(), _createElementBlock("button", {
@@ -3639,7 +3631,7 @@ return function render(_ctx, _cache) {
                                   class: "btn ghost",
                                   disabled: !playerCard.live,
                                   onClick: $event => (playerCardAction('message'))
-                                }, "Написать", 8, _hoisted_707))
+                                }, "Написать", 8, _hoisted_699))
                               : _createCommentVNode("", true),
                             (has('kick'))
                               ? (_openBlock(), _createElementBlock("button", {
@@ -3647,7 +3639,7 @@ return function render(_ctx, _cache) {
                                   class: "btn ghost",
                                   disabled: !playerCard.live,
                                   onClick: $event => (playerCardAction('kick'))
-                                }, "Кикнуть", 8, _hoisted_708))
+                                }, "Кикнуть", 8, _hoisted_700))
                               : _createCommentVNode("", true),
                             (has('move_faction') && playerCard.live)
                               ? _withDirectives((_openBlock(), _createElementBlock("select", {
@@ -3660,10 +3652,10 @@ return function render(_ctx, _cache) {
                                   return (_openBlock(), _createElementBlock("option", {
                                     key: f.name,
                                     value: f.name
-                                  }, _toDisplayString(f.name), 9, _hoisted_710))
-                                }), 128))], 40, _hoisted_709)), [[_vModelSelect, playerCardFaction]])
+                                  }, _toDisplayString(f.name), 9, _hoisted_702))
+                                }), 128))], 40, _hoisted_701)), [[_vModelSelect, playerCardFaction]])
                               : (has('move_faction'))
-                                ? (_openBlock(), _createElementBlock("button", _hoisted_711, "Сменить фракцию"))
+                                ? (_openBlock(), _createElementBlock("button", _hoisted_703, "Сменить фракцию"))
                                 : _createCommentVNode("", true),
                             (has('move_faction'))
                               ? (_openBlock(), _createElementBlock("button", {
@@ -3671,7 +3663,7 @@ return function render(_ctx, _cache) {
                                   class: "btn ghost",
                                   disabled: !playerCard.live,
                                   onClick: $event => (playerCardAction('swap'))
-                                }, "Смена стороны (SW)", 8, _hoisted_712))
+                                }, "Смена стороны (SW)", 8, _hoisted_704))
                               : _createCommentVNode("", true),
                             (has('kill'))
                               ? (_openBlock(), _createElementBlock("button", {
@@ -3679,7 +3671,7 @@ return function render(_ctx, _cache) {
                                   class: "btn ghost",
                                   disabled: !playerCard.live,
                                   onClick: $event => (playerCardAction('kill'))
-                                }, "Убить (slay)", 8, _hoisted_713))
+                                }, "Убить (slay)", 8, _hoisted_705))
                               : _createCommentVNode("", true),
                             (has('ban_add'))
                               ? (_openBlock(), _createElementBlock("button", {
@@ -3687,13 +3679,13 @@ return function render(_ctx, _cache) {
                                   class: "btn danger-outline",
                                   disabled: !playerCard.live,
                                   onClick: $event => (playerCardAction('ban'))
-                                }, "Забанить", 8, _hoisted_714))
+                                }, "Забанить", 8, _hoisted_706))
                               : _createCommentVNode("", true)
-                          ]), _cache[235] || (_cache[235] = _createElementVNode("p", { class: "player-action-hint" }, "Опасные действия требуют подтверждения. Для действий на сервере игрок должен быть онлайн.", -1))]),
-                          _createElementVNode("section", _hoisted_715, [_cache[237] || (_cache[237] = _createElementVNode("div", { class: "player-section-title" }, "Метки", -1)), _createElementVNode("div", _hoisted_716, [
-                            _cache[236] || (_cache[236] = _createElementVNode("span", { class: "player-tag" }, "игрок: 1", -1)),
-                            _createElementVNode("span", _hoisted_717, "серверов: " + _toDisplayString(playerCard.profile.server_count), 1),
-                            _createElementVNode("span", _hoisted_718, "впервые: " + _toDisplayString(playerCard.profile.first_seen_utc ? fmtDate(playerCard.profile.first_seen_utc * 1000) : '—'), 1),
+                          ]), _cache[229] || (_cache[229] = _createElementVNode("p", { class: "player-action-hint" }, "Опасные действия требуют подтверждения. Для действий на сервере игрок должен быть онлайн.", -1))]),
+                          _createElementVNode("section", _hoisted_707, [_cache[231] || (_cache[231] = _createElementVNode("div", { class: "player-section-title" }, "Метки", -1)), _createElementVNode("div", _hoisted_708, [
+                            _cache[230] || (_cache[230] = _createElementVNode("span", { class: "player-tag" }, "игрок: 1", -1)),
+                            _createElementVNode("span", _hoisted_709, "серверов: " + _toDisplayString(playerCard.profile.server_count), 1),
+                            _createElementVNode("span", _hoisted_710, "впервые: " + _toDisplayString(playerCard.profile.first_seen_utc ? fmtDate(playerCard.profile.first_seen_utc * 1000) : '—'), 1),
                             (_openBlock(true), _createElementBlock(_Fragment, null, _renderList((playerCard.profile.tags || []), (item) => {
                               return (_openBlock(), _createElementBlock("button", {
                                 key: item.id,
@@ -3702,8 +3694,8 @@ return function render(_ctx, _cache) {
                                 title: playerCard.profile.can_edit_tags ? 'Нажмите, чтобы удалить' : item.label,
                                 onClick: $event => (playerCard.profile.can_edit_tags && deletePlayerTag(item))
                               }, [_createTextVNode(_toDisplayString(item.label), 1), (playerCard.profile.can_edit_tags)
-                                ? (_openBlock(), _createElementBlock("span", _hoisted_720, " ×"))
-                                : _createCommentVNode("", true)], 10, _hoisted_719))
+                                ? (_openBlock(), _createElementBlock("span", _hoisted_712, " ×"))
+                                : _createCommentVNode("", true)], 10, _hoisted_711))
                             }), 128)),
                             (playerCard.profile.can_edit_tags)
                               ? (_openBlock(), _createElementBlock("button", {
@@ -3711,29 +3703,29 @@ return function render(_ctx, _cache) {
                                   type: "button",
                                   class: "player-tag add",
                                   onClick: addPlayerTag
-                                }, "+ добавить", 8, _hoisted_721))
+                                }, "+ добавить", 8, _hoisted_713))
                               : _createCommentVNode("", true)
                           ])]),
-                          _createElementVNode("section", _hoisted_722, [_cache[238] || (_cache[238] = _createElementVNode("div", { class: "player-section-title" }, "История наказаний", -1)), (playerCard.profile.can_view_punishments)
+                          _createElementVNode("section", _hoisted_714, [_cache[232] || (_cache[232] = _createElementVNode("div", { class: "player-section-title" }, "История наказаний", -1)), (playerCard.profile.can_view_punishments)
                             ? (_openBlock(), _createElementBlock("a", {
                                 key: 0,
                                 class: "mini-btn",
                                 href: `/api/players/${playerCard.profile.steam_id}/history/export`,
                                 download: ""
-                              }, "Экспорт CSV", 8, _hoisted_723))
+                              }, "Экспорт CSV", 8, _hoisted_715))
                             : _createCommentVNode("", true), (playerCard.profile.can_view_punishments && playerCard.profile.punishments?.length)
-                            ? (_openBlock(), _createElementBlock("div", _hoisted_724, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(playerCard.profile.punishments, (item) => {
+                            ? (_openBlock(), _createElementBlock("div", _hoisted_716, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(playerCard.profile.punishments, (item) => {
                                 return (_openBlock(), _createElementBlock("article", {
                                   key: `${item.timestamp_utc}-${item.event}`,
                                   class: "punishment-item"
                                 }, [_createElementVNode("span", { class: _normalizeClass(["punishment-dot", {danger: item.event === 'ban.add'}]) }, null, 2), _createElementVNode("div", null, [_createElementVNode("b", null, _toDisplayString(punishmentLabel(item.event)), 1), _createElementVNode("small", null, _toDisplayString(item.server_id || 'панель') + " · " + _toDisplayString(item.actor_name || shortSid(item.actor_steam_id)) + " · " + _toDisplayString(fmtDate(item.timestamp_utc * 1000)), 1)])]))
                               }), 128))]))
                             : (playerCard.profile.can_view_punishments)
-                              ? (_openBlock(), _createElementBlock("p", _hoisted_725, "Наказаний в журнале панели не найдено."))
-                              : (_openBlock(), _createElementBlock("p", _hoisted_726, "История доступна сотрудникам с правами на баны или аудит."))])
+                              ? (_openBlock(), _createElementBlock("p", _hoisted_717, "Наказаний в журнале панели не найдено."))
+                              : (_openBlock(), _createElementBlock("p", _hoisted_718, "История доступна сотрудникам с правами на баны или аудит."))])
                         ], 64))
                       : (playerCardTab === 'stats')
-                        ? (_openBlock(), _createElementBlock("section", _hoisted_727, [_cache[240] || (_cache[240] = _createElementVNode("div", { class: "player-section-title" }, "Статистика по серверам", -1)), _createElementVNode("div", _hoisted_728, [_createElementVNode("table", _hoisted_729, [_cache[239] || (_cache[239] = _createElementVNode("thead", null, [_createElementVNode("tr", null, [
+                        ? (_openBlock(), _createElementBlock("section", _hoisted_719, [_cache[234] || (_cache[234] = _createElementVNode("div", { class: "player-section-title" }, "Статистика по серверам", -1)), _createElementVNode("div", _hoisted_720, [_createElementVNode("table", _hoisted_721, [_cache[233] || (_cache[233] = _createElementVNode("thead", null, [_createElementVNode("tr", null, [
                             _createElementVNode("th", null, "Сервер"),
                             _createElementVNode("th", null, "K / D"),
                             _createElementVNode("th", null, "Фракция"),
@@ -3743,65 +3735,65 @@ return function render(_ctx, _cache) {
                           ])], -1)), _createElementVNode("tbody", null, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(playerCard.profile.servers, (s) => {
                             return (_openBlock(), _createElementBlock("tr", { key: s.server_id }, [
                               _createElementVNode("td", null, _toDisplayString(s.server_id), 1),
-                              _createElementVNode("td", null, [_createTextVNode(_toDisplayString(kd(s)) + " ", 1), _createElementVNode("small", _hoisted_730, "· K " + _toDisplayString(s.kills) + " / D " + _toDisplayString(s.deaths), 1)]),
+                              _createElementVNode("td", null, [_createTextVNode(_toDisplayString(kd(s)) + " ", 1), _createElementVNode("small", _hoisted_722, "· K " + _toDisplayString(s.kills) + " / D " + _toDisplayString(s.deaths), 1)]),
                               _createElementVNode("td", null, _toDisplayString(s.faction || '—'), 1),
                               _createElementVNode("td", null, [_createTextVNode(_toDisplayString(fmtPlaytime(s.total_seconds)), 1), (s.online)
-                                ? (_openBlock(), _createElementBlock("span", _hoisted_731))
+                                ? (_openBlock(), _createElementBlock("span", _hoisted_723))
                                 : _createCommentVNode("", true)]),
                               _createElementVNode("td", null, _toDisplayString(s.session_count || 0), 1),
                               _createElementVNode("td", null, _toDisplayString(s.seen_utc ? fmtDate(s.seen_utc * 1000) : '—'), 1)
                             ]))
                           }), 128))])])])]))
                         : (playerCardTab === 'clan')
-                          ? (_openBlock(), _createElementBlock("section", _hoisted_732, [(playerCard.profile.clan)
-                              ? (_openBlock(), _createElementBlock("div", _hoisted_733, [_createElementVNode("span", { class: _normalizeClass(["clan-emblem large", playerCard.profile.clan.color]) }, _toDisplayString(playerCard.profile.clan.tag.slice(0, 2).toUpperCase()), 3), _createElementVNode("div", null, [
-                                  _cache[241] || (_cache[241] = _createElementVNode("span", { class: "player-section-title" }, "Текущий клан", -1)),
+                          ? (_openBlock(), _createElementBlock("section", _hoisted_724, [(playerCard.profile.clan)
+                              ? (_openBlock(), _createElementBlock("div", _hoisted_725, [_createElementVNode("span", { class: _normalizeClass(["clan-emblem large", playerCard.profile.clan.color]) }, _toDisplayString(playerCard.profile.clan.tag.slice(0, 2).toUpperCase()), 3), _createElementVNode("div", null, [
+                                  _cache[235] || (_cache[235] = _createElementVNode("span", { class: "player-section-title" }, "Текущий клан", -1)),
                                   _createElementVNode("h3", null, "[" + _toDisplayString(playerCard.profile.clan.tag) + "] " + _toDisplayString(playerCard.profile.clan.name), 1),
                                   _createElementVNode("p", null, _toDisplayString(playerCard.profile.clan.description || 'Описание не добавлено.'), 1),
-                                  _createElementVNode("div", _hoisted_734, [_createElementVNode("span", _hoisted_735, _toDisplayString(playerCard.profile.clan.member_role), 1), _createElementVNode("span", _hoisted_736, "с " + _toDisplayString(fmtDate(playerCard.profile.clan.joined_utc * 1000)), 1)])
+                                  _createElementVNode("div", _hoisted_726, [_createElementVNode("span", _hoisted_727, _toDisplayString(playerCard.profile.clan.member_role), 1), _createElementVNode("span", _hoisted_728, "с " + _toDisplayString(fmtDate(playerCard.profile.clan.joined_utc * 1000)), 1)])
                                 ])]))
-                              : (_openBlock(), _createElementBlock("div", _hoisted_737, [...(_cache[242] || (_cache[242] = [_createElementVNode("strong", null, "Игрок не состоит в клане", -1), _createElementVNode("span", null, "Назначьте клан ниже, если у вашей роли есть соответствующее право.", -1)]))])), (playerCard.profile.can_edit_clan)
-                              ? (_openBlock(), _createElementBlock("div", _hoisted_738, [_cache[244] || (_cache[244] = _createElementVNode("label", null, "Назначить клан", -1)), _withDirectives(_createElementVNode("select", {
+                              : (_openBlock(), _createElementBlock("div", _hoisted_729, [...(_cache[236] || (_cache[236] = [_createElementVNode("strong", null, "Игрок не состоит в клане", -1), _createElementVNode("span", null, "Назначьте клан ниже, если у вашей роли есть соответствующее право.", -1)]))])), (playerCard.profile.can_edit_clan)
+                              ? (_openBlock(), _createElementBlock("div", _hoisted_730, [_cache[238] || (_cache[238] = _createElementVNode("label", null, "Назначить клан", -1)), _withDirectives(_createElementVNode("select", {
                                   "onUpdate:modelValue": $event => ((playerCardClanId) = $event),
                                   onChange: $event => (changePlayerClan(playerCardClanId))
-                                }, [_cache[243] || (_cache[243] = _createElementVNode("option", { value: "" }, "Без клана", -1)), (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(clans.items, (clan) => {
+                                }, [_cache[237] || (_cache[237] = _createElementVNode("option", { value: "" }, "Без клана", -1)), (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(clans.items, (clan) => {
                                   return (_openBlock(), _createElementBlock("option", {
                                     key: clan.id,
                                     value: clan.id
-                                  }, "[" + _toDisplayString(clan.tag) + "] " + _toDisplayString(clan.name), 9, _hoisted_740))
-                                }), 128))], 40, _hoisted_739), [[_vModelSelect, playerCardClanId]]), (!clans.items.length)
+                                  }, "[" + _toDisplayString(clan.tag) + "] " + _toDisplayString(clan.name), 9, _hoisted_732))
+                                }), 128))], 40, _hoisted_731), [[_vModelSelect, playerCardClanId]]), (!clans.items.length)
                                   ? (_openBlock(), _createElementBlock("button", {
                                       key: 0,
                                       class: "btn ghost small",
                                       onClick: $event => {closePlayerCard(); state.tab = 'clans'}
-                                    }, "Создать первый клан", 8, _hoisted_741))
+                                    }, "Создать первый клан", 8, _hoisted_733))
                                   : _createCommentVNode("", true)]))
                               : _createCommentVNode("", true)]))
                           : (playerCardTab === 'notes')
-                            ? (_openBlock(), _createElementBlock("section", _hoisted_742, [(playerNotes.canEdit)
+                            ? (_openBlock(), _createElementBlock("section", _hoisted_734, [(playerNotes.canEdit)
                                 ? (_openBlock(), _createElementBlock("form", {
                                     key: 0,
                                     class: "player-note-compose",
                                     onSubmit: _withModifiers(addPlayerNote, ["prevent"])
-                                  }, [_cache[245] || (_cache[245] = _createElementVNode("label", { for: "player-note-draft" }, "Новая внутренняя заметка", -1)), _withDirectives(_createElementVNode("textarea", {
+                                  }, [_cache[239] || (_cache[239] = _createElementVNode("label", { for: "player-note-draft" }, "Новая внутренняя заметка", -1)), _withDirectives(_createElementVNode("textarea", {
                                     id: "player-note-draft",
                                     "onUpdate:modelValue": $event => ((playerNotes.draft) = $event),
                                     maxlength: "2000",
                                     rows: "4",
                                     placeholder: "Контекст для администрации: нарушения, договорённости, важные наблюдения…"
-                                  }, null, 8, _hoisted_744), [[_vModelText, playerNotes.draft]]), _createElementVNode("div", null, [_createElementVNode("small", null, _toDisplayString(playerNotes.draft.length) + " / 2000", 1), _createElementVNode("button", {
+                                  }, null, 8, _hoisted_736), [[_vModelText, playerNotes.draft]]), _createElementVNode("div", null, [_createElementVNode("small", null, _toDisplayString(playerNotes.draft.length) + " / 2000", 1), _createElementVNode("button", {
                                     class: "btn primary small",
                                     type: "submit",
                                     disabled: busy || !playerNotes.draft.trim()
-                                  }, "Добавить заметку", 8, _hoisted_745)])], 40, _hoisted_743))
+                                  }, "Добавить заметку", 8, _hoisted_737)])], 40, _hoisted_735))
                                 : (!playerNotes.loading && !playerNotes.error)
-                                  ? (_openBlock(), _createElementBlock("div", _hoisted_746, " Заметки доступны для чтения. Для добавления и удаления нужно право «Заметки игроков». "))
+                                  ? (_openBlock(), _createElementBlock("div", _hoisted_738, " Заметки доступны для чтения. Для добавления и удаления нужно право «Заметки игроков». "))
                                   : _createCommentVNode("", true), (playerNotes.loading)
-                                ? (_openBlock(), _createElementBlock("div", _hoisted_747, "Загрузка заметок…"))
+                                ? (_openBlock(), _createElementBlock("div", _hoisted_739, "Загрузка заметок…"))
                                 : (playerNotes.error)
-                                  ? (_openBlock(), _createElementBlock("div", _hoisted_748, _toDisplayString(playerNotes.error), 1))
+                                  ? (_openBlock(), _createElementBlock("div", _hoisted_740, _toDisplayString(playerNotes.error), 1))
                                   : (playerNotes.items.length)
-                                    ? (_openBlock(), _createElementBlock("div", _hoisted_749, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(playerNotes.items, (item) => {
+                                    ? (_openBlock(), _createElementBlock("div", _hoisted_741, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(playerNotes.items, (item) => {
                                         return (_openBlock(), _createElementBlock("article", {
                                           key: item.id,
                                           class: "player-note"
@@ -3811,24 +3803,24 @@ return function render(_ctx, _cache) {
                                               class: "mini-btn danger",
                                               type: "button",
                                               onClick: $event => (deletePlayerNote(item))
-                                            }, "Удалить", 8, _hoisted_750))
+                                            }, "Удалить", 8, _hoisted_742))
                                           : _createCommentVNode("", true)]), _createElementVNode("p", null, _toDisplayString(item.note), 1)]))
                                       }), 128))]))
-                                    : (_openBlock(), _createElementBlock("div", _hoisted_751, [...(_cache[246] || (_cache[246] = [_createElementVNode("strong", null, "Заметок пока нет", -1), _createElementVNode("span", null, "Внутренние заметки видны только сотрудникам с доступом к карточкам игроков.", -1)]))]))]))
+                                    : (_openBlock(), _createElementBlock("div", _hoisted_743, [...(_cache[240] || (_cache[240] = [_createElementVNode("strong", null, "Заметок пока нет", -1), _createElementVNode("span", null, "Внутренние заметки видны только сотрудникам с доступом к карточкам игроков.", -1)]))]))]))
                             : _createCommentVNode("", true)], 64))
                   : _createCommentVNode("", true)]),
-            _createElementVNode("footer", _hoisted_752, [(steamProfileUrl(playerCard.profile?.steam_id || playerCard.live?.steamId))
+            _createElementVNode("footer", _hoisted_744, [(steamProfileUrl(playerCard.profile?.steam_id || playerCard.live?.steamId))
               ? (_openBlock(), _createElementBlock("a", {
                   key: 0,
                   href: steamProfileUrl(playerCard.profile?.steam_id || playerCard.live?.steamId),
                   target: "_blank",
                   rel: "noopener noreferrer"
-                }, "Профиль Steam ↗", 8, _hoisted_753))
-              : (_openBlock(), _createElementBlock("span", _hoisted_754, "SteamID недоступен")), _createElementVNode("button", {
+                }, "Профиль Steam ↗", 8, _hoisted_745))
+              : (_openBlock(), _createElementBlock("span", _hoisted_746, "SteamID недоступен")), _createElementVNode("button", {
               class: "btn ghost",
               onClick: closePlayerCard
-            }, "Закрыть", 8, _hoisted_755)])
-          ])], 8, _hoisted_665))
+            }, "Закрыть", 8, _hoisted_747)])
+          ])], 8, _hoisted_657))
         : _createCommentVNode("", true),
       (actionDialog.open)
         ? (_openBlock(), _createElementBlock("div", {
@@ -3842,21 +3834,21 @@ return function render(_ctx, _cache) {
             "aria-label": actionDialog.title,
             onSubmit: _withModifiers(submitActionDialog, ["prevent"])
           }, [
-            _createElementVNode("header", null, [_createElementVNode("div", null, [_cache[247] || (_cache[247] = _createElementVNode("span", { class: "admin-path" }, "Подтверждение действия", -1)), _createElementVNode("h2", null, _toDisplayString(actionDialog.title), 1)]), _createElementVNode("button", {
+            _createElementVNode("header", null, [_createElementVNode("div", null, [_cache[241] || (_cache[241] = _createElementVNode("span", { class: "admin-path" }, "Подтверждение действия", -1)), _createElementVNode("h2", null, _toDisplayString(actionDialog.title), 1)]), _createElementVNode("button", {
               type: "button",
               class: "player-card-close",
               onClick: cancelActionDialog,
               "aria-label": "Закрыть"
-            }, "×", 8, _hoisted_758)]),
+            }, "×", 8, _hoisted_750)]),
             (actionDialog.message)
-              ? (_openBlock(), _createElementBlock("p", _hoisted_759, _toDisplayString(actionDialog.message), 1))
+              ? (_openBlock(), _createElementBlock("p", _hoisted_751, _toDisplayString(actionDialog.message), 1))
               : _createCommentVNode("", true),
             (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(actionDialog.fields, (field) => {
               return (_openBlock(), _createElementBlock("label", {
                 key: field.key,
                 class: "action-dialog-field"
               }, [_createElementVNode("span", null, [_createTextVNode(_toDisplayString(field.label), 1), (field.required)
-                ? (_openBlock(), _createElementBlock("b", _hoisted_760, "*"))
+                ? (_openBlock(), _createElementBlock("b", _hoisted_752, "*"))
                 : _createCommentVNode("", true)]), (field.type === 'textarea')
                 ? _withDirectives((_openBlock(), _createElementBlock("textarea", {
                     key: 0,
@@ -3864,7 +3856,7 @@ return function render(_ctx, _cache) {
                     maxlength: field.maxLength,
                     placeholder: field.placeholder,
                     rows: "4"
-                  }, null, 8, _hoisted_761)), [[_vModelText, field.value]])
+                  }, null, 8, _hoisted_753)), [[_vModelText, field.value]])
                 : (field.type === 'select')
                   ? _withDirectives((_openBlock(), _createElementBlock("select", {
                       key: 1,
@@ -3873,8 +3865,8 @@ return function render(_ctx, _cache) {
                       return (_openBlock(), _createElementBlock("option", {
                         key: option.value,
                         value: option.value
-                      }, _toDisplayString(option.label), 9, _hoisted_763))
-                    }), 128))], 8, _hoisted_762)), [[_vModelSelect, field.value]])
+                      }, _toDisplayString(option.label), 9, _hoisted_755))
+                    }), 128))], 8, _hoisted_754)), [[_vModelSelect, field.value]])
                   : _withDirectives((_openBlock(), _createElementBlock("input", {
                       key: 2,
                       "onUpdate:modelValue": $event => ((field.value) = $event),
@@ -3882,26 +3874,26 @@ return function render(_ctx, _cache) {
                       maxlength: field.maxLength,
                       placeholder: field.placeholder,
                       autocomplete: "off"
-                    }, null, 8, _hoisted_764)), [[_vModelDynamic, field.value]]), (field.maxLength)
-                ? (_openBlock(), _createElementBlock("small", _hoisted_765, _toDisplayString(String(field.value || '').length) + " / " + _toDisplayString(field.maxLength), 1))
+                    }, null, 8, _hoisted_756)), [[_vModelDynamic, field.value]]), (field.maxLength)
+                ? (_openBlock(), _createElementBlock("small", _hoisted_757, _toDisplayString(String(field.value || '').length) + " / " + _toDisplayString(field.maxLength), 1))
                 : _createCommentVNode("", true)]))
             }), 128)),
             (actionDialog.error)
-              ? (_openBlock(), _createElementBlock("div", _hoisted_766, _toDisplayString(actionDialog.error), 1))
+              ? (_openBlock(), _createElementBlock("div", _hoisted_758, _toDisplayString(actionDialog.error), 1))
               : _createCommentVNode("", true),
             _createElementVNode("footer", null, [_createElementVNode("button", {
               type: "button",
               class: "btn ghost",
               onClick: cancelActionDialog
-            }, "Отмена", 8, _hoisted_767), _createElementVNode("button", {
+            }, "Отмена", 8, _hoisted_759), _createElementVNode("button", {
               type: "submit",
               class: _normalizeClass(["btn", actionDialog.danger ? 'danger' : 'primary']),
               disabled: busy
-            }, _toDisplayString(actionDialog.confirmText), 11, _hoisted_768)])
-          ], 40, _hoisted_757)], 8, _hoisted_756))
+            }, _toDisplayString(actionDialog.confirmText), 11, _hoisted_760)])
+          ], 40, _hoisted_749)], 8, _hoisted_748))
         : _createCommentVNode("", true),
       (toasts.length)
-        ? (_openBlock(), _createElementBlock("div", _hoisted_769, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(toasts, (t, i) => {
+        ? (_openBlock(), _createElementBlock("div", _hoisted_761, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(toasts, (t, i) => {
             return (_openBlock(), _createElementBlock("div", {
               key: i,
               class: _normalizeClass(["toast", t.kind])

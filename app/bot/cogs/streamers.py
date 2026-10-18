@@ -17,7 +17,7 @@ from database import (
     set_streamer_live,
     streamer_live_state,
 )
-from twitch_api import fetch_stream, fetch_viewer_count, fetch_next_start, TwitchError
+from twitch_api import close_session, fetch_stream, fetch_viewer_count, fetch_next_start, TwitchError
 
 log = logging.getLogger("streamers")
 LIVE_COLOR = discord.Color(0x9146FF)
@@ -39,8 +39,9 @@ class StreamersCog(commands.Cog):
     async def cog_load(self):
         self.twitch_loop.start()
 
-    def cog_unload(self):
+    async def cog_unload(self):
         self.twitch_loop.cancel()
+        await close_session()
 
     @tasks.loop(seconds=config.TWITCH_CHECK_INTERVAL)
     async def twitch_loop(self):

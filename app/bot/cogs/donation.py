@@ -292,10 +292,12 @@ class DonationCog(commands.Cog):
     async def _read_feed(self, offset: int):
         url = f"{self.site_base.rstrip('/')}/donate/feed.php?offset={offset}"
         headers = {"X-WD-Feed-Token": self.feed_token}
-        async with self.bot.http.session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=12)) as resp:
-            if resp.status != 200:
-                raise RuntimeError(f"Donation feed HTTP {resp.status}")
-            body = await resp.json()
+        timeout = aiohttp.ClientTimeout(total=12)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url, headers=headers) as resp:
+                if resp.status != 200:
+                    raise RuntimeError(f"Donation feed HTTP {resp.status}")
+                body = await resp.json()
         events = body.get("events")
         next_offset = body.get("nextOffset")
         if not isinstance(events, list) or not isinstance(next_offset, int) or next_offset < offset or len(events) > 100:
@@ -524,14 +526,29 @@ class DonationCog(commands.Cog):
 
     # ---- Setup ----
 
+    @staticmethod
+    def _as_single_view(components):
+        """discord.py 2.7 отдаёт в send/edit только один View — склеиваем панель."""
+        views = [view for view in (components or []) if view is not None]
+        if not views:
+            return None
+        if len(views) == 1:
+            return views[0]
+        merged = discord.ui.View(timeout=None)
+        for view in views:
+            for item in list(view.children):
+                merged.add_item(item)
+        return merged
+
     async def _upsert_panel(self, guild, key, channel_id, embed, components=None):
         ch = guild.get_channel(channel_id)
         if ch is None:
             ch = await self.bot.fetch_channel(channel_id)
         msg_id = get_donation_meta(f"panel_{key}")
         payload = {"embed": embed, "allowed_mentions": NO_MENTIONS}
-        if components:
-            payload["components"] = components
+        view = self._as_single_view(components)
+        if view:
+            payload["view"] = view
         if msg_id:
             try:
                 old = await ch.fetch_message(int(msg_id))

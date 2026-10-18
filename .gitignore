@@ -18,9 +18,9 @@ __pycache__/
 .venv/
 venv/
 
-# Bundled bots runtime artifacts
+# Embedded bot runtime artifacts (DATA_DIR defaults to ./data)
 node_modules/
-bots/**/data/
+data/
 *.wdbak
 
 # Editor and OS files

@@ -5,6 +5,7 @@
 """
 
 import asyncio
+import inspect
 import logging
 import sys
 import uuid
@@ -251,6 +252,22 @@ async def setup_hook():
     bot.loop.create_task(_periodic_backup_loop())
 
 
+async def _shutdown_bot():
+    """Выгружаем коги (закрывают свои сессии/клиенты) и закрываем бота.
+
+    discord.py не вызывает cog_unload при bot.close(), без этого на остановке
+    остаются «Unclosed client session» от RCON-клиентов и Twitch-сессии.
+    """
+    for cog in list(bot.cogs.values()):
+        try:
+            result = cog.cog_unload()
+            if inspect.isawaitable(result):
+                await result
+        except Exception:
+            log.exception("Ошибка выгрузки кога %s", cog.qualified_name)
+    await bot.close()
+
+
 async def start_bot():
     """Точка входа — вызывается из main.py как asyncio-задача."""
     import database
@@ -272,9 +289,21 @@ async def start_bot():
 
     try:
         await bot.start(config.TOKEN)
+    except discord.PrivilegedIntentsRequired:
+        log.error(
+            "Discord отклонил подключение: для приложения бота не включены "
+            "привилегированные намерения. Включите SERVER MEMBERS INTENT и "
+            "MESSAGE CONTENT INTENT в Discord Developer Portal -> Bot -> Privileged "
+            "Gateway Intents, затем перезапустите панель."
+        )
+        return
     except asyncio.CancelledError:
         log.info("Бот остановлен (CancelledError)")
-        await bot.close()
     finally:
-        database.release_lease(RUN_ID)
-        log.info("Лисцпа освобождён (run_id=%s)", RUN_ID)
+        try:
+            await _shutdown_bot()
+        except Exception:
+            log.exception("Ошибка остановки бота")
+        finally:
+            database.release_lease(RUN_ID)
+            log.info("Лисцпа освобождён (run_id=%s)", RUN_ID)

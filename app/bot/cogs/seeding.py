@@ -640,11 +640,11 @@ class SeedingCog(commands.Cog):
         if active_servers and config.SEED_VOICE_CHANNEL_ID:
             guild = self.bot.get_guild(config.GUILD_ID)
             if guild:
-                voice_channel_id = config.SEED_VOICE_CHANNEL_ID
+                voice_channel = guild.get_channel(config.SEED_VOICE_CHANNEL_ID)
                 voice_members = {
-                    vs.member.id: vs.member
-                    for vs in guild.voice_states.values()
-                    if vs.channel and vs.channel.id == voice_channel_id and vs.member and not vs.member.bot
+                    member.id: member
+                    for member in getattr(voice_channel, "members", [])
+                    if not member.bot
                 }
                 for server in active_servers:
                     for player in server["players"]:
@@ -672,6 +672,10 @@ class SeedingCog(commands.Cog):
             if active_count
             else ("population_limit" if any(s["state"] == "population_limit" for s in all_snapshots) else "rcon_unavailable")
         )
+        prev_state = self._last_status.get("state")
+        if prev_state != state:
+            log.info("seed status: %s -> %s (active_servers=%d eligible=%d)",
+                     prev_state, state, active_count, len(eligible))
         self._last_status = {
             "state": state,
             "updatedAt": now,
