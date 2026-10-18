@@ -187,6 +187,7 @@ async def on_ready():
     for mod_name, view_names in [
         ("cogs.tickets", ["TicketPanelView", "TicketCloseView", "TicketClosedView"]),
         ("cogs.clan_tickets", ["ClanTicketPanelView", "ClanTicketCloseView", "ClanTicketClosedView"]),
+        ("cogs.seeding", ["SeedShopView"]),
         ("cogs.temp_voice", ["VoiceControlPanelView"]),
         ("cogs.embed", ["EmbedBuilderView"]),
     ]:

@@ -73,10 +73,42 @@ CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 CODE_RE = re.compile(r"^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$")
 
 VIP_CATALOG = {
-    "1d": {"sku": "1d", "label": "VIP на 1 день", "cost_attr": "VIP_1_DAY_COST", "duration_seconds": 86_400},
-    "7d": {"sku": "7d", "label": "VIP на 7 дней", "cost_attr": "VIP_7_DAY_COST", "duration_seconds": 604_800},
-    "30d": {"sku": "30d", "label": "VIP на 30 дней", "cost_attr": "VIP_30_DAY_COST", "duration_seconds": 2_592_000},
+    "1d": {"sku": "1d", "label": "VIP на 1 день", "cost_attr": "VIP_1_DAY_COST", "duration_seconds": 86_400,
+           "duration_text": "24 часа", "shop_label": "VIP 1 день", "shop_emoji": "🎟️",
+           "shop_style": discord.ButtonStyle.primary},
+    "7d": {"sku": "7d", "label": "VIP на 7 дней", "cost_attr": "VIP_7_DAY_COST", "duration_seconds": 604_800,
+           "duration_text": "7 суток", "shop_label": "VIP 7 дней", "shop_emoji": "🎟️",
+           "shop_style": discord.ButtonStyle.primary},
+    "30d": {"sku": "30d", "label": "VIP на 30 дней", "cost_attr": "VIP_30_DAY_COST", "duration_seconds": 2_592_000,
+            "duration_text": "30 суток", "shop_label": "VIP 30 дней", "shop_emoji": "💎",
+            "shop_style": discord.ButtonStyle.success},
 }
+
+
+class SeedShopView(discord.ui.View):
+    """Постоянная панель магазина: кнопки VIP покупают через SeedingCog._vip_purchase."""
+
+    def __init__(self):
+        super().__init__(timeout=None)
+        for sku, product in VIP_CATALOG.items():
+            button = discord.ui.Button(
+                custom_id=f"seed:vip:{sku}",
+                label=product["shop_label"],
+                emoji=product["shop_emoji"],
+                style=product["shop_style"],
+            )
+            button.callback = self._make_callback(sku)
+            self.add_item(button)
+
+    @staticmethod
+    def _make_callback(sku: str):
+        async def _callback(interaction: discord.Interaction):
+            cog = interaction.client.get_cog("SeedingCog")
+            if cog is None:
+                await interaction.response.send_message("Магазин временно недоступен.", ephemeral=True)
+                return
+            await cog._vip_purchase(interaction, sku)
+        return _callback
 
 DONATION_PRODUCTS = {
     "personal_1": {"kind": "personal", "amount": 50000, "seats": 1, "months": 1},
@@ -399,25 +431,26 @@ class SeedingCog(commands.Cog):
         asyncio.create_task(self._warmup_rcon())
         # Правила/гайд/магазин/рейтинг — авто-pub на старте.
         asyncio.create_task(self._publish_rules_panel())
+        asyncio.create_task(self._publish_shop_panel())
 
-    async def _publish_rules_panel(self):
+    async def _publish_rules_panel(self) -> str:
         """4 эмбеда в канале правил: правила, как начать, магазин, рейтинг.
         Апсерт по сохранённому message_id — не плодит дубли."""
         await self.bot.wait_until_ready()
         if not config.SEED_RULES_CHANNEL_ID:
-            return
+            return "правила: канал не настроен"
         guild = self.bot.get_guild(config.GUILD_ID)
         if guild is None:
-            return
+            return "правила: гильдия не найдена"
         try:
             ch = guild.get_channel(config.SEED_RULES_CHANNEL_ID)
             if ch is None:
                 ch = await guild.fetch_channel(config.SEED_RULES_CHANNEL_ID)
         except Exception as e:
             log.warning("Rules channel %s недоступен: %s", config.SEED_RULES_CHANNEL_ID, e)
-            return
+            return f"правила: канал недоступен ({e})"
         if not isinstance(ch, discord.TextChannel):
-            return
+            return "правила: это не текстовый канал"
 
         voice = f"<#{config.SEED_VOICE_CHANNEL_ID}>" if config.SEED_VOICE_CHANNEL_ID else "голосовой канал сидинга"
         shop = f"<#{config.SEED_SHOP_CHANNEL_ID}>" if config.SEED_SHOP_CHANNEL_ID else "канал магазина"
@@ -446,6 +479,12 @@ class SeedingCog(commands.Cog):
                         value=f"Одновременно находиться на одном из двух серверов WARDOGS и в голосовом канале {voice} с привязанным SteamID64. Время и баллы общие; одновременное присутствие не удваивает начисление.")
         rules.add_field(name="⭐ Начисление",
                         value="Первый непрерывный час — **1 балл каждые 6 минут** (до 10 баллов).\nСо второго часа — **1 балл каждые 3 минуты** (20 баллов в час).")
+        rules.add_field(name="🧭 Баллы за обычную игру",
+                        value=f"Круглосуточно на обоих серверах, без Discord и голосового канала. Первый час — **1 балл за 12 минут** (5/час), затем **1 балл за 6 минут** (10/час). "
+                              f"Если выполнены условия сидинга, начисляется только сидинг. При **{stop_n}+** игроков действует обычная игра.")
+        rules.add_field(name="👝 Общий баланс магазина",
+                        value="Баллы игры сохраняются по SteamID без привязки и становятся доступны после `/seed link` и `/seed verify`. "
+                              "Баллы сидинга и игры можно тратить в одном магазине. В недельный рейтинг и награды топ-3 входит только сидинг.")
         rules.add_field(name="⏸️ Когда счётчик приостанавливается",
                         value=f"На каждом сервере отдельно при онлайне **{stop_n}+ игроков**. Возобновление — после {resume_min} минут ниже порога.\nТехническая пауза до {grace_min} минут сохраняет стаж непрерывной сессии, но время паузы не оплачивается.")
         rules.set_footer(text="Баллы начисляются только после проверки Discord и игрового сервера")
@@ -496,15 +535,79 @@ class SeedingCog(commands.Cog):
                 if msg.author.id == self.bot.user.id:
                     await msg.edit(**payload)
                     log.info("Rules-панель обновлена на старте")
-                    return
+                    return "правила: обновлён"
             except Exception:
                 pass
         try:
             msg = await ch.send(**payload)
             seed_set_state("rules_message_id", str(msg.id))
             log.info("Rules-панель опубликована на старте")
+            return "правила: опубликован"
         except Exception as e:
             log.warning("Не удалось опубликовать rules-панель: %s", e)
+            return f"правила: ошибка ({e})"
+
+    async def _publish_shop_panel(self) -> str:
+        """Панель магазина в SEED_SHOP_CHANNEL: эмбед + постоянные кнопки VIP.
+        Апсерт по сохранённому message_id — не плодит дубли."""
+        await self.bot.wait_until_ready()
+        if not config.SEED_SHOP_CHANNEL_ID:
+            return "магазин: канал не настроен"
+        guild = self.bot.get_guild(config.GUILD_ID)
+        if guild is None:
+            return "магазин: гильдия не найдена"
+        try:
+            ch = guild.get_channel(config.SEED_SHOP_CHANNEL_ID)
+            if ch is None:
+                ch = await guild.fetch_channel(config.SEED_SHOP_CHANNEL_ID)
+        except Exception as e:
+            log.warning("Shop channel %s недоступен: %s", config.SEED_SHOP_CHANNEL_ID, e)
+            return f"магазин: канал недоступен ({e})"
+        if not isinstance(ch, discord.TextChannel):
+            return "магазин: это не текстовый канал"
+
+        vip_role = f"<@&{config.VIP_ROLE_ID_SEED}>" if config.VIP_ROLE_ID_SEED else "VIP-роль"
+        embed = discord.Embed(
+            color=0xF1C40F,
+            title="👑 Магазин наград WARDOGS | RU",
+            description="Обменивайте общий баланс баллов за сидинг и обычную игру на VIP: Discord-роль и Reserved slot на обоих серверах.",
+        )
+        for sku, product in VIP_CATALOG.items():
+            cost = getattr(config, product["cost_attr"])
+            embed.add_field(
+                name=f"{product['shop_emoji']} {product['label']} • {cost} баллов",
+                value=f"Роль {vip_role} и Reserved slot на обоих серверах на {product['duration_text']} после подтверждённой активации.",
+                inline=False,
+            )
+        embed.add_field(
+            name="ℹ️ Как купить",
+            value="1. Подтвердите Steam через `/seed link` и `/seed verify`. Накопленные за игру баллы станут доступны; проверьте общий баланс через `/seed status`.\n"
+                  "2. Нажмите кнопку нужного тарифа ниже.\n"
+                  "3. Бот выдаст VIP-роль и синхронизирует Reserved slot на обоих серверах.\n\n"
+                  "Срок VIP начинается только после появления SteamID в live reserved slots обоих серверов. Покупка и ответ бота видны только вам.",
+            inline=False,
+        )
+        embed.set_footer(text="WARDOGS | RU • Система сидинга • Баланс и статус: /seed status")
+
+        view = SeedShopView()
+        prior = seed_get_state("shop_message_id", "")
+        if prior:
+            try:
+                msg = await ch.fetch_message(int(prior))
+                if msg.author.id == self.bot.user.id:
+                    await msg.edit(embed=embed, view=view)
+                    log.info("Панель магазина обновлена")
+                    return "магазин: обновлён"
+            except Exception:
+                pass
+        try:
+            msg = await ch.send(embed=embed, view=view)
+            seed_set_state("shop_message_id", str(msg.id))
+            log.info("Панель магазина опубликована")
+            return "магазин: опубликован"
+        except Exception as e:
+            log.warning("Не удалось опубликовать панель магазина: %s", e)
+            return f"магазин: ошибка ({e})"
 
     async def cog_unload(self):
         for loop in (
@@ -1627,9 +1730,19 @@ class SeedingCog(commands.Cog):
             )
         embed.add_field(
             name="ℹ️ Как это работает",
-            value="VIP даёт Reserved slot на игровом серверах. Оплаченный VIP с панели — через `/vip-link`.",
+            value="VIP даёт Reserved slot на игровых серверах. Оплаченный VIP с панели — через `/vip-link`.",
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @seed_group.command(name="panel", description="Задеплоить панели сидинга (правила и магазин)")
+    @app_commands.guild_only()
+    async def seed_panel_deploy(self, interaction: discord.Interaction):
+        if not (interaction.user.guild_permissions.administrator or interaction.user.guild_permissions.manage_guild):
+            return await interaction.response.send_message("❌ Нет прав.", ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
+        r1 = await self._publish_rules_panel()
+        r2 = await self._publish_shop_panel()
+        await interaction.followup.send(f"Деплой панелей сидинга:\n• {r1}\n• {r2}", ephemeral=True)
 
     @seed_group.command(name="buy", description="Купить VIP за баллы")
     @app_commands.describe(plan="Срок VIP")
@@ -1642,8 +1755,12 @@ class SeedingCog(commands.Cog):
     )
     @app_commands.guild_only()
     async def seed_buy(self, interaction: discord.Interaction, plan: app_commands.Choice[str]):
-        await interaction.response.defer(ephemeral=True)
-        sku = plan.value
+        await self._vip_purchase(interaction, plan.value)
+
+    async def _vip_purchase(self, interaction: discord.Interaction, sku: str):
+        """Общая покупка VIP — из /seed buy и кнопок панели магазина. Ответ эфемерный."""
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
         product = VIP_CATALOG.get(sku)
         if not product:
             await interaction.followup.send("Неизвестный вариант VIP.", ephemeral=True)
