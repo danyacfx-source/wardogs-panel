@@ -473,8 +473,63 @@ def init_db():
             map TEXT NOT NULL DEFAULT '',
             created_at INTEGER NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS ticket_types (
+            type_id TEXT PRIMARY KEY,
+            label TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            emoji TEXT NOT NULL DEFAULT '',
+            color INTEGER NOT NULL DEFAULT 5793266,
+            position INTEGER NOT NULL DEFAULT 0,
+            enabled INTEGER NOT NULL DEFAULT 1
+        );
     """)
     conn.commit()
+    for row in (
+        ("complaint", "Жалоба", "Отправьте жалобу — администрация разберётся в ближайшее время.", "📢", 9109504, 0),
+        ("suggestion", "Предложение", "Отправьте ваше предложение — спасибо за вклад в развитие сервера!", "💡", 5763719, 1),
+    ):
+        conn.execute(
+            "INSERT OR IGNORE INTO ticket_types (type_id, label, description, emoji, color, position) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            row,
+        )
+    conn.commit()
+
+
+# Ticket types (Discord-панель тикетов)
+def list_ticket_types(include_disabled: bool = False):
+    conn = get_conn()
+    sql = "SELECT * FROM ticket_types"
+    if not include_disabled:
+        sql += " WHERE enabled = 1"
+    sql += " ORDER BY position ASC, label ASC"
+    return [dict(r) for r in conn.execute(sql).fetchall()]
+
+
+def get_ticket_type(type_id: str):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM ticket_types WHERE type_id = ?", (type_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def upsert_ticket_type(type_id, label, description="", emoji="", color=5793266, position=0, enabled=1):
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO ticket_types (type_id, label, description, emoji, color, position, enabled) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT (type_id) DO UPDATE SET label = EXCLUDED.label, description = EXCLUDED.description, "
+        "emoji = EXCLUDED.emoji, color = EXCLUDED.color, position = EXCLUDED.position, enabled = EXCLUDED.enabled",
+        (type_id, label, description, emoji, color, position, 1 if enabled else 0),
+    )
+    conn.commit()
+
+
+def delete_ticket_type(type_id: str) -> bool:
+    conn = get_conn()
+    cur = conn.execute("DELETE FROM ticket_types WHERE type_id = ?", (type_id,))
+    conn.commit()
+    return bool(getattr(cur, "rowcount", 0))
 
 
 # Streamers

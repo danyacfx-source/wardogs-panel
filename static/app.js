@@ -141,6 +141,8 @@ const app = createApp({
       ticketStatusFilter: "active",
       ticketPriorityFilter: "all",
       ticketCommentDraft: "",
+      ticketTypes: { items: [], loading: false, error: "", busy: false },
+      ticketTypeDraft: { open: false, isNew: true, type_id: "", label: "", description: "", emoji: "", color: "#5865F2", position: 0, enabled: true },
       roleSearch: "",
       rolePermissionFilter: "all",
       rotationEdit: false,
@@ -357,7 +359,7 @@ const app = createApp({
       if (t === "roles") this.loadRoles();
       if (t === "reserved") this.loadReserved();
       if (t === "vip") { this.loadVipSlots(); this.loadPayments(); }
-      if (t === "tickets") this.loadTickets();
+      if (t === "tickets") { this.loadTickets(); this.loadTicketTypes(); }
       if (t === "server") this.loadRoutes();
     },
     serverView(v) {
@@ -1387,6 +1389,62 @@ const app = createApp({
         }
       } finally {
         this.tickets.loading = false;
+      }
+    },
+    async loadTicketTypes() {
+      if (this.ticketTypes.loading) return;
+      this.ticketTypes.loading = true;
+      this.ticketTypes.error = "";
+      try {
+        const { status, data } = await this.api.request("GET", "/api/ticket-types");
+        if (status === 200 && data?.ok) this.ticketTypes.items = data.types || [];
+        else this.ticketTypes.error = data?.detail || "Не удалось загрузить типы тикетов";
+      } finally {
+        this.ticketTypes.loading = false;
+      }
+    },
+    startTicketTypeDraft(item = null) {
+      this.ticketTypeDraft = item
+        ? { open: true, isNew: false, type_id: item.type_id, label: item.label, description: item.description, emoji: item.emoji, color: item.color, position: item.position, enabled: item.enabled }
+        : { open: true, isNew: true, type_id: "", label: "", description: "", emoji: "", color: "#5865F2", position: this.ticketTypes.items.length, enabled: true };
+    },
+    async saveTicketType() {
+      const draft = this.ticketTypeDraft;
+      if (!draft.type_id || !draft.label) return this.toast("ID и название обязательны", "err");
+      const payload = {
+        label: draft.label, description: draft.description, emoji: draft.emoji,
+        color: draft.color, position: Number(draft.position) || 0, enabled: !!draft.enabled,
+      };
+      this.ticketTypes.busy = true;
+      try {
+        const { status, data } = draft.isNew
+          ? await this.api.request("POST", "/api/ticket-types", { type_id: draft.type_id, ...payload })
+          : await this.api.request("PATCH", `/api/ticket-types/${draft.type_id}`, payload);
+        if (status === 200 && data?.ok) {
+          draft.open = false;
+          await this.loadTicketTypes();
+          this.toast(draft.isNew ? "Тип добавлен" : "Тип обновлён", "ok");
+        } else {
+          this.toast(data?.detail || "Не удалось сохранить тип", "err");
+        }
+      } finally {
+        this.ticketTypes.busy = false;
+      }
+    },
+    async deleteTicketType(item) {
+      const values = await this.openActionDialog({
+        title: `Удалить тип «${item.label}»`,
+        message: "Тип исчезнет из меню создания тикетов. Открытые тикеты этого типа не пострадают.",
+        confirmText: "Удалить",
+        danger: true,
+      });
+      if (!values) return;
+      const { status, data } = await this.api.request("DELETE", `/api/ticket-types/${item.type_id}`);
+      if (status === 200 && data?.ok) {
+        await this.loadTicketTypes();
+        this.toast("Тип удалён", "ok");
+      } else {
+        this.toast(data?.detail || "Не удалось удалить тип", "err");
       }
     },
     async openTicket(ticket) {

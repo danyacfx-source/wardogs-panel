@@ -853,6 +853,45 @@
             </div>
           </aside>
         </div>
+        <div class="panel" style="margin-top:16px">
+          <div class="toolbar">
+            <div>
+              <h2>Типы тикетов Discord</h2>
+              <p class="muted">Пункты меню «Создать тикет» у бота. Правки подхватываются сразу, без перезапуска.</p>
+            </div>
+            <button v-if="has('tickets_edit')" class="btn primary" @click="startTicketTypeDraft()">+ Добавить тип</button>
+          </div>
+          <div v-if="ticketTypes.error" class="err-box">{{ ticketTypes.error }}</div>
+          <form v-if="ticketTypeDraft.open && has('tickets_edit')" class="bot-create-grid" style="margin-bottom:12px" @submit.prevent="saveTicketType">
+            <label>ID типа<input v-model.trim="ticketTypeDraft.type_id" :disabled="!ticketTypeDraft.isNew" maxlength="48" placeholder="support"></label>
+            <label>Название<input v-model.trim="ticketTypeDraft.label" maxlength="100" placeholder="Поддержка"></label>
+            <label>Эмодзи<input v-model.trim="ticketTypeDraft.emoji" maxlength="16" placeholder="🎧"></label>
+            <label>Цвет (hex)<input v-model.trim="ticketTypeDraft.color" maxlength="7" placeholder="#5865F2"></label>
+            <label>Порядок<input v-model.number="ticketTypeDraft.position" type="number"></label>
+            <label>Описание<textarea v-model.trim="ticketTypeDraft.description" maxlength="500" rows="2" placeholder="Подсказка в меню"></textarea></label>
+            <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" v-model="ticketTypeDraft.enabled"> Виден в меню</label>
+            <div class="toolbar-actions">
+              <button class="btn primary" type="submit" :disabled="ticketTypes.busy">{{ ticketTypes.busy ? 'Сохранение…' : 'Сохранить' }}</button>
+              <button class="btn ghost" type="button" @click="ticketTypeDraft.open=false">Отмена</button>
+            </div>
+          </form>
+          <div class="compact-list">
+            <div v-for="t in ticketTypes.items" :key="t.type_id" class="reserve-row">
+              <span>{{ t.emoji || '—' }}</span>
+              <b>{{ t.label }}</b>
+              <span class="mono">{{ t.type_id }}</span>
+              <span class="muted">{{ t.description || '—' }}</span>
+              <span class="mono">{{ t.color }}</span>
+              <span class="badge" :class="{warn: !t.enabled}">{{ t.enabled ? 'виден' : 'скрыт' }}</span>
+              <div v-if="has('tickets_edit')" class="toolbar-actions">
+                <button class="mini-btn" @click="startTicketTypeDraft(t)">Изменить</button>
+                <button class="mini-btn danger" @click="deleteTicketType(t)">Удалить</button>
+              </div>
+            </div>
+            <div v-if="ticketTypes.loading" class="muted">Загрузка…</div>
+            <div v-else-if="!ticketTypes.items.length" class="muted">Типы не загружены.</div>
+          </div>
+        </div>
       </section>
 
       <!-- ===== АДМИНИСТРАЦИЯ ===== -->

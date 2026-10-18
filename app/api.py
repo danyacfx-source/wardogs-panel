@@ -31,6 +31,7 @@ try:
     from . import disclog
     from . import seed_store
     from . import steam as steam_mod
+    from .bot import database as bot_db
     from .rcon_client import RCONError, WardogsRCON
     from .schemas import (
         VipOrderCreate, VipSlotSave, DonateCheckoutRequest,
@@ -52,6 +53,7 @@ except ImportError:
     import disclog
     import seed_store
     import steam as steam_mod
+    from bot import database as bot_db
     from rcon_client import RCONError, WardogsRCON
     from schemas import (
         VipOrderCreate, VipSlotSave, DonateCheckoutRequest,
@@ -1775,6 +1777,98 @@ async def ticket_delete(ticket_id: str, request: Request):
     response = {"ok": True}
     await _idempotency_complete(user["steam_id"], idem_key, response)
     return response
+
+
+# --- Типы тикетов Discord-бота (селект «Создать тикет») ---
+
+_TICKET_TYPE_ID_RE = re.compile(r"^[a-z0-9_-]{1,48}$")
+
+
+async def _ticket_type_body(request: Request) -> dict:
+    body = await _json_object(request)
+    return body if isinstance(body, dict) else {}
+
+
+def _ticket_type_color(value) -> int:
+    if isinstance(value, str):
+        text = value.strip().lstrip("#")
+        if not re.fullmatch(r"[0-9a-fA-F]{6}", text):
+            raise HTTPException(status_code=400, detail="Цвет должен быть в формате #RRGGBB")
+        return int(text, 16)
+    number = int(value)
+    if not 0 <= number <= 0xFFFFFF:
+        raise HTTPException(status_code=400, detail="Цвет вне диапазона 0..FFFFFF")
+    return number
+
+
+def _public_ticket_type(row: dict) -> dict:
+    color = int(row.get("color") or 0)
+    return {
+        "type_id": row.get("type_id"),
+        "label": row.get("label") or "",
+        "description": row.get("description") or "",
+        "emoji": row.get("emoji") or "",
+        "color": f"#{color:06X}",
+        "position": int(row.get("position") or 0),
+        "enabled": bool(row.get("enabled")),
+    }
+
+
+@router.get("/ticket-types")
+async def ticket_types_list(request: Request):
+    await _require_any_perm(request, {"tickets_view", "tickets_edit"})
+    return {"ok": True, "types": [_public_ticket_type(r) for r in bot_db.list_ticket_types(include_disabled=True)]}
+
+
+@router.post("/ticket-types")
+async def ticket_type_create(request: Request):
+    user = await _require_perm(request, "tickets_edit")
+    body = await _ticket_type_body(request)
+    type_id = str(body.get("type_id") or "").strip().lower()
+    if not _TICKET_TYPE_ID_RE.fullmatch(type_id):
+        raise HTTPException(status_code=400, detail="ID типа: латиница, цифры, _ и -, до 48 символов")
+    label = str(body.get("label") or "").strip()
+    if not 1 <= len(label) <= 100:
+        raise HTTPException(status_code=400, detail="Название: 1–100 символов")
+    if bot_db.get_ticket_type(type_id):
+        raise HTTPException(status_code=409, detail="Такой ID типа уже существует")
+    description = str(body.get("description") or "").strip()[:500]
+    emoji = str(body.get("emoji") or "").strip()[:16]
+    color = _ticket_type_color(body.get("color") or "#5865F2")
+    position = int(body.get("position") or 0)
+    enabled = bool(body.get("enabled", True))
+    bot_db.upsert_ticket_type(type_id, label, description, emoji, color, position, enabled)
+    await db.log_site_audit(user["steam_id"], None, "ticket_type.create", type_id)
+    return {"ok": True, "type": _public_ticket_type(bot_db.get_ticket_type(type_id))}
+
+
+@router.patch("/ticket-types/{type_id}")
+async def ticket_type_update(type_id: str, request: Request):
+    user = await _require_perm(request, "tickets_edit")
+    current = bot_db.get_ticket_type(type_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="Тип не найден")
+    body = await _ticket_type_body(request)
+    label = str(body.get("label", current["label"])).strip()
+    if not 1 <= len(label) <= 100:
+        raise HTTPException(status_code=400, detail="Название: 1–100 символов")
+    description = str(body.get("description", current["description"]) or "").strip()[:500]
+    emoji = str(body.get("emoji", current["emoji"]) or "").strip()[:16]
+    color = _ticket_type_color(body.get("color") or f"#{int(current['color'] or 0):06X}")
+    position = int(body.get("position", current["position"] or 0))
+    enabled = bool(body.get("enabled", bool(current.get("enabled", 1))))
+    bot_db.upsert_ticket_type(type_id, label, description, emoji, color, position, enabled)
+    await db.log_site_audit(user["steam_id"], None, "ticket_type.update", type_id)
+    return {"ok": True, "type": _public_ticket_type(bot_db.get_ticket_type(type_id))}
+
+
+@router.delete("/ticket-types/{type_id}")
+async def ticket_type_delete(type_id: str, request: Request):
+    user = await _require_perm(request, "tickets_edit")
+    if not bot_db.delete_ticket_type(type_id):
+        raise HTTPException(status_code=404, detail="Тип не найден")
+    await db.log_site_audit(user["steam_id"], None, "ticket_type.delete", type_id)
+    return {"ok": True}
 
 
 @router.get("/server/{sid}/players")

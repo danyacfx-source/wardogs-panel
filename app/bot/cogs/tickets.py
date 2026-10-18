@@ -11,15 +11,37 @@ from datetime import datetime
 from io import BytesIO
 
 import config
+import database
 from database import get_conn
 
 log = logging.getLogger("tickets")
 
-
-TICKET_TYPES = {
-    "complaint": ("Жалоба", "Отправьте жалобу — администрация разберётся в ближайшее время.", discord.Color.dark_red()),
-    "suggestion": ("Предложение", "Отправьте ваше предложение — спасибо за вклад в развитие сервера!", discord.Color.green()),
+_FALLBACK_TYPE = {
+    "type_id": "complaint",
+    "label": "Жалоба",
+    "description": "Отправьте жалобу — администрация разберётся в ближайшее время.",
+    "emoji": "📢",
+    "color": 9109504,
 }
+
+
+def _load_types():
+    """Типы тикетов из БД (правятся в панели). Пусто/ошибка — фолбэк."""
+    try:
+        rows = database.list_ticket_types()
+    except Exception:
+        log.exception("ticket_types: не удалось прочитать типы из БД")
+        rows = []
+    return rows or [dict(_FALLBACK_TYPE)]
+
+
+def _get_type(type_id: str):
+    try:
+        row = database.get_ticket_type(type_id)
+    except Exception:
+        log.exception("ticket_types: не удалось прочитать тип %s", type_id)
+        row = None
+    return row or dict(_FALLBACK_TYPE)
 
 
 class TicketPanelView(discord.ui.View):
@@ -32,12 +54,18 @@ class TicketPanelView(discord.ui.View):
 
     async def _open_type_selector(self, interaction: discord.Interaction):
         view = discord.ui.View(timeout=60)
+        options = []
+        for row in _load_types()[:25]:
+            emoji = (row.get("emoji") or "").strip() or None
+            options.append(discord.SelectOption(
+                label=(row.get("label") or row["type_id"])[:100],
+                value=row["type_id"][:100],
+                description=(row.get("description") or "")[:100] or None,
+                emoji=emoji,
+            ))
         select = discord.ui.Select(
             placeholder="Выберите тип тикета...",
-            options=[
-                discord.SelectOption(label="Жалоба", value="complaint", description="Оскорбления, спам, нарушение правил", emoji="📢"),
-                discord.SelectOption(label="Предложение", value="suggestion", description="Идеи по улучшению сервера", emoji="💡"),
-            ],
+            options=options,
         )
         select.callback = self._on_type
         view.add_item(select)
@@ -78,7 +106,10 @@ class TicketPanelView(discord.ui.View):
                     view_channel=True, send_messages=True, read_message_history=True
                 )
 
-        label, desc, color = TICKET_TYPES.get(ticket_type, TICKET_TYPES["complaint"])
+        ttype = _get_type(ticket_type)
+        label = ttype.get("label") or "Тикет"
+        desc = ttype.get("description") or ""
+        color = discord.Color(int(ttype.get("color") or 0x5865F2) & 0xFFFFFF)
         try:
             channel = await guild.create_text_channel(
                 name=f"тикет-{user.name}",
@@ -240,13 +271,14 @@ class TicketCog(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         target = channel or interaction.channel
 
+        lines = ["Нажмите кнопку ниже и выберите тип обращения."]
+        for row in _load_types():
+            emoji = (row.get("emoji") or "").strip()
+            prefix = f"{emoji} " if emoji else ""
+            lines.append(f"**{prefix}{row.get('label') or row['type_id']}** — {row.get('description') or '—'}")
         embed = discord.Embed(
             title="📨 Создать тикет",
-            description=(
-                "Нажмите кнопку ниже и выберите тип обращения.\n"
-                "**Жалоба** — оскорбления, спам, нарушение правил.\n"
-                "**Предложение** — идеи по улучшению сервера."
-            ),
+            description="\n".join(lines),
             color=discord.Color.dark_red(),
         )
         await target.send(embed=embed, view=TicketPanelView())
