@@ -1609,17 +1609,25 @@ const app = createApp({
       try { await navigator.clipboard.writeText(this.botIssuedToken); this.toast("Ключ скопирован", "ok"); }
       catch (_) { this.toast("Не удалось скопировать ключ", "err"); }
     },
+    roomMemberNames(room) {
+      const roomId = String(room.id || room.channel_id || "");
+      return (this.discordAdmin.tempvoice?.members || [])
+        .filter((member) => String(member.channel_id) === roomId)
+        .map((member) => member.name || member.user_id);
+    },
     async deleteTempVoice(room) {
-      if (!await this.confirmAction("Удалить временную комнату", `${room.name || room.channel_id} · владелец ${room.owner_name || room.owner_id}`, "Удалить")) return;
-      const { status, data } = await this.api.request("POST", `/api/discord/tempvoice/${room.channel_id}/delete`, {});
+      const roomId = room.id || room.channel_id;
+      if (!await this.confirmAction("Удалить временную комнату", `${room.name || roomId} · владелец ${room.owner_name || room.owner_id}`, "Удалить")) return;
+      const { status, data } = await this.api.request("POST", `/api/discord/tempvoice/${roomId}/delete`, {});
       if (status === 200 && data?.ok) { this.toast("Комната удалена", "ok"); this.loadDiscordAdmin(); }
       else this.toast(data?.detail || data?.error || "Не удалось удалить комнату", "err");
     },
     async transferTempVoice(room) {
-      const members = this.discordAdmin.tempvoice?.members || [];
-      const values = await this.openActionDialog({ title: "Передать временную комнату", confirmText: "Передать", fields: [{ key: "owner_id", label: "Новый владелец", type: "select", required: true, options: members.map((member) => ({ value: member.id, label: `${member.name} · ${member.id}` })) }] });
+      const roomId = room.id || room.channel_id;
+      const members = (this.discordAdmin.tempvoice?.members || []).filter((member) => String(member.channel_id) === String(roomId));
+      const values = await this.openActionDialog({ title: "Передать временную комнату", confirmText: "Передать", fields: [{ key: "owner_id", label: "Новый владелец", type: "select", required: true, options: members.map((member) => ({ value: member.user_id, label: `${member.name} · ${member.user_id}` })) }] });
       if (!values) return;
-      const { status, data } = await this.api.request("POST", `/api/discord/tempvoice/${room.channel_id}/transfer`, values);
+      const { status, data } = await this.api.request("POST", `/api/discord/tempvoice/${roomId}/transfer`, values);
       if (status === 200 && data?.ok) { this.toast(`Новый владелец: ${data.owner_name || values.owner_id}`, "ok"); this.loadDiscordAdmin(); }
       else this.toast(data?.detail || data?.error || "Не удалось передать комнату", "err");
     },

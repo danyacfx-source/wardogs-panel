@@ -3307,12 +3307,12 @@ return function render(_ctx, _cache) {
                           (!discordAdmin.tempvoice_error)
                             ? (_openBlock(), _createElementBlock("div", _hoisted_554, [_cache[200] || (_cache[200] = _createElementVNode("div", { class: "toolbar" }, [_createElementVNode("h2", null, "Временные комнаты бота")], -1)), _createElementVNode("div", _hoisted_555, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList((discordAdmin.tempvoice?.rooms || []), (room) => {
                                 return (_openBlock(), _createElementBlock("article", {
-                                  key: room.channel_id,
+                                  key: room.id || room.channel_id,
                                   class: "reserve-row tempvoice-row"
                                 }, [
-                                  _createElementVNode("div", null, [_createElementVNode("b", null, _toDisplayString(room.name || room.channel_id), 1), _createElementVNode("small", null, "владелец: " + _toDisplayString(room.owner_name || room.owner_id), 1)]),
-                                  _createElementVNode("span", null, _toDisplayString(room.members?.length || 0) + " участников", 1),
-                                  _createElementVNode("span", _hoisted_556, _toDisplayString((room.members || []).map(member => member.name).join(', ') || 'комната пуста'), 1),
+                                  _createElementVNode("div", null, [_createElementVNode("b", null, _toDisplayString(room.name || room.id), 1), _createElementVNode("small", null, "владелец: " + _toDisplayString(room.owner_name || room.owner_id), 1)]),
+                                  _createElementVNode("span", null, _toDisplayString((Array.isArray(room.members) ? room.members.length : Number(room.members)) || 0) + " участников", 1),
+                                  _createElementVNode("span", _hoisted_556, _toDisplayString(roomMemberNames(room).join(', ') || 'комната пуста'), 1),
                                   _createElementVNode("div", _hoisted_557, [_createElementVNode("button", {
                                     class: "mini-btn",
                                     onClick: $event => (transferTempVoice(room))
