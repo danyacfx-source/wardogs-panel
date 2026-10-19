@@ -426,7 +426,7 @@ async def panel():
     p = STATIC_DIR / "panel.html"
     if not p.exists():
         return {"ok": True, "note": "панели нет"}
-    return FileResponse(p)
+    return FileResponse(p, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/stats")
