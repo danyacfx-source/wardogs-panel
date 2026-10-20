@@ -383,31 +383,39 @@ class VoiceControlPanelView(discord.ui.View):
         _, _, InviteModal, _ = _make_modals(vc)
         await interaction.response.send_modal(InviteModal())
 
-    async def _rename_preset(self, interaction: discord.Interaction, name: str):
+    _PRESET_EMOJIS = ("🔴", "🔵", "🟢", "🟡", "🟣", "🟠", "⚪", "⚫")
+
+    async def _rename_preset(self, interaction: discord.Interaction, emoji: str):
         vc, err = await self._vc(interaction)
         if err:
             return await interaction.response.send_message(err, ephemeral=True)
         await interaction.response.defer(ephemeral=True)
+        base = vc.name
+        for old_emoji in self._PRESET_EMOJIS:
+            if base.startswith(old_emoji + " "):
+                base = base[len(old_emoji) + 1:]
+                break
+        new_name = f"{emoji} {base}"[:100]
+        if vc.name == new_name:
+            return await interaction.followup.send(f"Канал уже отмечен `{emoji}`.", ephemeral=True)
         old = vc.name
         try:
-            await vc.edit(name=name, reason=f"Пресет-название от {interaction.user}")
+            await vc.edit(name=new_name, reason=f"Пресет-название от {interaction.user}")
         except discord.Forbidden:
             return await interaction.followup.send("❌ Нет прав переименовать канал.", ephemeral=True)
-        if old == name:
-            return await interaction.followup.send(f"Канал уже называется `{name}`.", ephemeral=True)
-        await interaction.followup.send(f"✅ `{old}` → `{name}`", ephemeral=True)
+        await interaction.followup.send(f"✅ `{old}` → `{new_name}`", ephemeral=True)
 
     @discord.ui.button(label="Valkyra", style=discord.ButtonStyle.secondary, custom_id="vc2_panel_valkyra")
     async def panel_valkyra(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._rename_preset(interaction, "Valkyra")
+        await self._rename_preset(interaction, "🔴")
 
     @discord.ui.button(label="Lonestar", style=discord.ButtonStyle.secondary, custom_id="vc2_panel_lonestar")
     async def panel_lonestar(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._rename_preset(interaction, "Lonestar")
+        await self._rename_preset(interaction, "🔵")
 
     @discord.ui.button(label="Manticore", style=discord.ButtonStyle.secondary, custom_id="vc2_panel_manticore")
     async def panel_manticore(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._rename_preset(interaction, "Manticore")
+        await self._rename_preset(interaction, "🟢")
 
 
 # ---------- Ког ----------
@@ -578,7 +586,7 @@ class TempVoiceCog(commands.Cog):
                 "✏️ Переименовать\n"
                 "👥 Установить лимит участников\n"
                 "🎟 Пригласить участника (ID/упоминание) или получить ссылку\n"
-                "🏷 Быстрые названия: Valkyra / Lonestar / Manticore"
+                "🏷 Цветные метки: 🔴 Valkyra / 🔵 Lonestar / 🟢 Manticore"
             ),
             color=discord.Color.blurple(),
         )
