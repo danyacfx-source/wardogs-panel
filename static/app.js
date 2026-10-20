@@ -1343,12 +1343,12 @@ const app = createApp({
     async saveVipSlot(item = null) {
       const values = await this.openActionDialog({
         title: item ? "Изменить VIP-слот" : "Выдать VIP-слот",
-        message: "SteamID будет автоматически добавлен в резерв выбранного сервера.",
+        message: "SteamID будет автоматически добавлен в резерв выбранного сервера. Пустая дата — бессрочный VIP.",
         confirmText: item ? "Сохранить" : "Выдать VIP",
         fields: [
           { key: "steam_id", label: "SteamID64", required: true, validator: "steam64", maxLength: 17, value: item?.steam_id || "", placeholder: "7656119…" },
           { key: "display_name", label: "Игрок", maxLength: 120, value: item?.display_name || "", placeholder: "Ник или комментарий" },
-          { key: "expires_date", label: "Действует до", type: "date", value: this.vipDateInput(item?.expires_utc) },
+          { key: "expires_date", label: "Действует до", type: "date", value: this.vipDateInput(item?.expires_utc), placeholder: "пусто = бессрочно" },
           { key: "note", label: "Заметка", type: "textarea", maxLength: 500, value: item?.note || "", placeholder: "Основание выдачи, покупка, событие…" },
         ],
       });
