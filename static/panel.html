@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>WARDOGS // Панель управления</title>
 <link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
-<link rel="stylesheet" href="/static/style.css?v=20261019-1" />
+<link rel="stylesheet" href="/static/style.css?v=20261019-2" />
 </head>
 <body data-panel-mode="panel">
 <div id="app" v-cloak>
@@ -705,6 +705,61 @@
               <tbody>
                 <tr v-for="(e, i) in siteAudit" :key="i"><td class="mono">{{ fmtDate(e.timestamp_utc * 1000) }}</td><td class="mono">{{ e.actor_steam_id || 'система' }}</td><td>{{ e.server_id || '—' }}</td><td><span class="evt">{{ e.event }}</span></td><td class="mono">{{ e.detail }}</td></tr>
                 <tr v-if="!siteAudit.length"><td colspan="5" class="muted">Записей нет.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== KILLFEED ===== -->
+      <section v-if="state.tab === 'killfeed'">
+        <div class="panel">
+          <div class="toolbar">
+            <h2>Killfeed</h2>
+            <div class="admin-head-actions">
+              <label>Фильтр: <select v-model="killfeedKind" @change="loadKillfeed">
+                <option value="all">все</option>
+                <option value="teamkills">союзные</option>
+                <option value="headshots">хедшоты</option>
+                <option value="suicides">суициды</option>
+                <option value="environment">окружение</option>
+              </select></label>
+              <button class="btn ghost small" @click="loadKillfeed" :disabled="killfeedLoading">{{ killfeedLoading ? '…' : 'Обновить' }}</button>
+            </div>
+          </div>
+
+          <div class="kf-status" v-if="killfeedStatus.url">
+            <span class="kf-pill" :class="killfeedStatus.last_received_utc ? 'on' : 'off'">{{ killfeedStatus.last_received_utc ? 'килфид активен' : 'нет данных' }}</span>
+            <span class="muted" v-if="killfeedStatus.last_received_utc">последний пакет {{ fmtDate(killfeedStatus.last_received_utc * 1000) }}</span>
+            <span class="muted" v-else>Сервер ещё не слал килфид — подключите его в ServerSettings.ini.</span>
+            <button v-if="has('config_edit')" class="btn ghost small" @click="loadKillfeedSetup">Показать строки</button>
+          </div>
+          <pre v-if="killfeedSetup" class="kf-setup">{{ killfeedSetup.lines.join('\n') }}</pre>
+
+          <div class="kf-stats">
+            <span>всего <b>{{ killfeedStats.total || 0 }}</b></span>
+            <span :class="{ 'kf-red': killfeedStats.teamkills }">союзных <b>{{ killfeedStats.teamkills || 0 }}</b></span>
+            <span>хедшотов <b>{{ killfeedStats.headshots || 0 }}</b></span>
+            <span>суицидов <b>{{ killfeedStats.suicides || 0 }}</b></span>
+          </div>
+
+          <div class="table-scroll">
+            <table class="tbl">
+              <thead><tr><th>Время</th><th>Убийца</th><th>Жертва</th><th>Оружие</th><th>Дистанция</th><th>Флаги</th></tr></thead>
+              <tbody>
+                <tr v-for="k in killfeedRows" :key="k.event_id" :class="{ 'kf-tk': k.teamkill }">
+                  <td class="mono">{{ fmtDate(k.received_utc * 1000) }}</td>
+                  <td>{{ k.killer_name || k.killer_id || 'окружение' }} <span class="muted" v-if="k.killer_faction">{{ k.killer_faction }}</span></td>
+                  <td>{{ k.victim_name || k.victim_id }} <span class="muted" v-if="k.victim_faction">{{ k.victim_faction }}</span></td>
+                  <td>{{ k.cause || '—' }}</td>
+                  <td class="mono">{{ k.distance_m != null ? Math.round(k.distance_m) + ' м' : '—' }}</td>
+                  <td>
+                    <span v-if="k.teamkill" class="kf-badge">СОЮЗНОЕ</span>
+                    <span v-if="k.headshot" class="kf-badge hs">HS</span>
+                    <span v-if="k.suicide" class="kf-badge dim">суицид</span>
+                  </td>
+                </tr>
+                <tr v-if="!killfeedRows.length"><td colspan="6" class="muted">Убийств пока нет — подключите килфид на сервере.</td></tr>
               </tbody>
             </table>
           </div>
@@ -1431,7 +1486,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/panel.render.js?v=20261019-4"></script>
-<script src="/static/app.js?v=20261019-4"></script>
+<script src="/static/panel.render.js?v=20261019-6"></script>
+<script src="/static/app.js?v=20261019-5"></script>
 </body>
 </html>

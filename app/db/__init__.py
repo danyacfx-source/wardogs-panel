@@ -108,6 +108,12 @@ from .auth import (
     set_role_perms,
 )
 
+from .killfeed import (
+    record_kill_events,
+    get_known_factions,
+    recent_kills,
+    killfeed_stats,
+)
 from .monitoring import (
     record_monitoring,
     get_population,

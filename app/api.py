@@ -2591,6 +2591,189 @@ async def site_audit_integrity(request: Request):
     return {"ok": True, "audit": await db.verify_site_audit_chain(force=True)}
 
 
+# ---------- kill feed ----------
+
+_KILLFEED_MAX_BODY = 64 * 1024
+_KILLFEED_MAX_KILLS = 200
+_STEAM_ID_RE = re.compile(r"^\d{17}$")
+_KILL_TAG_PREFIXES = (
+    "Meta.Progression.Context.Player.KillContext.",
+    "Meta.PlayerKillFlag.Player.",
+)
+
+
+def _short_kill_tags(raw):
+    """Контекстные теги в короткой форме (префиксы сняты, шум отброшен)."""
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for tag in raw[:32]:
+        if not isinstance(tag, str):
+            continue
+        short = tag
+        for prefix in _KILL_TAG_PREFIXES:
+            if short.startswith(prefix):
+                short = short[len(prefix):]
+        short = short[:60]
+        if short not in ("Local.Kill", "Local.Death") and short not in out:
+            out.append(short)
+    return out
+
+
+def _parse_killfeed_batch(body):
+    """Тело батча килфида: {serverId, serverName, events: [...]}."""
+    if not isinstance(body, dict) or not isinstance(body.get("events"), list):
+        raise ValueError("ожидался объект { events: [...] }")
+    kills = []
+    other = 0
+    skipped = 0
+    for raw in body["events"][:1000]:
+        if not isinstance(raw, dict):
+            skipped += 1
+            continue
+        etype = str(raw.get("type") or "")[:32]
+        if etype == "killed":
+            event_id = str(raw.get("eventId") or "")[:64]
+            victim_id = str(raw.get("victimSteamId") or "")
+            event_time = raw.get("eventTime")
+            if not event_id or not _STEAM_ID_RE.match(victim_id) or not isinstance(event_time, (int, float)):
+                skipped += 1
+                continue
+            tags = _short_kill_tags(raw.get("contextTags"))
+            killer_id = str(raw.get("killerSteamId") or "")
+            killer_id = killer_id if _STEAM_ID_RE.match(killer_id) else None
+            suicide = "Suicide" in tags or (killer_id is not None and killer_id == victim_id)
+            distance = raw.get("distance")
+            distance_m = round(float(distance)) / 100 if isinstance(distance, (int, float)) else None
+            kills.append({
+                "event_id": event_id,
+                "match_id": str(raw.get("matchId") or "")[:64],
+                "event_time": float(event_time),
+                "map": str(raw.get("mapName") or "")[:64],
+                "killer_id": killer_id,
+                "killer_name": (str(raw.get("killerName") or "")[:80] or None) if killer_id else None,
+                "victim_id": victim_id[:17],
+                "victim_name": str(raw.get("victimName") or "")[:80],
+                "cause": str(raw.get("cause") or "")[:200],
+                "distance_m": distance_m,
+                "headshot": "Headshot" in tags,
+                "suicide": suicide,
+                "tags": [t for t in tags if t not in ("Headshot", "Suicide")][:12],
+            })
+        elif etype in ("player_joined", "player_left", "match_state", "match_ended"):
+            other += 1
+        else:
+            skipped += 1
+    return kills, other, skipped
+
+
+async def _killfeed_factions(server_id, srv, kills):
+    """Фракции сторон убийства: player_activity, при необходимости — живой список игроков."""
+    wanted = list({sid for k in kills for sid in (k["killer_id"], k["victim_id"]) if sid})
+    factions = await db.get_known_factions(server_id, wanted)
+    if not any(factions.values()):
+        try:
+            players = await _cached_players(srv)
+            for player in players.get("players") or []:
+                steam_id = str(player.get("steamId") or "")
+                if steam_id in wanted:
+                    factions[steam_id] = player.get("faction") or None
+        except Exception:
+            pass
+    return factions
+
+
+@router.post("/killfeed/{server_id}")
+async def killfeed_ingest(server_id: str, request: Request):
+    """Приём батча килфида от игрового сервера (Bearer = WARDOGS_KILLFEED_TOKEN)."""
+    if not config.KILLFEED_TOKEN:
+        raise HTTPException(status_code=503, detail="приём килфида не настроен")
+    auth_header = request.headers.get("authorization") or ""
+    offered = auth_header[7:].strip() if auth_header[:7].lower() == "bearer " else ""
+    if not offered or not hmac.compare_digest(offered, config.KILLFEED_TOKEN):
+        raise HTTPException(status_code=401, detail="неизвестный токен килфида")
+    srv = _get_server(server_id)
+    if not srv:
+        raise _not_found(server_id)
+    raw = await request.body()
+    if len(raw) > _KILLFEED_MAX_BODY:
+        raise HTTPException(status_code=413, detail="батч слишком большой")
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="некорректный JSON")
+    try:
+        kills, other, skipped = _parse_killfeed_batch(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if len(kills) > _KILLFEED_MAX_KILLS:
+        raise HTTPException(status_code=413, detail="слишком много убийств в батче")
+    if kills:
+        factions = await _killfeed_factions(server_id, srv, kills)
+        for kill in kills:
+            kill["killer_faction"] = factions.get(kill["killer_id"]) if kill["killer_id"] else None
+            kill["victim_faction"] = factions.get(kill["victim_id"])
+            kill["teamkill"] = bool(
+                not kill["suicide"]
+                and kill["killer_id"]
+                and kill["killer_faction"]
+                and kill["killer_faction"] == kill["victim_faction"]
+            )
+    accepted = await db.record_kill_events(server_id, kills)
+    return {
+        "ok": True,
+        "accepted": accepted,
+        "duplicates": len(kills) - accepted,
+        "other": other,
+        "skipped": skipped,
+    }
+
+
+@router.get("/killfeed")
+async def killfeed_list(request: Request, server: str = "", limit: int = 200, kind: str = "all"):
+    """Лента убийств сервера: все, союзные, хедшоты, суициды, окружение."""
+    await _require_perm(request, "players_view")
+    srv = _get_server(server)
+    if not srv:
+        raise _not_found(server)
+    entries = await db.recent_kills(srv.id, limit, kind)
+    stats = await db.killfeed_stats(srv.id)
+    return {"ok": True, "entries": entries, "stats": stats}
+
+
+@router.get("/killfeed/status")
+async def killfeed_status(request: Request, server: str = ""):
+    """Жив ли килфид сервера и куда он должен слать события."""
+    await _require_perm(request, "players_view")
+    srv = _get_server(server)
+    if not srv:
+        raise _not_found(server)
+    stats = await db.killfeed_stats(srv.id)
+    return {
+        "ok": True,
+        "configured": bool(config.KILLFEED_TOKEN),
+        "url": f"{config.PUBLIC_URL}/api/killfeed/{srv.id}",
+        "last_received_utc": stats["last_received_utc"],
+        "total": stats["total"],
+    }
+
+
+@router.get("/killfeed/setup")
+async def killfeed_setup(request: Request, server: str = ""):
+    """Строки для ServerSettings.ini, чтобы сервер начал слать килфид на панель."""
+    await _require_perm(request, "config_edit")
+    srv = _get_server(server)
+    if not srv:
+        raise _not_found(server)
+    url = f"{config.PUBLIC_URL}/api/killfeed/{srv.id}"
+    lines = [
+        "bEventFeedEnabled=True",
+        f'+EventFeedEndpoints=(Url="{url}",Token="{config.KILLFEED_TOKEN}")',
+        f'EventFeedServerName="{srv.name.replace(chr(34), "").replace(chr(13), "").replace(chr(10), "")}"',
+    ]
+    return {"ok": True, "url": url, "lines": lines}
+
+
 def _parse_vip_expiry(value):
     if value in (None, ""):
         return None

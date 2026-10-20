@@ -23,6 +23,8 @@ _load_dotenv(BASE_DIR / ".env")
 
 ENVIRONMENT = (os.environ.get("WARDOGS_ENV") or "development").strip().lower()
 PUBLIC_URL = (os.environ.get("WARDOGS_PUBLIC_URL") or "http://127.0.0.1:8236").rstrip("/")
+# Bearer-токен для приёма килфида (/api/killfeed/{server}); пусто — приём отключён.
+KILLFEED_TOKEN = (os.environ.get("WARDOGS_KILLFEED_TOKEN") or "").strip()
 # When a managed platform supplies PORT it runs behind a reverse proxy and
 # needs the application to listen on the container interface.  Local runs
 # retain the safer loopback default.

@@ -119,6 +119,13 @@ const app = createApp({
       audit: [],
       siteAudit: [],
       auditLimit: 50,
+      killfeedRows: [],
+      killfeedStats: {},
+      killfeedStatus: {},
+      killfeedKind: "all",
+      killfeedSetup: null,
+      killfeedLoading: false,
+      killfeedTimer: null,
       cfg: { text: "", revision: "", writable: true, warnings: [], loaded: false },
       cfgResult: null,
       cfgResultStatus: "",
@@ -212,6 +219,7 @@ const app = createApp({
       const t = [{ id: "status", label: "Мониторинг" }];
       const any = (...ps) => ps.some((p) => this.perms.includes(p));
       if (any("players_view", "broadcast", "kick", "kill", "message", "move_faction")) t.push({ id: "players", label: "Игроки" });
+      if (this.perms.includes("players_view")) t.push({ id: "killfeed", label: "Killfeed" });
       if (any("change_map", "change_lighting", "match_end", "match_restart")) t.push({ id: "controls", label: "Карта / Матч" });
       if (this.perms.length) t.push({ id: "rotation", label: "Ротация" });
       if (any("ban_view", "ban_add", "ban_remove")) t.push({ id: "bans", label: "Баны" });
@@ -353,6 +361,8 @@ const app = createApp({
       if (t === "rotation") this.ensureCatalog();
       if (t === "audit") { this.loadAudit(); this.loadSiteAudit(); }
       if (t === "journal") this.loadSiteAudit();
+      if (t === "killfeed") this.startKillfeedPolling();
+      else this.stopKillfeedPolling();
       if (t === "config") this.ensureConfig();
       if (t === "staff") this.loadStaff();
       if (t === "discord") this.loadDiscordAdmin();
@@ -374,6 +384,7 @@ const app = createApp({
       if (!this.state.ovById[this.state.sid]) this.loadOverview(this.state.sid, true);
       if (this.state.tab === "audit") { this.loadAudit(); this.loadSiteAudit(); }
       if (this.state.tab === "journal") this.loadSiteAudit();
+      if (this.state.tab === "killfeed") { this.killfeedSetup = null; this.loadKillfeed(); }
       if (this.state.tab === "config") this.loadConfig();
       if (this.state.tab === "rotation") this.ensureCatalog();
       if (this.state.tab === "staff") this.loadStaff();
@@ -2112,6 +2123,42 @@ const app = createApp({
     async loadSiteAudit() {
       const { data } = await this.api.request("GET", `/api/audit/site?limit=${this.auditLimit}`);
       if (data && data.ok) this.siteAudit = data.entries || [];
+    },
+
+    // ---- килфид ----
+    startKillfeedPolling() {
+      this.stopKillfeedPolling();
+      this.loadKillfeed();
+      this.killfeedTimer = setInterval(() => this.loadKillfeed(), 5000);
+    },
+    stopKillfeedPolling() {
+      if (this.killfeedTimer) {
+        clearInterval(this.killfeedTimer);
+        this.killfeedTimer = null;
+      }
+    },
+    async loadKillfeed() {
+      const sid = this.state.sid;
+      if (!sid) return;
+      this.killfeedLoading = true;
+      const [feed, status] = await Promise.all([
+        this.api.request("GET", `/api/killfeed?server=${encodeURIComponent(sid)}&limit=200&kind=${encodeURIComponent(this.killfeedKind)}`),
+        this.api.request("GET", `/api/killfeed/status?server=${encodeURIComponent(sid)}`),
+      ]);
+      this.killfeedLoading = false;
+      if (sid !== this.state.sid || this.state.tab !== "killfeed") return;
+      if (feed.data && feed.data.ok) {
+        this.killfeedRows = feed.data.entries || [];
+        this.killfeedStats = feed.data.stats || {};
+      } else if (feed.data && feed.data.error) {
+        this.toast(feed.data.error.message, "err");
+      }
+      if (status.data && status.data.ok) this.killfeedStatus = status.data;
+    },
+    async loadKillfeedSetup() {
+      const { data } = await this.api.request("GET", `/api/killfeed/setup?server=${encodeURIComponent(this.state.sid)}`);
+      if (data && data.ok) this.killfeedSetup = data;
+      else if (data && data.error) this.toast(data.error.message, "err");
     },
 
     // ---- конфиг ----
