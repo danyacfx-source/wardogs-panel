@@ -1,9 +1,9 @@
 """SW-карточки: смена стороны с проверкой перевеса.
 
-В канале SW_CHANNEL_ID лежат две карточки (на каждый сервер): выбор игрока
-из списка онлайна + кнопки сторон. Лимиты для обычных: до +2, кулдаун 1 свап
-за игру. VIP (seed или покупной): без лимита перевеса, без кулдауна.
-Каждый свап логируется в sw_log для отчёта по перевесам.
+В канале SW_CHANNEL_ID лежат две карточки (на каждый сервер): кнопки сторон.
+Нажавший переводит сам себя по привязанному SteamID (seed link или bindings
+панели). Лимиты для обычных: до +2, кулдаун 1 свап за игру. VIP (seed или
+покупной): без лимита перевеса, без кулдауна. Каждый свап логируется в sw_log.
 """
 
 from __future__ import annotations
@@ -23,8 +23,8 @@ log = logging.getLogger("swap")
 
 FALLBACK_FACTIONS = ["Valkyra", "Lonestar", "Manticore"]
 SW_COOLDOWN: dict[tuple[str, str], str] = {}
-PICKS: dict[tuple[int, str], str] = {}
 CARD_REFRESH_SECONDS = 60
+LINK_HINT = "Привяжите Steam: `/seed link` → получите код в игре → `/seed verify`."
 
 
 def _server_index(sid: str) -> int | None:
@@ -46,14 +46,24 @@ def _get_rcon_client(sid: str) -> WardogsRconClient | None:
     return None
 
 
-async def _has_move_faction(member: discord.Member) -> bool:
-    if member.guild_permissions.administrator:
-        return True
-    if config.SW_ADMIN_ROLE_IDS:
-        member_role_ids = {r.id for r in member.roles}
-        if member_role_ids & set(config.SW_ADMIN_ROLE_IDS):
-            return True
-    return False
+def _linked_steam_id(discord_id: int) -> str:
+    """SteamID64, привязанный к Discord: seed_users, затем bindings панели."""
+    try:
+        user = db.seed_get_user_by_discord(str(discord_id))
+        if user and user.get("steam_id"):
+            return str(user["steam_id"])
+    except Exception:
+        log.exception("SW: ошибка чтения привязки seed_users")
+    try:
+        conn = db.get_panel_conn()
+        row = conn.execute(
+            "SELECT user_id FROM bindings WHERE discord_id = ?", (str(discord_id),)
+        ).fetchone()
+        if row and row[0]:
+            return str(row[0])
+    except Exception:
+        log.exception("SW: ошибка чтения bindings панели")
+    return ""
 
 
 def _is_vip(steam_id: str) -> bool:
@@ -103,7 +113,7 @@ async def _execute_swap(sid: str, side: str, target_steam_id: str, actor_discord
         return False, "Игрок не в сети"
     source = current.get("faction", "")
     if source.lower() == side.lower():
-        return False, "Игрок уже в этой стороне"
+        return False, "Вы уже в этой стороне"
 
     is_vip = _is_vip(target_steam_id)
 
@@ -155,21 +165,7 @@ async def _execute_swap(sid: str, side: str, target_steam_id: str, actor_discord
 
     vip_note = " [VIP — без лимита]" if is_vip else ""
     log.info("SW %s: %s %s→%s (перевес %d, игроков %d)%s", sid, target_steam_id, source, side, diff, len(players), vip_note)
-    return True, f"{target_steam_id} переведён в «{side}» (перевес {diff}){vip_note}"
-
-
-def _player_options(players: list | None) -> list[discord.SelectOption]:
-    opts = []
-    for p in sorted(players or [], key=lambda x: str(x.get("name") or "").lower())[:25]:
-        steam = str(p.get("steam_id") or "")
-        if not steam:
-            continue
-        label = str(p.get("name") or steam)[:100]
-        faction = str(p.get("faction") or "?")
-        opts.append(discord.SelectOption(label=label, value=steam, description=f"{steam} · {faction}"[:100]))
-    if not opts:
-        opts = [discord.SelectOption(label="Игроков нет — список обновится сам", value="__empty__")]
-    return opts
+    return True, f"Вы переведены в «{side}» (перевес {diff}){vip_note}"
 
 
 def _server_label(sid: str) -> str:
@@ -177,13 +173,14 @@ def _server_label(sid: str) -> str:
     return str((server or {}).get("name") or sid)
 
 
-def _card_embed(sid: str, players: list | None, counts: dict | None, map_name: str) -> discord.Embed:
+def _card_embed(sid: str, counts: dict | None, map_name: str) -> discord.Embed:
     embed = discord.Embed(
         title=f"Смена стороны — {_server_label(sid)}",
         description=(
-            "Выберите игрока в списке, затем нажмите кнопку нужной стороны.\n"
+            "Нажмите кнопку стороны — вас переведут в неё по вашему привязанному SteamID.\n"
             "Обычные игроки: **перевес до +2**, один свап за игру. "
-            "**VIP** — без лимита перевеса и без кулдауна."
+            "**VIP** — без лимита перевеса и без кулдауна.\n"
+            f"{LINK_HINT}"
         ),
         color=config.EMBED_COLOR,
     )
@@ -197,20 +194,11 @@ def _card_embed(sid: str, players: list | None, counts: dict | None, map_name: s
 
 
 class SWCardView(discord.ui.View):
-    """Персистентная карточка одного сервера: список онлайна + кнопки сторон."""
+    """Персистентная карточка одного сервера: кнопки сторон, свап себя."""
 
-    def __init__(self, sid: str, players: list | None = None):
+    def __init__(self, sid: str):
         super().__init__(timeout=None)
         self.sid = sid
-        select = discord.ui.Select(
-            custom_id=f"sw:{sid}:player",
-            placeholder="Кого перевести (онлайн)…",
-            min_values=1,
-            max_values=1,
-            options=_player_options(players),
-        )
-        select.callback = self._on_player
-        self.add_item(select)
         for faction in FALLBACK_FACTIONS:
             button = discord.ui.Button(
                 custom_id=f"sw:{sid}:side:{faction}",
@@ -220,32 +208,15 @@ class SWCardView(discord.ui.View):
             button.callback = self._side_callback(faction)
             self.add_item(button)
 
-    async def _on_player(self, interaction: discord.Interaction):
-        if not await _has_move_faction(interaction.user):
-            return await interaction.response.send_message("Нет права move_faction", ephemeral=True)
-        values = interaction.data.get("values") or []
-        steam = values[0] if values else ""
-        if not steam or steam.startswith("__"):
-            return await interaction.response.send_message("Список игроков пуст", ephemeral=True)
-        PICKS[(interaction.user.id, self.sid)] = steam
-        await interaction.response.send_message(
-            f"Выбран `{steam}` — нажмите кнопку стороны. Ответ виден только вам.",
-            ephemeral=True,
-        )
-
     def _side_callback(self, side: str):
         async def callback(interaction: discord.Interaction):
-            if not await _has_move_faction(interaction.user):
-                return await interaction.response.send_message("Нет права move_faction", ephemeral=True)
-            steam = PICKS.get((interaction.user.id, self.sid))
+            steam = _linked_steam_id(interaction.user.id)
             if not steam:
                 return await interaction.response.send_message(
-                    "Сначала выберите игрока в списке выше.", ephemeral=True
+                    f"Steam не привязан. {LINK_HINT}", ephemeral=True
                 )
             await interaction.response.defer(ephemeral=True)
             ok, result = await _execute_swap(self.sid, side, steam, str(interaction.user.id))
-            if ok:
-                PICKS.pop((interaction.user.id, self.sid), None)
             await interaction.followup.send(result, ephemeral=True)
 
         return callback
@@ -296,9 +267,8 @@ class SwapCog(commands.Cog):
         return players, counts, str(status.get("map") or "")
 
     @staticmethod
-    def _sig(players: list | None, counts: dict | None, map_name: str) -> str:
-        ids = ",".join(sorted(str(p.get("steam_id") or "") for p in (players or [])))
-        return f"{ids}|{counts}|{map_name}"
+    def _sig(counts: dict | None, map_name: str) -> str:
+        return f"{counts}|{map_name}"
 
     async def _ensure_cards(self) -> bool:
         """Публикует/чинит карточки обоих серверов. Апсерт по сохранённому message_id."""
@@ -309,25 +279,24 @@ class SwapCog(commands.Cog):
         ok = True
         for s in config.SERVERS[:2]:
             sid = str(s.get("id"))
-            players, counts, map_name = await self._fetch_state(sid)
-            embed = _card_embed(sid, players, counts, map_name)
-            view = SWCardView(sid, players)
+            _players, counts, map_name = await self._fetch_state(sid)
+            embed = _card_embed(sid, counts, map_name)
             prior = db.seed_get_state(f"sw_card_{sid}", "")
             if prior:
                 try:
                     msg = await channel.fetch_message(int(prior))
                     if msg.author.id == self.bot.user.id:
-                        await msg.edit(embed=embed, view=view)
-                        self._last_sig[sid] = self._sig(players, counts, map_name)
+                        await msg.edit(embed=embed, view=SWCardView(sid))
+                        self._last_sig[sid] = self._sig(counts, map_name)
                         log.info("SW-карточка %s обновлена", sid)
                         continue
                 except Exception:
                     pass
                 db.seed_set_state(f"sw_card_{sid}", "")
             try:
-                msg = await channel.send(embed=embed, view=view)
+                msg = await channel.send(embed=embed, view=SWCardView(sid))
                 db.seed_set_state(f"sw_card_{sid}", str(msg.id))
-                self._last_sig[sid] = self._sig(players, counts, map_name)
+                self._last_sig[sid] = self._sig(counts, map_name)
                 log.info("SW-карточка %s опубликована (message_id=%s)", sid, msg.id)
             except Exception as exc:
                 log.error("SW-карточки: не удалось опубликовать %s: %s", sid, exc)
@@ -345,10 +314,10 @@ class SwapCog(commands.Cog):
             return
         for s in config.SERVERS[:2]:
             sid = str(s.get("id"))
-            players, counts, map_name = await self._fetch_state(sid)
-            if players is None:
+            _players, counts, map_name = await self._fetch_state(sid)
+            if counts is None:
                 continue
-            sig = self._sig(players, counts, map_name)
+            sig = self._sig(counts, map_name)
             if sig == self._last_sig.get(sid):
                 continue
             prior = db.seed_get_state(f"sw_card_{sid}", "")
@@ -357,9 +326,9 @@ class SwapCog(commands.Cog):
                 continue
             try:
                 msg = await channel.fetch_message(int(prior))
-                await msg.edit(embed=_card_embed(sid, players, counts, map_name), view=SWCardView(sid, players))
+                await msg.edit(embed=_card_embed(sid, counts, map_name), view=SWCardView(sid))
                 self._last_sig[sid] = sig
-                log.info("SW-карточка %s обновлена (онлайн %d)", sid, len(players))
+                log.info("SW-карточка %s обновлена (карта %s)", sid, map_name or "—")
             except discord.NotFound:
                 db.seed_set_state(f"sw_card_{sid}", "")
                 self._ensured = False
