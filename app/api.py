@@ -129,6 +129,27 @@ async def fulfill_vip_order(order, operation_id: str = ""):
         )
         synced, error = await _sync_vip_record(item, add=True)
         results.append({'steam_id': steam_id, 'synced': synced, 'error': error})
+        # VIP действует на все серверы: дублируем entitlement и managed-запись.
+        for other in _other_servers(order['server_id']):
+            try:
+                other_item = await db.save_vip_slot(
+                    other.id, steam_id,
+                    (db_user or {}).get('persona') or '',
+                    expires_utc,
+                    f"заказ {order['id']}",
+                    order.get('actor_steam_id') or '',
+                )
+                other_synced, other_error = await _sync_vip_record(other_item, add=True)
+                if not other_synced:
+                    log.warning(
+                        "Зеркальный VIP %s (заказ %s) не синхронизирован на %s: %s",
+                        steam_id, order['id'], other.id, other_error,
+                    )
+            except Exception:
+                log.exception(
+                    "Зеркальный VIP %s (заказ %s) не сохранён на %s",
+                    steam_id, order['id'], other.id,
+                )
         log.info(
             "VIP-заказ %s: слот %s на %s — %s",
             order['id'], steam_id, order['server_id'], 'выдан' if synced else error,
