@@ -383,6 +383,32 @@ class VoiceControlPanelView(discord.ui.View):
         _, _, InviteModal, _ = _make_modals(vc)
         await interaction.response.send_modal(InviteModal())
 
+    async def _rename_preset(self, interaction: discord.Interaction, name: str):
+        vc, err = await self._vc(interaction)
+        if err:
+            return await interaction.response.send_message(err, ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
+        old = vc.name
+        try:
+            await vc.edit(name=name, reason=f"Пресет-название от {interaction.user}")
+        except discord.Forbidden:
+            return await interaction.followup.send("❌ Нет прав переименовать канал.", ephemeral=True)
+        if old == name:
+            return await interaction.followup.send(f"Канал уже называется `{name}`.", ephemeral=True)
+        await interaction.followup.send(f"✅ `{old}` → `{name}`", ephemeral=True)
+
+    @discord.ui.button(label="Valkyra", style=discord.ButtonStyle.secondary, custom_id="vc2_panel_valkyra")
+    async def panel_valkyra(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._rename_preset(interaction, "Valkyra")
+
+    @discord.ui.button(label="Lonestar", style=discord.ButtonStyle.secondary, custom_id="vc2_panel_lonestar")
+    async def panel_lonestar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._rename_preset(interaction, "Lonestar")
+
+    @discord.ui.button(label="Manticore", style=discord.ButtonStyle.secondary, custom_id="vc2_panel_manticore")
+    async def panel_manticore(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._rename_preset(interaction, "Manticore")
+
 
 # ---------- Ког ----------
 
@@ -551,7 +577,8 @@ class TempVoiceCog(commands.Cog):
                 "👢 Выгнать участника\n"
                 "✏️ Переименовать\n"
                 "👥 Установить лимит участников\n"
-                "🎟 Пригласить участника (ID/упоминание) или получить ссылку"
+                "🎟 Пригласить участника (ID/упоминание) или получить ссылку\n"
+                "🏷 Быстрые названия: Valkyra / Lonestar / Manticore"
             ),
             color=discord.Color.blurple(),
         )
