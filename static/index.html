@@ -6,7 +6,7 @@
 <title>WARDOGS // Мониторинг</title>
 <link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
 <link rel="preload" href="/static/wardogs-theme/wardogs-battlefield-v2.webp" as="image" type="image/webp" fetchpriority="high" />
-<link rel="stylesheet" href="/static/style.css?v=20261015-5" />
+<link rel="stylesheet" href="/static/style.css?v=20261019-1" />
 </head>
 <body data-panel-mode="monitor">
 <div id="app" v-cloak>
@@ -295,22 +295,6 @@
             </template>
             <p v-else class="muted">{{ seedShop.data?.error || 'Нет данных. Привяжите Discord и /seed link.' }}</p>
           </section>
-
-          <section class="player-section">
-            <div class="player-section-title">Мои обращения · {{ profile.data.tickets_total || 0 }}</div>
-            <div v-if="(profile.data.tickets || []).length" class="player-tags">
-              <span v-for="ticket in profile.data.tickets" :key="ticket.id" class="player-tag">{{ ticket.title }} · {{ ticketStatusLabel(ticket.status) }}</span>
-            </div>
-            <p v-else class="muted">Обращений нет.</p>
-          </section>
-
-          <section class="player-section">
-            <div class="player-section-title">Последние действия</div>
-            <div v-if="(profile.data.audit || []).length" class="player-tags" style="flex-direction:column;align-items:stretch">
-              <div v-for="(entry, i) in profile.data.audit" :key="i" class="ticket-comment"><header><b>{{ entry.event }}</b><small>{{ fmtDate(entry.timestamp_utc * 1000) }}</small></header><p class="mono">{{ entry.detail }}</p></div>
-            </div>
-            <p v-else class="muted">Действий пока не было.</p>
-          </section>
         </div>
         <footer class="player-card-footer">
           <button class="btn ghost" @click="closeProfileCard">Закрыть</button>
@@ -326,7 +310,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/index.render.js?v=20261018-2"></script>
-<script src="/static/app.js?v=20261019-3"></script>
+<script src="/static/index.render.js?v=20261019-4"></script>
+<script src="/static/app.js?v=20261019-4"></script>
 </body>
 </html>

@@ -220,6 +220,7 @@ const app = createApp({
       if (this.perms.includes("clans")) t.push({ id: "clans", label: "Кланы" });
       if (any("tickets_view", "tickets_edit")) t.push({ id: "tickets", label: "Тикеты" });
       if (this.perms.includes("audit")) t.push({ id: "audit", label: "Аудит" });
+      if (this.perms.includes("audit")) t.push({ id: "journal", label: "Журнал" });
       if (any("config_view", "config_edit")) t.push({ id: "config", label: "Конфиг" });
       if (this.perms.includes("roles")) t.push({ id: "staff", label: "Администрация" });
       if (this.perms.includes("roles")) t.push({ id: "discord", label: "Боты и Discord" });
@@ -351,6 +352,7 @@ const app = createApp({
       if (t === "controls") this.ensureCatalog();
       if (t === "rotation") this.ensureCatalog();
       if (t === "audit") { this.loadAudit(); this.loadSiteAudit(); }
+      if (t === "journal") this.loadSiteAudit();
       if (t === "config") this.ensureConfig();
       if (t === "staff") this.loadStaff();
       if (t === "discord") this.loadDiscordAdmin();
@@ -371,6 +373,7 @@ const app = createApp({
       this.serverBuild = "";
       if (!this.state.ovById[this.state.sid]) this.loadOverview(this.state.sid, true);
       if (this.state.tab === "audit") { this.loadAudit(); this.loadSiteAudit(); }
+      if (this.state.tab === "journal") this.loadSiteAudit();
       if (this.state.tab === "config") this.loadConfig();
       if (this.state.tab === "rotation") this.ensureCatalog();
       if (this.state.tab === "staff") this.loadStaff();

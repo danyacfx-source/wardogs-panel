@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>WARDOGS // Панель управления</title>
 <link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
-<link rel="stylesheet" href="/static/style.css?v=20261016-1" />
+<link rel="stylesheet" href="/static/style.css?v=20261019-1" />
 </head>
 <body data-panel-mode="panel">
 <div id="app" v-cloak>
@@ -688,6 +688,29 @@
         </div>
       </section>
 
+      <!-- ===== ЖУРНАЛ ===== -->
+      <section v-if="state.tab === 'journal'">
+        <div class="panel">
+          <div class="toolbar">
+            <h2>Журнал действий</h2>
+            <div class="admin-head-actions">
+              <button class="btn ghost small" @click="loadSiteAudit">Обновить</button>
+              <label>Строк: <select v-model="auditLimit" @change="loadSiteAudit"><option v-for="n in [50,100,200,500]" :key="n" :value="n">{{ n }}</option></select></label>
+            </div>
+          </div>
+          <p class="muted">Все действия панели: VIP и баны, тикеты, теги, роли, конфигурация — единый лог.</p>
+          <div class="table-scroll">
+            <table class="tbl">
+              <thead><tr><th>Время</th><th>Кто</th><th>Сервер</th><th>Событие</th><th>Детали</th></tr></thead>
+              <tbody>
+                <tr v-for="(e, i) in siteAudit" :key="i"><td class="mono">{{ fmtDate(e.timestamp_utc * 1000) }}</td><td class="mono">{{ e.actor_steam_id || 'система' }}</td><td>{{ e.server_id || '—' }}</td><td><span class="evt">{{ e.event }}</span></td><td class="mono">{{ e.detail }}</td></tr>
+                <tr v-if="!siteAudit.length"><td colspan="5" class="muted">Записей нет.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <!-- ===== КЛАНЫ ===== -->
       <section v-if="state.tab === 'clans'">
         <header class="staff-page-head">
@@ -1163,22 +1186,6 @@
           </div>
           <p v-else class="muted">VIP-слотов нет.</p>
         </section>
-
-        <section class="player-section">
-          <div class="player-section-title">Мои обращения · {{ profile.data.tickets_total || 0 }}</div>
-          <div v-if="(profile.data.tickets || []).length" class="player-tags">
-            <span v-for="ticket in profile.data.tickets" :key="ticket.id" class="player-tag">{{ ticket.title }} · {{ ticketStatusLabel(ticket.status) }}</span>
-          </div>
-          <p v-else class="muted">Обращений нет.</p>
-        </section>
-
-        <section class="player-section">
-          <div class="player-section-title">Последние действия</div>
-          <div v-if="(profile.data.audit || []).length" class="player-tags" style="flex-direction:column;align-items:stretch">
-            <div v-for="(entry, i) in profile.data.audit" :key="i" class="ticket-comment"><header><b>{{ entry.event }}</b><small>{{ fmtDate(entry.timestamp_utc * 1000) }}</small></header><p class="mono">{{ entry.detail }}</p></div>
-          </div>
-          <p v-else class="muted">Действий пока не было.</p>
-        </section>
       </div>
       <footer class="player-card-footer">
         <button class="btn ghost" @click="closeProfileCard">Закрыть</button>
@@ -1424,7 +1431,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/panel.render.js?v=20261019-3"></script>
-<script src="/static/app.js?v=20261019-3"></script>
+<script src="/static/panel.render.js?v=20261019-4"></script>
+<script src="/static/app.js?v=20261019-4"></script>
 </body>
 </html>
