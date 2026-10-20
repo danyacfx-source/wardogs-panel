@@ -9,12 +9,139 @@ from discord import app_commands
 from discord.ext import commands
 from datetime import datetime
 from io import BytesIO
+import importlib
 
 import config
 import database
 from database import get_conn
 
 log = logging.getLogger("tickets")
+
+_panel_db_mod = None
+
+
+def _panel_db():
+    """Ленивый импорт пакета данных панели (app.db) из кога бота."""
+    global _panel_db_mod
+    if _panel_db_mod is None:
+        _panel_db_mod = importlib.import_module("app.db")
+    return _panel_db_mod
+
+
+def _row_get(row, key, default=None):
+    try:
+        return row[key]
+    except (IndexError, KeyError):
+        return default
+
+
+async def _build_transcript(channel) -> str:
+    """Собирает текстовый транскрипт канала. Ошибки — лог, частичный результат."""
+    lines = []
+    try:
+        async for msg in channel.history(oldest_first=True):
+            ts = msg.created_at.strftime("%d.%m.%Y %H:%M:%S")
+            content = msg.content or ""
+            if msg.embeds:
+                for e in msg.embeds:
+                    if e.description:
+                        content += f" {e.description}"
+            if msg.attachments:
+                content += " " + " ".join(a.url for a in msg.attachments)
+            lines.append(f"[{ts}] {msg.author}: {content}")
+    except Exception:
+        log.exception("Сбор транскрипта канала %s прерван", channel.id)
+    return "\n".join(lines)
+
+
+def _transcript_chunks(text: str, size: int = 3900) -> list:
+    """Режет транскрипт на куски по границам строк (комментарии сайта ≤4000)."""
+    chunks, cur = [], ""
+    for line in text.split("\n"):
+        if cur and len(cur) + len(line) + 1 > size:
+            chunks.append(cur)
+            cur = line
+        else:
+            cur = f"{cur}\n{line}" if cur else line
+    if cur:
+        chunks.append(cur)
+    return chunks or ["(пустой канал)"]
+
+
+async def _ensure_site_ticket(row, channel):
+    """Возвращает site_ticket_id бот-записи, создавая сайт-тикет при необходимости."""
+    site_id = _row_get(row, "site_ticket_id")
+    if site_id:
+        return site_id
+    db = _panel_db()
+    steam = await db.get_steam_by_discord(str(row["user_id"])) or ""
+    ttype = _get_type(_row_get(row, "ticket_type") or "complaint")
+    label = ttype.get("label") or "Тикет"
+    created = await db.create_ticket(
+        title=f"Тикет Discord — {label}",
+        description=(
+            f"Discord-канал: #{channel.name}\n"
+            f"channel_id: {channel.id}\n"
+            f"Автор: discord:{row['user_id']}\n"
+            f"Тип: {label}"
+        ),
+        priority="normal",
+        player_steam_id=steam or None,
+        created_by=steam or f"discord:{row['user_id']}",
+    )
+    site_id = created["id"]
+    conn = get_conn()
+    conn.execute(
+        "UPDATE tickets SET site_ticket_id = ? WHERE channel_id = ?",
+        (site_id, channel.id),
+    )
+    conn.commit()
+    return site_id
+
+
+async def _sync_transcript(channel, row=None, by_id=None):
+    """Автопуш транскрипта закрытого тикета в сайт-тикет (идемпотентно)."""
+    try:
+        db = _panel_db()
+        conn = get_conn()
+        if row is None:
+            row = conn.execute(
+                "SELECT * FROM tickets WHERE channel_id = ?", (channel.id,)
+            ).fetchone()
+        if not row:
+            return
+        if int(_row_get(row, "transcript_saved") or 0):
+            return
+        site_id = await _ensure_site_ticket(row, channel)
+        transcript = await _build_transcript(channel)
+        author = None
+        if by_id:
+            author = await db.get_steam_by_discord(str(by_id))
+        if not author:
+            author = await db.get_steam_by_discord(str(row["user_id"]))
+        author = author or f"discord:{row['user_id']}"
+        chunks = _transcript_chunks(transcript)
+        for i, chunk in enumerate(chunks, 1):
+            header = f"[Транскрипт #{channel.name}"
+            if len(chunks) > 1:
+                header += f", часть {i}/{len(chunks)}"
+            header += "]"
+            await db.add_ticket_comment(site_id, author, f"{header}\n{chunk}")
+        conn.execute(
+            "UPDATE tickets SET transcript_saved = 1 WHERE channel_id = ?",
+            (channel.id,),
+        )
+        conn.commit()
+        try:
+            await db.log_site_audit(
+                author, None, "ticket.transcript",
+                f"{site_id} · discord channel {channel.id}",
+            )
+        except Exception:
+            pass
+        log.info("Транскрипт канала %s сохранён в сайт-тикет %s", channel.id, site_id)
+    except Exception:
+        log.exception("Не удалось сохранить транскрипт канала %s в панель", channel.id)
 
 _FALLBACK_TYPE = {
     "type_id": "complaint",
@@ -144,6 +271,14 @@ class TicketPanelView(discord.ui.View):
         )
         conn.commit()
 
+        site_row = conn.execute(
+            "SELECT * FROM tickets WHERE channel_id = ?", (channel.id,)
+        ).fetchone()
+        try:
+            await _ensure_site_ticket(site_row, channel)
+        except Exception:
+            log.exception("Не удалось создать сайт-тикет для канала %s", channel.id)
+
         await interaction.followup.send(f"Тикет создан: {channel.mention}", ephemeral=True)
 
         if config.TICKET_LOG_CHANNEL:
@@ -181,22 +316,28 @@ class TicketCloseConfirmView(discord.ui.View):
                 (datetime.utcnow().isoformat(), interaction.user.id, interaction.channel.id),
             )
             conn.commit()
-            member = interaction.guild.get_member(row["user_id"])
-            if member:
-                # Автор тикета больше не видит канал.
-                await interaction.channel.set_permissions(member, overwrite=None)
-            # Дублируем «слепоту» через @everyone-перезапись как страховку
-            # (если права давались не только явным override).
-            await interaction.channel.set_permissions(
-                interaction.guild.default_role, view_channel=False
-            )
-            # Персонал оставляет доступ после закрытия.
-            for staff_role_id in config.TICKET_STAFF_ROLES:
-                staff = interaction.guild.get_role(staff_role_id)
-                if staff:
-                    await interaction.channel.set_permissions(
-                        staff, view_channel=True, send_messages=False, read_message_history=True
-                    )
+            # Транскрипт уходит в панель сразу при закрытии — до правок прав,
+            # чтобы сбой прав не лишил нас автосохранения.
+            await _sync_transcript(interaction.channel, row, by_id=interaction.user.id)
+            try:
+                member = interaction.guild.get_member(row["user_id"])
+                if member:
+                    # Автор тикета больше не видит канал.
+                    await interaction.channel.set_permissions(member, overwrite=None)
+                # Дублируем «слепоту» через @everyone-перезапись как страховку
+                # (если права давались не только явным override).
+                await interaction.channel.set_permissions(
+                    interaction.guild.default_role, view_channel=False
+                )
+                # Персонал оставляет доступ после закрытия.
+                for staff_role_id in config.TICKET_STAFF_ROLES:
+                    staff = interaction.guild.get_role(staff_role_id)
+                    if staff:
+                        await interaction.channel.set_permissions(
+                            staff, view_channel=True, send_messages=False, read_message_history=True
+                        )
+            except Exception:
+                log.exception("Не удалось обновить права закрытого тикета %s", interaction.channel.id)
 
         embed = discord.Embed(
             title="Тикет закрыт",
@@ -224,6 +365,8 @@ class TicketClosedView(discord.ui.View):
     @discord.ui.button(label="Удалить канал", style=discord.ButtonStyle.danger, custom_id="tk2_delete", emoji="🗑️")
     async def delete_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
+        # История удаляется вместе с каналом — транскрипт сохраняем до удаления.
+        await _sync_transcript(interaction.channel, by_id=interaction.user.id)
         conn = get_conn()
         conn.execute("DELETE FROM tickets WHERE channel_id = ?", (interaction.channel.id,))
         conn.commit()
@@ -232,23 +375,14 @@ class TicketClosedView(discord.ui.View):
     @discord.ui.button(label="Сохранить транскрипт", style=discord.ButtonStyle.blurple, custom_id="tk2_transcript", emoji="📄")
     async def save_transcript(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        messages = [msg async for msg in interaction.channel.history(oldest_first=True)]
-
-        lines = []
-        for msg in messages:
-            ts = msg.created_at.strftime("%d.%m.%Y %H:%M:%S")
-            content = msg.content or ""
-            if msg.embeds:
-                for e in msg.embeds:
-                    if e.description:
-                        content += f" {e.description}"
-            lines.append(f"[{ts}] {msg.author}: {content}")
-
-        transcript = "\n".join(lines)
+        transcript = await _build_transcript(interaction.channel)
         file = discord.File(
             fp=BytesIO(transcript.encode("utf-8")),
             filename=f"transcript-{interaction.channel.name}.txt",
         )
+
+        # Дублируем транскрипт в панель (идемпотентно — при закрытии уже мог уйти).
+        await _sync_transcript(interaction.channel, by_id=interaction.user.id)
 
         if config.TICKET_TRANSCRIPT_CHANNEL:
             tr_ch = interaction.guild.get_channel(config.TICKET_TRANSCRIPT_CHANNEL)

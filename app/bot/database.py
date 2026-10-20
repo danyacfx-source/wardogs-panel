@@ -86,6 +86,12 @@ def _insert_returning_id(conn, sql: str, params) -> int:
 
 
 def _ensure_column(conn, table: str, column: str, ddl: str):
+    if db_backend.using_pg():
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {ddl}")
+        except Exception:
+            pass
+        return
     cols = [r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
     if column not in cols:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
@@ -484,6 +490,10 @@ def init_db():
             enabled INTEGER NOT NULL DEFAULT 1
         );
     """)
+    conn.commit()
+    # Связь с тикетами панели: сайт-тикет + флаг транскрипта.
+    _ensure_column(conn, "tickets", "site_ticket_id", "TEXT")
+    _ensure_column(conn, "tickets", "transcript_saved", "INTEGER NOT NULL DEFAULT 0")
     conn.commit()
     _clan_form = (
         "# ЗАЯВКА НА РЕГИСТРАЦИЮ КЛАНА\n\n"
