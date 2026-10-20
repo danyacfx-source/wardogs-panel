@@ -158,6 +158,7 @@ if not SW_SERVERS:
     SW_SERVERS = [{"id": s["id"], "name": s["name"]} for s in _panel.SERVERS]
 SERVERS = SW_SERVERS
 SW_ADMIN_ROLE_IDS = _ints("SW_ADMIN_ROLE_IDS")
+SW_CHANNEL_ID = _int("SW_CHANNEL_ID", 1560706815149351002)
 
 # Intents
 import discord  # noqa: E402
