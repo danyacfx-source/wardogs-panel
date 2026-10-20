@@ -29,6 +29,8 @@ EVENTS = {
     "vip.sync": ("VIP синхронизирован", 0x95A5A6),
     "vip.expire": ("VIP истёк", 0x95A5A6),
     "vip.order.paid": ("VIP-заказ оплачен", 0xF1C40F),
+    "vip.order.create": ("VIP-заказ создан", 0xF1C40F),
+    "vip.order.cancel": ("VIP-заказ отменён", 0xE67E22),
 }
 
 _tasks = set()

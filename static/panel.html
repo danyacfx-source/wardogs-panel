@@ -1257,9 +1257,10 @@
                 <button v-else-if="has('move_faction')" class="btn ghost" disabled>Сменить фракцию</button>
                 <button v-if="has('move_faction')" class="btn ghost" :disabled="!playerCard.live" @click="playerCardAction('swap')">Смена стороны (SW)</button>
                 <button v-if="has('kill')" class="btn ghost" :disabled="!playerCard.live" @click="playerCardAction('kill')">Убить (slay)</button>
-                <button v-if="has('ban_add')" class="btn danger-outline" :disabled="!playerCard.live" @click="playerCardAction('ban')">Забанить</button>
+                <button v-if="has('ban_add')" class="btn danger-outline" @click="playerCardAction('ban')">Забанить</button>
               </div>
-              <p class="player-action-hint">Опасные действия требуют подтверждения. Для действий на сервере игрок должен быть онлайн.</p>
+              <p class="player-action-hint" v-if="playerCard.live">Опасные действия требуют подтверждения. Для действий на сервере игрок должен быть онлайн.</p>
+              <p class="player-action-hint" v-else>Игрок не на сервере. Бан и VIP доступны без онлайна — остальные действия требуют присутствия на сервере.</p>
             </section>
 
             <section class="player-section">
@@ -1423,7 +1424,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/panel.render.js?v=20261019-1"></script>
-<script src="/static/app.js?v=20261019-1"></script>
+<script src="/static/panel.render.js?v=20261019-2"></script>
+<script src="/static/app.js?v=20261019-2"></script>
 </body>
 </html>

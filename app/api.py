@@ -170,6 +170,12 @@ async def vip_order_create(request: Request):
     order={'id':'WD-'+secrets.token_hex(8).upper(),'buyer_steam_id':buyer,'server_id':sid,'plan_id':plan['id'],'amount':plan['amount'],'months':plan['months'],'seats':plan['seats'],'recipients':recipients,'status':'awaiting_payment','created_utc':time.time(),'actor_steam_id':user['steam_id']}
     await db.create_vip_order(order)
     await db.log_site_audit(user['steam_id'],sid,'vip.order.create',order['id'])
+    _srv = _get_server(sid)
+    disclog.emit(
+        "vip.order.create", actor=user['steam_id'],
+        server=(_srv.name if _srv else sid), steam_id=buyer or "",
+        detail=f"{order['id']} · {plan['amount']} ₽",
+    )
     return {'ok':True,'item':order}
 
 
@@ -179,6 +185,7 @@ async def vip_order_cancel(order_id: str, request: Request):
     if not await db.cancel_vip_order(order_id):
         raise HTTPException(409, 'Заявка уже закрыта или не найдена')
     await db.log_site_audit(user['steam_id'],None,'vip.order.cancel',order_id)
+    disclog.emit("vip.order.cancel", actor=user['steam_id'], steam_id="", detail=order_id)
     return {'ok':True}
 
 SESSION_COOKIE = "__Host-wds_session" if config.COOKIE_SECURE else "wds_session"
@@ -1144,6 +1151,23 @@ async def stats_population_export(request: Request, hours: int = 24):
 async def site_audit_export(request: Request, limit: int = 500):
     await _require_perm(request, "audit")
     return _csv_response("site-audit.csv", ["timestamp_utc", "actor_steam_id", "server_id", "event", "detail"], await db.get_site_audit(limit))
+
+
+@router.get("/steam/persona")
+async def steam_persona(request: Request, steam_id: str = ""):
+    """Resolve a SteamID64 to its current persona name (best effort, never fails)."""
+    _require_user(await _current_user(request))
+    sid = _validate_steam_id(steam_id)
+    if not sid:
+        return {"ok": False, "name": ""}
+    name = ""
+    if config.STEAM_API_KEY:
+        try:
+            personas = await steam_mod.fetch_personas([sid])
+            name = (personas.get(sid) or "").strip()[:120]
+        except Exception:
+            name = ""
+    return {"ok": bool(name), "steam_id": sid, "name": name}
 
 
 @router.get("/players")
@@ -3125,6 +3149,26 @@ async def server_ban_add(sid: str, request: Request):
     ban_body = {"steamId": steam_id}
     reason = str(payload.reason or "").strip()[:500]
     display_name = " ".join(str(payload.display_name or "").split())[:120]
+    if not display_name:
+        try:
+            user_row = await db.get_user(steam_id)
+            if user_row and (user_row.get("persona") or "").strip():
+                display_name = user_row["persona"].strip()[:120]
+        except Exception:
+            pass
+    if not display_name and config.STEAM_API_KEY:
+        try:
+            personas = await steam_mod.fetch_personas([steam_id])
+            persona = (personas.get(steam_id) or "").strip()[:120]
+            if persona:
+                display_name = persona
+        except Exception:
+            pass
+    if display_name:
+        try:
+            await db.upsert_user(steam_id, display_name)
+        except Exception:
+            pass
     expires_utc = _parse_vip_expiry(payload.expires_utc)
     if reason:
         ban_body["reason"] = reason

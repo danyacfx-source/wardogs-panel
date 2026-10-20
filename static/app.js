@@ -501,6 +501,7 @@ const app = createApp({
     },
     openActionDialog({ title, message = "", confirmText = "Подтвердить", danger = false, fields = [] }) {
       if (this._dialogResolve) this._dialogResolve(null);
+      this._stopPersonaWatch();
       this.actionDialog = {
         open: true,
         title,
@@ -510,10 +511,44 @@ const app = createApp({
         fields: fields.map((field) => ({ ...field, value: field.value ?? "" })),
         error: "",
       };
+      this._setupPersonaAutofill();
       return new Promise((resolve) => {
         this._dialogResolve = resolve;
         this.$nextTick(() => document.querySelector(".action-dialog input, .action-dialog textarea")?.focus());
       });
+    },
+    _stopPersonaWatch() {
+      if (this._personaWatchStop) {
+        this._personaWatchStop();
+        this._personaWatchStop = null;
+      }
+    },
+    _setupPersonaAutofill() {
+      const dialog = this.actionDialog;
+      const steamField = dialog?.fields?.find((f) => f.validator === "steam64");
+      const nameField = dialog?.fields?.find((f) => f.key === "display_name");
+      if (!steamField || !nameField) return;
+      let timer = null;
+      let seq = 0;
+      const stop = this.$watch(() => String(steamField.value || "").trim(), (value) => {
+        if (!/^\d{17}$/.test(value)) return;
+        clearTimeout(timer);
+        const mySeq = ++seq;
+        timer = setTimeout(async () => {
+          if (String(nameField.value || "").trim()) return;
+          try {
+            const { status, data } = await this.api.request("GET", `/api/steam/persona?steam_id=${value}`);
+            if (mySeq !== seq) return;
+            if (status === 200 && data?.ok && data.name && !String(nameField.value || "").trim()) {
+              nameField.value = data.name;
+            }
+          } catch { /* silent */ }
+        }, 450);
+      });
+      this._personaWatchStop = () => {
+        clearTimeout(timer);
+        stop();
+      };
     },
     confirmAction(title, message, confirmText = "Подтвердить", danger = true) {
       return this.openActionDialog({ title, message, confirmText, danger });
@@ -542,12 +577,14 @@ const app = createApp({
       }
       const resolve = this._dialogResolve;
       this._dialogResolve = null;
+      this._stopPersonaWatch();
       this.actionDialog.open = false;
       if (resolve) resolve(values);
     },
     cancelActionDialog() {
       const resolve = this._dialogResolve;
       this._dialogResolve = null;
+      this._stopPersonaWatch();
       this.actionDialog.open = false;
       if (resolve) resolve(null);
     },
@@ -1103,11 +1140,16 @@ const app = createApp({
     },
     playerCardAction(action) {
       const live = this.playerCard.live;
+      if (action === "ban") {
+        const profile = this.playerCard.profile;
+        const target = live || (profile && profile.steam_id ? { steamId: profile.steam_id, name: profile.name || profile.steam_id } : null);
+        if (!target) return this.toast("Не удалось определить игрока", "warn");
+        return this.banPlayer(target);
+      }
       if (!live) return this.toast("Действие доступно, когда игрок находится на сервере", "warn");
       if (action === "message") return this.sendMsg(live);
       if (action === "kick") return this.kickPlayer(live);
       if (action === "kill") return this.killPlayer(live);
-      if (action === "ban") return this.banPlayer(live);
       if (action === "swap") return this.swapPlayer(live);
     },
     async swapPlayer(p) {
