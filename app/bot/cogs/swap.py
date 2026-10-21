@@ -21,7 +21,7 @@ from seeding_rcon import WardogsRconClient, RconError
 
 log = logging.getLogger("swap")
 
-FALLBACK_FACTIONS = ["Valkyra", "Lonestar", "Manticore"]
+FALLBACK_FACTIONS = list(config.FACTION_MARKS)
 SW_COOLDOWN: dict[tuple[str, str], str] = {}
 CARD_REFRESH_SECONDS = 60
 LINK_HINT = "Привяжите Steam: `/seed link` → получите код в игре → `/seed verify`."
@@ -185,7 +185,11 @@ def _card_embed(sid: str, counts: dict | None, map_name: str) -> discord.Embed:
         color=config.EMBED_COLOR,
     )
     if counts:
-        line = "  ·  ".join(f"{f} — {counts.get(f, 0)}" for f in FALLBACK_FACTIONS)
+        parts = []
+        for f in FALLBACK_FACTIONS:
+            emoji = config.FACTION_MARKS.get(f, {}).get("emoji", "")
+            parts.append(f"{emoji} {f} — {counts.get(f, 0)}".strip())
+        line = "  ·  ".join(parts)
         embed.add_field(name="Онлайн по сторонам", value=line, inline=False)
     else:
         embed.add_field(name="Онлайн по сторонам", value="данные с сервера недоступны, обновляется…", inline=False)
@@ -200,10 +204,12 @@ class SWCardView(discord.ui.View):
         super().__init__(timeout=None)
         self.sid = sid
         for faction in FALLBACK_FACTIONS:
+            mark = config.FACTION_MARKS.get(faction, {})
             button = discord.ui.Button(
                 custom_id=f"sw:{sid}:side:{faction}",
                 label=f"→ {faction}",
-                style=discord.ButtonStyle.secondary,
+                style=mark.get("style", discord.ButtonStyle.secondary),
+                emoji=mark.get("emoji"),
             )
             button.callback = self._side_callback(faction)
             self.add_item(button)

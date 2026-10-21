@@ -236,17 +236,26 @@ class VoiceControlPanelView(discord.ui.View):
             return await interaction.followup.send("❌ Нет прав переименовать канал.", ephemeral=True)
         await interaction.followup.send(f"✅ `{old}` → `{new_name}`", ephemeral=True)
 
-    @discord.ui.button(label="Valkyra", style=discord.ButtonStyle.secondary, custom_id="vc2_panel_valkyra")
+    @discord.ui.button(
+        label="Valkyra", style=config.FACTION_MARKS["Valkyra"]["style"],
+        emoji=config.FACTION_MARKS["Valkyra"]["emoji"], custom_id="vc2_panel_valkyra",
+    )
     async def panel_valkyra(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._rename_preset(interaction, "🔴")
+        await self._rename_preset(interaction, config.FACTION_MARKS["Valkyra"]["emoji"])
 
-    @discord.ui.button(label="Lonestar", style=discord.ButtonStyle.secondary, custom_id="vc2_panel_lonestar")
+    @discord.ui.button(
+        label="Lonestar", style=config.FACTION_MARKS["Lonestar"]["style"],
+        emoji=config.FACTION_MARKS["Lonestar"]["emoji"], custom_id="vc2_panel_lonestar",
+    )
     async def panel_lonestar(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._rename_preset(interaction, "🔵")
+        await self._rename_preset(interaction, config.FACTION_MARKS["Lonestar"]["emoji"])
 
-    @discord.ui.button(label="Manticore", style=discord.ButtonStyle.secondary, custom_id="vc2_panel_manticore")
+    @discord.ui.button(
+        label="Manticore", style=config.FACTION_MARKS["Manticore"]["style"],
+        emoji=config.FACTION_MARKS["Manticore"]["emoji"], custom_id="vc2_panel_manticore",
+    )
     async def panel_manticore(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._rename_preset(interaction, "🟢")
+        await self._rename_preset(interaction, config.FACTION_MARKS["Manticore"]["emoji"])
 
 
 # ---------- Ког ----------

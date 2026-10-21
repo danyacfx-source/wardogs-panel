@@ -164,3 +164,10 @@ intents.members = True
 intents.voice_states = True
 
 EMBED_COLOR = discord.Color(0x5865F2)
+
+# ---- Фракции WARDOGS: единая цветовая разметка кнопок (SW и войсы) ----
+FACTION_MARKS = {
+    "Valkyra": {"emoji": "🔴", "style": discord.ButtonStyle.danger},
+    "Lonestar": {"emoji": "🔵", "style": discord.ButtonStyle.primary},
+    "Manticore": {"emoji": "🟢", "style": discord.ButtonStyle.success},
+}
