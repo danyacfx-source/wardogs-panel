@@ -72,9 +72,6 @@ TRANSLATE_TARGET = os.getenv("TRANSLATE_TARGET", "ru")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
-# Фон rank-карточки
-RANK_BACKGROUND = os.getenv("RANK_BACKGROUND", "")
-
 # Стримеры / Twitch.
 TWITCH_CHANNELS = [x.strip().lower().lstrip("@") for x in os.getenv("TWITCH_CHANNELS", "").split(",") if x.strip()]
 TWITCH_ANNOUNCE_CHANNEL = _int("TWITCH_ANNOUNCE_CHANNEL")
@@ -86,9 +83,6 @@ MIRROR_ADD_COMMAND_USERS = _ints("MIRROR_ADMINS")
 # Каналы-ловушки
 TRAP_CHANNEL_IDS = [int(x) for x in os.getenv("TRAP_CHANNEL_IDS", "").replace(" ", "").split(",") if x.strip().isdigit()]
 TRAP_LOG_CHANNEL = _int("TRAP_LOG_CHANNEL")
-
-# Активности (роли за активность).
-ACTIVITY_ROLES_CONFIG = _json_list("ACTIVITY_ROLES_CONFIG")
 
 # ---- Донат ----
 DONATION_SITE_BASE_URL = os.getenv("SITE_BASE_URL", os.getenv("DONATION_SITE_BASE_URL", ""))

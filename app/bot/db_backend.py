@@ -38,13 +38,9 @@ def panel_using_pg() -> bool:
 
 # PK-колонки для INSERT OR REPLACE (conflict target + SET clause).
 _PK_COLUMNS: dict[str, list[str]] = {
-    "member_stats": ["user_id"],
-    "user_xp": ["user_id"],
     "tickets": ["number"],
     "streamers": ["login"],
     "mirrors": ["id"],
-    "activity_roles_log": ["id"],
-    "backgrounds": ["id"],
     "log_channels": ["log_type"],
     "log_sent": ["fingerprint"],
     "bot_lease": ["id"],
