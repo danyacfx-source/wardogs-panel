@@ -112,7 +112,7 @@ CREATE TABLE IF NOT EXISTS seed_shop_config (
 _audit_verify_cache = {"checked_at": 0.0, "result": None, "db_path": None}
 _pg_pool = None
 _pg_pool_lock = asyncio.Lock()
-REQUIRED_SCHEMA_VERSION = 18
+REQUIRED_SCHEMA_VERSION = 19
 
 
 class _ConfiguredConnection:

@@ -102,9 +102,11 @@ async def lifespan(app):
     maintenance_task = None
     backup_task = None
     bot_task = None
+    ban_queue_task = None
     if not config.DISABLE_BACKGROUND:
         health_task = asyncio.create_task(monitor.health_loop(api.POOL, stop_health))
         maintenance_task = asyncio.create_task(maintenance_loop(stop_health))
+        ban_queue_task = asyncio.create_task(api.ban_queue_loop(stop_health))
         if config.BACKUP_CHANNEL_ID and config.DISCORD_BOT_TOKEN:
             async def _initial_backup():
                 try:
@@ -138,7 +140,7 @@ async def lifespan(app):
             await asyncio.wait_for(backup.send_backup(), timeout=20)
         except Exception:
             log.exception("Ошибка финального бэкапа")
-    for task in (health_task, maintenance_task, backup_task, bot_task):
+    for task in (health_task, maintenance_task, ban_queue_task, backup_task, bot_task):
         if task is None:
             continue
         try:

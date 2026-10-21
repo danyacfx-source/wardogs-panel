@@ -94,3 +94,95 @@ async def delete_managed_ban(server_id, steam_id):
             (server_id, steam_id),
         )
         await db.commit()
+
+
+def _queued_ban_row(row):
+    if not row:
+        return None
+    return {
+        "steam_id": row[0],
+        "display_name": row[1] or "",
+        "reason": row[2] or "",
+        "expires_utc": row[3],
+        "created_by": row[4],
+        "created_utc": row[5],
+        "updated_utc": row[6],
+        "applied_servers": [s for s in (row[7] or "").split(",") if s],
+    }
+
+
+_QUEUED_BAN_COLS = (
+    "steam_id, display_name, reason, expires_utc, created_by, "
+    "created_utc, updated_utc, applied_servers"
+)
+
+
+async def enqueue_queued_ban(steam_id, display_name, reason, expires_utc, created_by, applied_servers=()):
+    now = _now()
+    applied = ",".join(dict.fromkeys(str(s) for s in applied_servers if s))
+    async with _conn() as db:
+        await db.execute(
+            "INSERT INTO queued_bans "
+            f"({_QUEUED_BAN_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(steam_id) DO UPDATE SET "
+            "display_name=excluded.display_name, reason=excluded.reason, "
+            "expires_utc=excluded.expires_utc, updated_utc=excluded.updated_utc, "
+            "applied_servers=excluded.applied_servers",
+            (steam_id, display_name, reason, expires_utc, created_by, now, now, applied),
+        )
+        cur = await db.execute(
+            f"SELECT {_QUEUED_BAN_COLS} FROM queued_bans WHERE steam_id = ?",
+            (steam_id,),
+        )
+        row = await cur.fetchone()
+        await db.commit()
+    return _queued_ban_row(row)
+
+
+async def get_queued_ban(steam_id):
+    async with _conn() as db:
+        cur = await db.execute(
+            f"SELECT {_QUEUED_BAN_COLS} FROM queued_bans WHERE steam_id = ?",
+            (steam_id,),
+        )
+        row = await cur.fetchone()
+    return _queued_ban_row(row)
+
+
+async def list_queued_bans():
+    async with _conn() as db:
+        cur = await db.execute(
+            f"SELECT {_QUEUED_BAN_COLS} FROM queued_bans ORDER BY created_utc"
+        )
+        rows = await cur.fetchall()
+    return [_queued_ban_row(row) for row in rows]
+
+
+async def update_queued_ban(steam_id, reason, expires_utc):
+    async with _conn() as db:
+        await db.execute(
+            "UPDATE queued_bans SET reason = ?, expires_utc = ?, updated_utc = ? "
+            "WHERE steam_id = ?",
+            (reason, expires_utc, _now(), steam_id),
+        )
+        await db.commit()
+
+
+async def mark_queued_ban_applied(steam_id, applied_servers):
+    applied = ",".join(dict.fromkeys(str(s) for s in applied_servers if s))
+    async with _conn() as db:
+        await db.execute(
+            "UPDATE queued_bans SET applied_servers = ?, updated_utc = ? WHERE steam_id = ?",
+            (applied, _now(), steam_id),
+        )
+        await db.commit()
+
+
+async def delete_queued_ban(steam_id):
+    async with _conn() as db:
+        cur = await db.execute(
+            "DELETE FROM queued_bans WHERE steam_id = ?", (steam_id,)
+        )
+        removed = cur.rowcount
+        await db.commit()
+    return bool(removed)

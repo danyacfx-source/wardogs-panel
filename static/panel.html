@@ -550,14 +550,18 @@
                   </td>
                   <td class="ban-reason" :title="b.reason || ''">{{ b.reason || '—' }}</td>
                   <td>
-                    <span v-if="b.managed" class="badge" :class="{warn: b.syncState === 'error'}">
+                    <template v-if="b.queued">
+                      <span class="badge warn">в очереди</span>
+                      <span class="muted">{{ b.expiresUtc ? fmtDate(b.expiresUtc * 1000) : 'навсегда' }}</span>
+                    </template>
+                    <span v-else-if="b.managed" class="badge" :class="{warn: b.syncState === 'error'}">
                       {{ b.expiresUtc ? fmtDate(b.expiresUtc * 1000) : 'навсегда' }}
                     </span>
                     <span v-else class="muted">неизвестно</span>
                   </td>
                   <td>{{ b.bannedBy || '—' }}</td>
                   <td>{{ fmtDate(b.bannedAtUtc) }}</td>
-                  <td v-if="has('ban_remove')"><button v-if="has('ban_add') && b.managed" class="mini-btn" @click="editBan(b)">Изменить</button> <button class="mini-btn danger" @click="unban(b)">Снять</button></td>
+                  <td v-if="has('ban_remove')"><button v-if="has('ban_add') && (b.managed || b.queued)" class="mini-btn" @click="editBan(b)">Изменить</button> <button class="mini-btn danger" @click="unban(b)">Снять</button></td>
                 </tr>
                 <tr v-if="!(ov.bans.bans || []).length"><td :colspan="has('ban_remove') ? 6 : 5" class="muted">Бан-лист пуст.</td></tr>
                 <tr v-else-if="!filteredBans.length"><td :colspan="has('ban_remove') ? 6 : 5" class="muted">По фильтру ничего не найдено.</td></tr>
@@ -1486,7 +1490,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/panel.render.js?v=20261019-6"></script>
-<script src="/static/app.js?v=20261019-5"></script>
+<script src="/static/panel.render.js?v=20261019-7"></script>
+<script src="/static/app.js?v=20261019-6"></script>
 </body>
 </html>

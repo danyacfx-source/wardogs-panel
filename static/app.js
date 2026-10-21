@@ -1882,7 +1882,11 @@ const app = createApp({
           this.toast(msg || "Ошибка", "err");
           return false;
         }
-        this.toast("Команда подтверждена сервером", "ok");
+        if (data.queued) {
+          this.toast("Игрок офлайн — бан поставлен в очередь и применится при первом входе", "ok");
+        } else {
+          this.toast("Команда подтверждена сервером", "ok");
+        }
         this.refreshAll(true);
         return true;
       } catch (error) {
@@ -1972,7 +1976,7 @@ const app = createApp({
       this.banSelected = this.banSelected.includes(steamId) ? this.banSelected.filter((id) => id !== steamId) : [...this.banSelected, steamId];
     },
     async editBan(b) {
-      if (!b.managed) return this.toast("Изменять можно баны, выданные через панель", "warn");
+      if (!b.managed && !b.queued) return this.toast("Изменять можно баны, выданные через панель", "warn");
       const values = await this.openActionDialog({ title: `Изменить бан ${b.steamId}`, confirmText: "Сохранить", danger: true, fields: [this.banDurationField(), { key: "reason", label: "Причина", value: b.reason || "", maxLength: 500 }] });
       if (!values) return;
       await this.act(`/api/server/${this.state.sid}/bans/${b.steamId}`, "PATCH", { reason: values.reason, expires_utc: this.banExpiry(values.duration) });
