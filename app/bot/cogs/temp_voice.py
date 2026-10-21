@@ -15,6 +15,21 @@ log = logging.getLogger("temp_voice")
 temp_channel_owners: dict[int, int] = {}
 _channel_locks: dict[int, asyncio.Lock] = {}
 
+_PRESET_EMOJIS = ("🔴", "🔵", "🟢", "🟡", "🟣", "🟠", "⚪", "⚫")
+
+
+def _split_mark(name: str) -> tuple[str, str]:
+    """Отделяет фракционную метку-префикс («🔴 Имя» / «🔴Имя») от имени.
+
+    Возвращает (чистое_имя, метка). Метка — пустая строка, если префикса нет.
+    """
+    raw = name or ""
+    for emoji in _PRESET_EMOJIS:
+        for sep in (emoji + " ", emoji):
+            if raw.startswith(sep):
+                return raw[len(sep):].lstrip(), emoji
+    return raw.strip(), ""
+
 
 def _is_trigger(vc) -> bool:
     return vc.id == config.VC_TRIGGER_CHANNEL
@@ -56,10 +71,36 @@ def _make_modals(vc):
     class RenameModal(discord.ui.Modal, title="Переименовать канал"):
         name = discord.ui.TextInput(label="Название", required=True, max_length=100)
 
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            # Текущее имя (без метки) подставляем в поле: игрок правит, а не
+            # пишет с нуля, и метка фракции не теряется при переименовании.
+            base, _mark = _split_mark(vc.name)
+            self.name.default = base[:100] or None
+
         async def on_submit(self, interaction: discord.Interaction):
+            # Сохраняем фракционную метку: выбор фракции не слетает при
+            # переименовании. Если игрок сам ввёл метку — уважаем его ввод.
+            base, old_mark = _split_mark(vc.name)
+            entered_base, entered_mark = _split_mark(self.name.value)
+            mark = entered_mark or old_mark
+            new_name = (f"{mark} {entered_base}" if mark else entered_base).strip()[:100]
+            if not new_name:
+                return await interaction.response.send_message(
+                    "Название не может быть пустым.", ephemeral=True
+                )
             old = vc.name
-            await vc.edit(name=self.name.value, reason="Переименован владельцем")
-            await interaction.response.send_message(f"✅ `{old}` → `{self.name.value}`", ephemeral=True)
+            if new_name == old:
+                return await interaction.response.send_message(
+                    f"Канал уже называется `{old}`.", ephemeral=True
+                )
+            try:
+                await vc.edit(name=new_name, reason="Переименован владельцем")
+            except discord.Forbidden:
+                return await interaction.response.send_message(
+                    "❌ Нет прав переименовать канал.", ephemeral=True
+                )
+            await interaction.response.send_message(f"✅ `{old}` → `{new_name}`", ephemeral=True)
 
     class LimitModal(discord.ui.Modal, title="Лимит участников"):
         limit = discord.ui.TextInput(label="Лимит (0 = без лимита, до 99)", required=True)
@@ -214,18 +255,12 @@ class VoiceControlPanelView(discord.ui.View):
         _, _, InviteModal, _ = _make_modals(vc)
         await interaction.response.send_modal(InviteModal())
 
-    _PRESET_EMOJIS = ("🔴", "🔵", "🟢", "🟡", "🟣", "🟠", "⚪", "⚫")
-
     async def _rename_preset(self, interaction: discord.Interaction, emoji: str):
         vc, err = await self._vc(interaction)
         if err:
             return await interaction.response.send_message(err, ephemeral=True)
         await interaction.response.defer(ephemeral=True)
-        base = vc.name
-        for old_emoji in self._PRESET_EMOJIS:
-            if base.startswith(old_emoji + " "):
-                base = base[len(old_emoji) + 1:]
-                break
+        base, _old_mark = _split_mark(vc.name)
         new_name = f"{emoji} {base}"[:100]
         if vc.name == new_name:
             return await interaction.followup.send(f"Канал уже отмечен `{emoji}`.", ephemeral=True)
@@ -234,6 +269,7 @@ class VoiceControlPanelView(discord.ui.View):
             await vc.edit(name=new_name, reason=f"Пресет-название от {interaction.user}")
         except discord.Forbidden:
             return await interaction.followup.send("❌ Нет прав переименовать канал.", ephemeral=True)
+        log.info("VC метка: %s → %s (от %s)", old, new_name, interaction.user)
         await interaction.followup.send(f"✅ `{old}` → `{new_name}`", ephemeral=True)
 
     @discord.ui.button(
