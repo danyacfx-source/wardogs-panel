@@ -1,4 +1,4 @@
-# RCON Panel RUBEZH
+# RCON Panel
 
 Веб-сайт мониторинга и административная панель для игровых серверов, работающих через HTTP RCON API WARDOGS/Dark RCON.
 
