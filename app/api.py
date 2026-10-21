@@ -1171,7 +1171,7 @@ async def stats_population_export(request: Request, hours: int = 24):
 @router.get("/audit/export")
 async def site_audit_export(request: Request, limit: int = 500):
     await _require_perm(request, "audit")
-    return _csv_response("site-audit.csv", ["timestamp_utc", "actor_steam_id", "server_id", "event", "detail"], await db.get_site_audit(limit))
+    return _csv_response("site-audit.csv", ["timestamp_utc", "actor_steam_id", "actor_name", "server_id", "event", "detail"], await db.get_site_audit(limit))
 
 
 @router.get("/steam/persona")
@@ -2080,6 +2080,20 @@ def _other_servers(sid):
     return [server for server in POOL.values() if server.id != sid]
 
 
+async def _actor_label(steam_id):
+    """Отображаемое имя актора для логов: persona из users, иначе steam_id."""
+    sid = str(steam_id or "").strip()
+    if not sid:
+        return ""
+    persona = ""
+    try:
+        row = await db.get_user(sid)
+        persona = " ".join(str((row or {}).get("persona") or "").split())[:80]
+    except Exception:
+        persona = ""
+    return persona or sid
+
+
 async def _apply_ban_across(primary_sid, steam_id, reason):
     """Выдаёт POST /v1/bans на всех серверах панели.
 
@@ -2122,6 +2136,10 @@ async def _enrich_bans(sid, data):
         for item in await db.list_managed_bans(sid)
         if item["sync_state"] != "expired"
     }
+    queued = await db.list_queued_bans()
+    issuers = await db.get_personas(
+        [meta["created_by"] for meta in managed.values()] + [q["created_by"] for q in queued]
+    )
     result = dict(data)
     rows = []
     for raw in (data.get("bans") or [])[:5000]:
@@ -2135,12 +2153,15 @@ async def _enrich_bans(sid, data):
             item["displayName"] = meta["display_name"]
             item["syncState"] = meta["sync_state"]
             item["syncError"] = meta["sync_error"]
+            issuer = issuers.get(meta["created_by"]) or meta["created_by"]
+            if issuer:
+                item["bannedBy"] = issuer
         rows.append(item)
     # Очередь панели: оффлайн-баны, которые выдадутся при входе игрока.
     base_count = data.get("count", len(rows))
     live_ids = {str(item.get("steamId") or "") for item in rows}
     queued_rows = 0
-    for q in await db.list_queued_bans():
+    for q in queued:
         if q["steam_id"] in live_ids:
             continue
         rows.append({
@@ -2149,7 +2170,7 @@ async def _enrich_bans(sid, data):
             "reason": q["reason"],
             "queued": True,
             "expiresUtc": q["expires_utc"],
-            "bannedBy": q["created_by"],
+            "bannedBy": issuers.get(q["created_by"]) or q["created_by"],
             "bannedAtUtc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(q["created_utc"])),
             "appliedServers": q["applied_servers"],
         })
@@ -3039,7 +3060,7 @@ async def process_queued_bans():
         first_srv = _get_server(first_sid)
         await db.log_site_audit(entry["created_by"], first_sid, "ban.add", steam_id)
         disclog.emit(
-            "ban.add", actor=entry["created_by"],
+            "ban.add", actor=await _actor_label(entry["created_by"]),
             server=(first_srv.name if first_srv else first_sid),
             steam_id=steam_id,
             detail=" · ".join(x for x in (
@@ -3542,7 +3563,7 @@ async def server_ban_add(sid: str, request: Request):
     await db.log_site_audit(user["steam_id"], sid, "ban.add", steam_id)
     mirrored = [s for s in applied if s != sid]
     disclog.emit(
-        "ban.add", actor=user["steam_id"], server=srv.name, steam_id=steam_id,
+        "ban.add", actor=await _actor_label(user["steam_id"]), server=srv.name, steam_id=steam_id,
         detail=" · ".join(x for x in (
             reason, display_name,
             f"зеркало: {', '.join(mirrored)}" if mirrored else "",
@@ -3590,7 +3611,7 @@ async def server_ban_del(sid: str, steam_id: str, request: Request):
         await db.delete_managed_ban(applied_sid, steam_id)
         await _invalidate(applied_sid)
     await db.log_site_audit(user["steam_id"], sid, "ban.remove", steam_id)
-    disclog.emit("ban.remove", actor=user["steam_id"], server=srv.name, steam_id=steam_id)
+    disclog.emit("ban.remove", actor=await _actor_label(user["steam_id"]), server=srv.name, steam_id=steam_id)
     await _idempotency_complete(user["steam_id"], idem_key, {"ok": True, "queued_removed": queued_removed})
     return {"ok": True, "queued_removed": queued_removed}
 
@@ -3621,7 +3642,7 @@ async def server_ban_update(sid: str, steam_id: str, request: Request):
         await db.update_queued_ban(steam_id, reason, expires_utc)
         await db.log_site_audit(user["steam_id"], sid, "ban.update", steam_id)
         disclog.emit(
-            "ban.update", actor=user["steam_id"], server=srv.name,
+            "ban.update", actor=await _actor_label(user["steam_id"]), server=srv.name,
             steam_id=steam_id, detail=f"{reason} (в очереди)",
         )
         return {"ok": True, "queued": True}
@@ -3658,7 +3679,7 @@ async def server_ban_update(sid: str, steam_id: str, request: Request):
         await _invalidate(applied_sid)
     await db.log_site_audit(user["steam_id"], sid, "ban.update", steam_id)
     disclog.emit(
-        "ban.update", actor=user["steam_id"],
+        "ban.update", actor=await _actor_label(user["steam_id"]),
         server=(srv.name if srv else sid), steam_id=steam_id,
         detail=" · ".join(x for x in (reason, "в очереди до входа игрока" if pending else "") if x),
     )
@@ -3708,7 +3729,7 @@ async def server_bans_bulk(sid: str, request: Request):
         user["steam_id"], sid, "ban.bulk.remove", f"{succeeded}/{len(results)}"
     )
     disclog.emit(
-        "ban.bulk.remove", actor=user["steam_id"], server=srv.name,
+        "ban.bulk.remove", actor=await _actor_label(user["steam_id"]), server=srv.name,
         detail=f"снято {succeeded} из {len(results)}",
     )
     return {"ok": succeeded == len(results), "succeeded": succeeded, "failed": len(results) - succeeded, "results": results}

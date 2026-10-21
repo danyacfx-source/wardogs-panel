@@ -100,6 +100,27 @@ async def delete_player_note(note_id, steam_id):
     return True
 
 
+async def get_personas(steam_ids):
+    """Batch: steam_id -> persona для переданных id (пустые имена отбрасываются)."""
+    ids = []
+    seen = set()
+    for value in steam_ids or []:
+        sid = str(value or "").strip()
+        if sid and sid not in seen:
+            seen.add(sid)
+            ids.append(sid)
+    if not ids:
+        return {}
+    placeholders = ", ".join("?" for _ in ids)
+    async with _conn() as db:
+        cur = await db.execute(
+            f"SELECT steam_id, COALESCE(persona, '') FROM users WHERE steam_id IN ({placeholders})",
+            ids,
+        )
+        rows = await cur.fetchall()
+    return {row[0]: row[1].strip() for row in rows if (row[1] or "").strip()}
+
+
 async def list_player_punishments(steam_id, limit=100):
     limit = max(1, min(int(limit or 100), 200))
     events = ("ban.add", "ban.remove", "rcon.kick", "rcon.kill")

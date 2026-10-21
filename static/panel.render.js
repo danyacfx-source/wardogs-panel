@@ -593,7 +593,7 @@ const _hoisted_370 = { key: 0 }
 const _hoisted_371 = { class: "panel audit-local" }
 const _hoisted_372 = { class: "table-scroll" }
 const _hoisted_373 = { class: "tbl" }
-const _hoisted_374 = { class: "mono" }
+const _hoisted_374 = ["title"]
 const _hoisted_375 = { class: "mono" }
 const _hoisted_376 = { key: 0 }
 const _hoisted_377 = { key: 12 }
@@ -606,7 +606,7 @@ const _hoisted_383 = ["value"]
 const _hoisted_384 = { class: "table-scroll" }
 const _hoisted_385 = { class: "tbl" }
 const _hoisted_386 = { class: "mono" }
-const _hoisted_387 = { class: "mono" }
+const _hoisted_387 = ["title"]
 const _hoisted_388 = { class: "evt" }
 const _hoisted_389 = { class: "mono" }
 const _hoisted_390 = { key: 0 }
@@ -2728,7 +2728,10 @@ return function render(_ctx, _cache) {
                   ])], -1)), _createElementVNode("tbody", null, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(siteAudit, (e, i) => {
                     return (_openBlock(), _createElementBlock("tr", { key: i }, [
                       _createElementVNode("td", null, _toDisplayString(fmtDate(e.timestamp_utc * 1000)), 1),
-                      _createElementVNode("td", _hoisted_374, _toDisplayString(e.actor_steam_id || 'система'), 1),
+                      _createElementVNode("td", {
+                        class: "mono",
+                        title: e.actor_steam_id || ''
+                      }, _toDisplayString(e.actor_name || e.actor_steam_id || 'система'), 9, _hoisted_374),
                       _createElementVNode("td", null, _toDisplayString(e.server_id || '—'), 1),
                       _createElementVNode("td", null, _toDisplayString(e.event), 1),
                       _createElementVNode("td", _hoisted_375, _toDisplayString(e.detail), 1)
@@ -2761,7 +2764,10 @@ return function render(_ctx, _cache) {
                   ])], -1)), _createElementVNode("tbody", null, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(siteAudit, (e, i) => {
                     return (_openBlock(), _createElementBlock("tr", { key: i }, [
                       _createElementVNode("td", _hoisted_386, _toDisplayString(fmtDate(e.timestamp_utc * 1000)), 1),
-                      _createElementVNode("td", _hoisted_387, _toDisplayString(e.actor_steam_id || 'система'), 1),
+                      _createElementVNode("td", {
+                        class: "mono",
+                        title: e.actor_steam_id || ''
+                      }, _toDisplayString(e.actor_name || e.actor_steam_id || 'система'), 9, _hoisted_387),
                       _createElementVNode("td", null, _toDisplayString(e.server_id || '—'), 1),
                       _createElementVNode("td", null, [_createElementVNode("span", _hoisted_388, _toDisplayString(e.event), 1)]),
                       _createElementVNode("td", _hoisted_389, _toDisplayString(e.detail), 1)

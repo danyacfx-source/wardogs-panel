@@ -342,11 +342,25 @@ async def log_site_audit(actor_steam_id, server_id, event, detail=""):
 async def get_site_audit(limit=200):
     async with _conn() as db:
         cur = await db.execute(
-            "SELECT timestamp_utc, actor_steam_id, server_id, event, detail FROM site_audit ORDER BY id DESC LIMIT ?",
+            "SELECT a.timestamp_utc, a.actor_steam_id, a.server_id, a.event, a.detail, "
+            "COALESCE(u.persona, '') "
+            "FROM site_audit a "
+            "LEFT JOIN users u ON u.steam_id = a.actor_steam_id "
+            "ORDER BY a.id DESC LIMIT ?",
             (max(1, min(int(limit), 1000)),),
         )
         rows = await cur.fetchall()
-    return [{"timestamp_utc": r[0], "actor_steam_id": r[1], "server_id": r[2], "event": r[3], "detail": r[4]} for r in rows]
+    return [
+        {
+            "timestamp_utc": r[0],
+            "actor_steam_id": r[1],
+            "actor_name": r[5] or "",
+            "server_id": r[2],
+            "event": r[3],
+            "detail": r[4],
+        }
+        for r in rows
+    ]
 
 
 async def verify_site_audit_chain(force=False):

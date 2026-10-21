@@ -685,7 +685,7 @@
           <div class="panel audit-local">
             <h2>Аудит сайта</h2>
             <div class="table-scroll"><table class="tbl"><thead><tr><th>Время</th><th>Кто</th><th>Сервер</th><th>Событие</th><th>Детали</th></tr></thead><tbody>
-              <tr v-for="(e, i) in siteAudit" :key="i"><td>{{ fmtDate(e.timestamp_utc * 1000) }}</td><td class="mono">{{ e.actor_steam_id || 'система' }}</td><td>{{ e.server_id || '—' }}</td><td>{{ e.event }}</td><td class="mono">{{ e.detail }}</td></tr>
+              <tr v-for="(e, i) in siteAudit" :key="i"><td>{{ fmtDate(e.timestamp_utc * 1000) }}</td><td class="mono" :title="e.actor_steam_id || ''">{{ e.actor_name || e.actor_steam_id || 'система' }}</td><td>{{ e.server_id || '—' }}</td><td>{{ e.event }}</td><td class="mono">{{ e.detail }}</td></tr>
               <tr v-if="!siteAudit.length"><td colspan="5" class="muted">Локальных действий пока нет.</td></tr>
             </tbody></table></div>
           </div>
@@ -707,7 +707,7 @@
             <table class="tbl">
               <thead><tr><th>Время</th><th>Кто</th><th>Сервер</th><th>Событие</th><th>Детали</th></tr></thead>
               <tbody>
-                <tr v-for="(e, i) in siteAudit" :key="i"><td class="mono">{{ fmtDate(e.timestamp_utc * 1000) }}</td><td class="mono">{{ e.actor_steam_id || 'система' }}</td><td>{{ e.server_id || '—' }}</td><td><span class="evt">{{ e.event }}</span></td><td class="mono">{{ e.detail }}</td></tr>
+                <tr v-for="(e, i) in siteAudit" :key="i"><td class="mono">{{ fmtDate(e.timestamp_utc * 1000) }}</td><td class="mono" :title="e.actor_steam_id || ''">{{ e.actor_name || e.actor_steam_id || 'система' }}</td><td>{{ e.server_id || '—' }}</td><td><span class="evt">{{ e.event }}</span></td><td class="mono">{{ e.detail }}</td></tr>
                 <tr v-if="!siteAudit.length"><td colspan="5" class="muted">Записей нет.</td></tr>
               </tbody>
             </table>
@@ -1490,7 +1490,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/panel.render.js?v=20261019-7"></script>
+<script src="/static/panel.render.js?v=20261021-1"></script>
 <script src="/static/app.js?v=20261019-6"></script>
 </body>
 </html>

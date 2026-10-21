@@ -30,6 +30,7 @@ from .players import (
     upsert_user,
     touch_user,
     get_user,
+    get_personas,
     add_player_note,
     list_player_notes,
     delete_player_note,
