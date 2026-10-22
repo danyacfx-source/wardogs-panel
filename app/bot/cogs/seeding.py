@@ -1210,10 +1210,11 @@ class SeedingCog(commands.Cog):
         await self.bot.wait_until_ready()
         await asyncio.sleep(20)
 
-    async def _role_reconcile(self):
+    async def _role_reconcile(self) -> dict[str, int]:
+        stats = {"seeder_granted": 0, "vip_granted": 0, "vip_revoked": 0, "checked": 0}
         guild = self.bot.get_guild(config.GUILD_ID)
         if not guild:
-            return
+            return stats
         seeder_role = guild.get_role(config.SEEDER_ROLE_ID) if config.SEEDER_ROLE_ID else None
         vip_role = guild.get_role(config.VIP_ROLE_ID_SEED) if config.VIP_ROLE_ID_SEED else None
         seeder_ids: set[str] = set()
@@ -1225,9 +1226,11 @@ class SeedingCog(commands.Cog):
                 continue
             except Exception:
                 continue
+            stats["checked"] += 1
             if seeder_role and seeder_role not in member.roles:
                 try:
                     await member.add_roles(seeder_role, reason="WARDOGS seeding: seeder")
+                    stats["seeder_granted"] += 1
                 except Exception:
                     pass
             membership = seed_get_vip_membership(user["id"])
@@ -1241,11 +1244,13 @@ class SeedingCog(commands.Cog):
                 if should_vip and not has:
                     try:
                         await member.add_roles(vip_role, reason="WARDOGS seeding: vip")
+                        stats["vip_granted"] += 1
                     except Exception:
                         pass
                 elif not should_vip and has:
                     try:
                         await member.remove_roles(vip_role, reason="WARDOGS seeding: vip")
+                        stats["vip_revoked"] += 1
                     except Exception:
                         pass
         for did in self.donations.recipient_ids():
@@ -1255,11 +1260,14 @@ class SeedingCog(commands.Cog):
                 member = guild.get_member(int(did)) or await guild.fetch_member(int(did))
             except Exception:
                 continue
+            stats["checked"] += 1
             if vip_role in member.roles and not self.donations.active(did) and not _panel_vip_active_by_discord(did):
                 try:
                     await member.remove_roles(vip_role, reason="WARDOGS seeding: vip expired")
+                    stats["vip_revoked"] += 1
                 except Exception:
                     pass
+        return stats
 
     # ---------- Report / leaderboard loop ----------
 
@@ -2361,6 +2369,37 @@ class SeedingCog(commands.Cog):
         finally:
             self._vip_running = False
         await interaction.followup.send("✅ VIP-синхронизация завершена.", ephemeral=True)
+
+    @admin_group.command(name="role-sync", description="Немедленно сверить Discord-роли (сидер/VIP) с данными")
+    @app_commands.guild_only()
+    async def admin_role_sync(self, interaction: discord.Interaction):
+        if not await self._check_admin(interaction):
+            return
+        await interaction.response.defer(ephemeral=True)
+        if self._role_running:
+            await interaction.followup.send("Сверка ролей уже выполняется.", ephemeral=True)
+            return
+        self._role_running = True
+        try:
+            stats = await self._role_reconcile()
+        except Exception as e:
+            await interaction.followup.send(f"❌ Ошибка сверки ролей: {e}", ephemeral=True)
+            return
+        finally:
+            self._role_running = False
+        seed_audit(
+            "role_sync_forced",
+            str(interaction.user.id),
+            stats,
+        )
+        await interaction.followup.send(
+            "✅ Сверка ролей завершена.\n"
+            f"Проверено участников: **{stats['checked']}**\n"
+            f"Выдано роль «Сидер»: **{stats['seeder_granted']}**\n"
+            f"Выдано VIP: **{stats['vip_granted']}**\n"
+            f"Снято VIP: **{stats['vip_revoked']}**",
+            ephemeral=True,
+        )
 
     @admin_group.command(name="report", description="Обновить рейтинг, топ-3 и их недельные награды")
     @app_commands.guild_only()
