@@ -534,7 +534,7 @@ class DonationCog(commands.Cog):
             embed.set_thumbnail(url=f"{self.site_base.rstrip('/')}/static/donate/assets/paw.png?v=20261018")
         embed.add_field(name="🎖️ Спонсорские роли", value=tiers_text)
         embed.add_field(name="💎 Преимущества", value="Закрытый чат спонсоров. Возможность попросить администратора выбрать команду, если он онлайн и переход не создаст явного дисбаланса. Спонсорская роль сама по себе не выдаёт reserved slot.")
-        embed.add_field(name="🔗 SteamID и игровой доступ", value="Для обычной поддержки Steam-привязка не нужна. Если покупаете VIP, привяжите Steam через `/vip-link link steam_id` и `/vip-link verify code`. Привязка сидера также подходит для VIP.")
+        embed.add_field(name="🔗 SteamID и игровой доступ", value="Для обычной поддержки Steam-привязка не нужна. Если покупаете VIP, привяжите Steam через `/steam link steam_id` и `/steam verify code` — эта единая привязка подходит и для сидинга, и для VIP.")
         embed.add_field(name="🤝 Прозрачность", value="Поддержка добровольна. Нажмите кнопку, укажите сумму и оплатите по персональной ссылке ЮMoney. Одна подтверждённая операция учитывается один раз.")
         embed.set_footer(text="WARDOGS RU · Вместе держим рубеж")
         return embed
@@ -547,7 +547,7 @@ class DonationCog(commands.Cog):
             embed.set_thumbnail(url=f"{self.site_base.rstrip('/')}/static/donate/assets/vip.png?v=20261018")
         embed.add_field(name="👤 Личный VIP", value="1 месяц — **500 ₽**\n3 месяца — **1 200 ₽**\n12 месяцев — **4 800 ₽**", inline=True)
         embed.add_field(name="🛡️ VIP для клана", value="10 участников / 1 месяц — **4 500 ₽**\n20 участников / 1 месяц — **8 500 ₽**\n30 участников / 1 месяц — **12 000 ₽**", inline=True)
-        embed.add_field(name="📌 Порядок", value="Выберите вариант ниже. Для кланового пакета отметьте всех получателей до оплаты. Каждый получатель привязывает SteamID через `/vip-link link steam_id` и `/vip-link verify code`; уже привязанным сидерам повторять это не нужно. Без привязки слот не появится. Повторная покупка продлевает срок.")
+        embed.add_field(name="📌 Порядок", value="Выберите вариант ниже. Для кланового пакета отметьте всех получателей до оплаты. Каждый получатель привязывает SteamID через `/steam link steam_id` и `/steam verify code`; уже привязанным повторять это не нужно. Без привязки слот не появится. Повторная покупка продлевает срок.")
         embed.set_footer(text="VIP роль действует оплаченный срок · слот сохраняется при другом действующем основании")
         return embed
 
@@ -804,8 +804,7 @@ class DonationCog(commands.Cog):
         vip_str = f"до <t:{until // 1000}:F>" if until else "не активен"
         content = (f"Накоплено: **{format_rub(total)}**. Спонсорская роль: **{tier['name'] if tier else 'пока нет'}**.\n"
                    f"VIP: {vip_str}.\n"
-                   "Спонсорская роль не даёт игровой слот. Для оплаченного VIP используйте /vip-link link steam_id и /vip-link verify code; "
-                   "действующая привязка сидера тоже подходит.")
+                   "Спонсорская роль не даёт игровой слот. Для оплаченного VIP используйте /steam link steam_id и /steam verify code — единая привязка.")
         await interaction.response.send_message(content, ephemeral=True)
 
     async def _tick_summary(self, guild):

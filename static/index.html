@@ -6,7 +6,7 @@
 <title>WARDOGS // Мониторинг</title>
 <link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
 <link rel="preload" href="/static/wardogs-theme/wardogs-battlefield-v2.webp" as="image" type="image/webp" fetchpriority="high" />
-<link rel="stylesheet" href="/static/style.css?v=20261019-2" />
+<link rel="stylesheet" href="/static/style.css?v=20261021-1" />
 </head>
 <body data-panel-mode="monitor">
 <div id="app" v-cloak>
@@ -293,7 +293,7 @@
               <p v-if="seedShop.buying" class="muted">Покупка…</p>
               <p v-if="seedShop.buyResult" class="player-tag green">{{ seedShop.buyResult }}</p>
             </template>
-            <p v-else class="muted">{{ seedShop.data?.error || 'Нет данных. Привяжите Discord и /seed link.' }}</p>
+            <p v-else class="muted">{{ seedShop.data?.error || 'Нет данных. Привяжите Discord и /steam link.' }}</p>
           </section>
         </div>
         <footer class="player-card-footer">
@@ -310,7 +310,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/index.render.js?v=20261019-5"></script>
+  <script src="/static/index.render.js?v=20261022-1"></script>
 <script src="/static/app.js?v=20261019-6"></script>
 </body>
 </html>

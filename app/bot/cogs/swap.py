@@ -24,7 +24,7 @@ log = logging.getLogger("swap")
 FALLBACK_FACTIONS = list(config.FACTION_MARKS)
 SW_COOLDOWN: dict[tuple[str, str], str] = {}
 CARD_REFRESH_SECONDS = 60
-LINK_HINT = "Привяжите Steam: `/seed link` → получите код в игре → `/seed verify`."
+LINK_HINT = "Привяжите Steam: `/steam link` → получите код в игре → `/steam verify`."
 
 
 def _server_index(sid: str) -> int | None:

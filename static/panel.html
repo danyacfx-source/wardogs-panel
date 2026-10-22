@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>WARDOGS // Панель управления</title>
 <link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
-<link rel="stylesheet" href="/static/style.css?v=20261019-2" />
+<link rel="stylesheet" href="/static/style.css?v=20261021-1" />
 </head>
 <body data-panel-mode="panel">
 <div id="app" v-cloak>
@@ -390,7 +390,7 @@
       </section>
 
       <!-- ===== ИГРОКИ ===== -->
-      <section v-if="state.tab === 'players'">
+      <section v-if="state.tab === 'players'" class="players-stretch">
         <div v-if="ov && ov.error" class="panel err-box"><b>Сервер недоступен.</b> {{ ov.error.message }}</div>
         <template v-else-if="ov">
           <div class="panel">
@@ -1490,7 +1490,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/panel.render.js?v=20261021-1"></script>
+<script src="/static/panel.render.js?v=20261021-2"></script>
 <script src="/static/app.js?v=20261019-6"></script>
 </body>
 </html>

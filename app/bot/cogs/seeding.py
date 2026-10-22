@@ -25,6 +25,7 @@ from discord.ext import commands, tasks
 import config
 from database import (
     SeedDomainError,
+    get_panel_conn,
     seed_activate_vip,
     seed_add_time,
     seed_add_time_all,
@@ -130,6 +131,43 @@ def _parse_clock(text: str, default_minutes: int) -> int:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _panel_vip_active(steam_id: str) -> bool:
+    """Активный VIP-слот панели (vip_slots) для SteamID64."""
+    if not steam_id:
+        return False
+    try:
+        panel_db = get_panel_conn()
+        row = panel_db.execute(
+            "SELECT 1 FROM vip_slots WHERE steam_id = ? AND (expires_utc IS NULL OR expires_utc > ?) LIMIT 1",
+            (str(steam_id), time.time()),
+        ).fetchone()
+        return bool(row)
+    except Exception:
+        log.exception("panel vip check failed for %s", steam_id)
+        return False
+
+
+def _panel_vip_active_by_discord(discord_id: str) -> bool:
+    """Активный VIP-слот панели для Discord: bindings -> seed_users/donors -> vip_slots."""
+    if not discord_id:
+        return False
+    try:
+        panel_db = get_panel_conn()
+        row = panel_db.execute(
+            "SELECT user_id FROM bindings WHERE discord_id = ?", (str(discord_id),)
+        ).fetchone()
+        if row:
+            return _panel_vip_active(row["user_id"])
+        seeder_user = seed_get_user_by_discord(str(discord_id))
+        if seeder_user and seeder_user.get("steam_id") and _panel_vip_active(seeder_user["steam_id"]):
+            return True
+        donor = seed_get_donor_by_discord(str(discord_id))
+        return bool(donor and donor.get("steam_id") and _panel_vip_active(donor["steam_id"]))
+    except Exception:
+        log.exception("panel vip check failed for discord %s", discord_id)
+        return False
 
 
 def _fmt_duration(seconds: int) -> str:
@@ -483,7 +521,7 @@ class SeedingCog(commands.Cog):
                         value=f"Круглосуточно на обоих серверах, без Discord и голосового канала. Первый час — **1 балл за 12 минут** (5/час), затем **1 балл за 6 минут** (10/час). "
                               f"Если выполнены условия сидинга, начисляется только сидинг. При **{stop_n}+** игроков действует обычная игра.")
         rules.add_field(name="👝 Общий баланс магазина",
-                        value="Баллы игры сохраняются по SteamID без привязки и становятся доступны после `/seed link` и `/seed verify`. "
+                        value="Баллы игры сохраняются по SteamID без привязки и становятся доступны после `/steam link` и `/steam verify`. "
                               "Баллы сидинга и игры можно тратить в одном магазине. В недельный рейтинг и награды топ-3 входит только сидинг.")
         rules.add_field(name="⏸️ Когда счётчик приостанавливается",
                         value=f"На каждом сервере отдельно при онлайне **{stop_n}+ игроков**. Возобновление — после {resume_min} минут ниже порога.\nТехническая пауза до {grace_min} минут сохраняет стаж непрерывной сессии, но время паузы не оплачивается.")
@@ -494,12 +532,12 @@ class SeedingCog(commands.Cog):
                               description=f"**Все команды можно выполнять прямо в этом канале.** Начните вводить `/seed`, затем выберите нужный пункт из меню Discord.\n\n"
                                           f"**1. Зайдите на любой из двух игровых серверов WARDOGS.**\nОставайтесь в игре до завершения привязки — бот должен увидеть ваш SteamID среди игроков.\n\n"
                                           f"**2. Подготовьте SteamID64.**\nЭто 17 цифр, обычно начинающихся с `7656`. Укажите именно SteamID64, а не ссылку на профиль и не игровой ник.\n\n"
-                                          f"**3. Выполните `/seed link`.**\nВ поле `steam_id` вставьте SteamID64. Бот отправит одноразовый восьмизначный код личным сообщением внутри игры.\n\n"
-                                          f"**4. Выполните `/seed verify`.**\nВ поле `code` введите код из игры. После успешной проверки вы получите роль {seeder_role}.\n\n"
+                                          f"**3. Выполните `/steam link`.**\nВ поле `steam_id` вставьте SteamID64. Бот отправит одноразовый восьмизначный код личным сообщением внутри игры.\n\n"
+                                          f"**4. Выполните `/steam verify`.**\nВ поле `code` введите код из игры. После успешной проверки вы получите роль {seeder_role}; действующий VIP выдаётся сразу и не слетает.\n\n"
                                           f"**5. Перейдите в голосовой канал {voice}.**\nПока вы одновременно в игре на одном из двух серверов и в этом голосовом канале, бот считает общее время по правилам выше.\n\n"
-                                          f"**6. Проверьте результат.**\nКоманда `/seed status` показывает баланс, время, состояние сидинга и VIP. `/seed top` показывает текущий рейтинг.\n\n"
-                                          f"**Нужен только оплаченный VIP?** Используйте `/vip-link link steam_id` и `/vip-link verify code`. Эта привязка не выдаёт роль сидера и не начисляет баллы.\n\n"
-                                          f"**Отвязка:** сидер — `/seed unlink confirm:true`, участник только с VIP — `/vip-link unlink confirm:true`. При действующем VIP отвязка недоступна; история сидера сохраняется.")
+                                          f"**6. Проверьте результат.**\nКоманда `/steam status` показывает баланс, время, состояние сидинга и VIP. `/seed top` показывает текущий рейтинг.\n\n"
+                                          f"**Нужен только оплаченный VIP?** Та же привязка `/steam link` + `/steam verify` — она подходит и для оплаченного VIP (без начисления баллов, если вы не сидер). Отдельная `/vip-link` осталась как запасной вариант.\n\n"
+                                          f"**Отвязка:** `/steam unlink confirm:true` (или `/vip-link unlink` для отдельной VIP-привязки). При действующем VIP отвязка недоступна; история сидера сохраняется.")
         start.set_footer(text="Обычные сообщения в этом канале автоматически удаляются; slash-команды работают")
 
         # 3. Магазин
@@ -581,7 +619,7 @@ class SeedingCog(commands.Cog):
             )
         embed.add_field(
             name="ℹ️ Как купить",
-            value="1. Подтвердите Steam через `/seed link` и `/seed verify`. Накопленные за игру баллы станут доступны; проверьте общий баланс через `/seed status`.\n"
+            value="1. Подтвердите Steam через `/steam link` и `/steam verify`. Накопленные за игру баллы станут доступны; проверьте общий баланс через `/steam status`.\n"
                   "2. Нажмите кнопку нужного тарифа ниже.\n"
                   "3. Бот выдаст VIP-роль и синхронизирует Reserved slot на обоих серверах.\n\n"
                   "Срок VIP начинается только после появления SteamID в live reserved slots обоих серверов. Покупка и ответ бота видны только вам.",
@@ -958,7 +996,7 @@ class SeedingCog(commands.Cog):
             has = role in member.roles
             if present and not has:
                 await member.add_roles(role, reason="WARDOGS seeding: vip")
-            elif not present and has:
+            elif not present and has and not _panel_vip_active_by_discord(discord_id):
                 await member.remove_roles(role, reason="WARDOGS seeding: vip")
         except discord.NotFound:
             pass
@@ -1193,7 +1231,11 @@ class SeedingCog(commands.Cog):
                 except Exception:
                     pass
             membership = seed_get_vip_membership(user["id"])
-            should_vip = bool(membership and membership["state"] != "inactive") or self.donations.active(user["discord_id"])
+            should_vip = (
+                bool(membership and membership["state"] != "inactive")
+                or self.donations.active(user["discord_id"])
+                or _panel_vip_active(user.get("steam_id") or "")
+            )
             if vip_role:
                 has = vip_role in member.roles
                 if should_vip and not has:
@@ -1213,7 +1255,7 @@ class SeedingCog(commands.Cog):
                 member = guild.get_member(int(did)) or await guild.fetch_member(int(did))
             except Exception:
                 continue
-            if vip_role in member.roles and not self.donations.active(did):
+            if vip_role in member.roles and not self.donations.active(did) and not _panel_vip_active_by_discord(did):
                 try:
                     await member.remove_roles(vip_role, reason="WARDOGS seeding: vip expired")
                 except Exception:
@@ -1548,14 +1590,14 @@ class SeedingCog(commands.Cog):
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
-    # ---------- Slash: /seed ----------
+    # ---------- Единая привязка /steam ----------
 
-    seed_group = app_commands.Group(name="seed", description="Сидинг WARDOGS, баланс и VIP")
+    steam_group = app_commands.Group(
+        name="steam",
+        description="Единая Steam-привязка: сидер, баллы и VIP в одной команде",
+    )
 
-    @seed_group.command(name="link", description="Привязать Steam для сидинга через код в игре")
-    @app_commands.describe(steam_id="Ваш 17-значный SteamID64")
-    @app_commands.guild_only()
-    async def seed_link(self, interaction: discord.Interaction, steam_id: str):
+    async def _link_start(self, interaction: discord.Interaction, steam_id: str, kind: str, verify_cmd: str):
         await interaction.response.defer(ephemeral=True)
         normalized = steam_id.strip()
         if not STEAM_ID_RE.match(normalized):
@@ -1596,13 +1638,13 @@ class SeedingCog(commands.Cog):
                 interaction.user.display_name or player_name,
                 code_hash,
                 expires_at,
-                "seeding",
+                kind,
             )
         except SeedDomainError as e:
             await interaction.followup.send(e.message, ephemeral=True)
             return
         try:
-            whisper = f"WARDOGS: код привязки {code}. В Discord: /seed verify. Никому не сообщайте код."
+            whisper = f"WARDOGS: код привязки {code}. В Discord: {verify_cmd}. Никому не сообщайте код."
             await clients[server_index].whisper(normalized, whisper)
         except Exception as e:
             seed_cancel_link_challenge(str(interaction.user.id))
@@ -1610,15 +1652,12 @@ class SeedingCog(commands.Cog):
             return
         await interaction.followup.send(
             f"Код отправлен в игру игроку **{player_name}**.\n"
-            f"Подтвердите через `/seed verify code:{code}` в течение {config.LINK_CHALLENGE_MINUTES} мин.\n"
+            f"Подтвердите через `{verify_cmd} code:{code}` в течение {config.LINK_CHALLENGE_MINUTES} мин.\n"
             f"*Код показан только вам — никому его не сообщайте.*",
             ephemeral=True,
         )
 
-    @seed_group.command(name="verify", description="Подтвердить код, полученный в игре")
-    @app_commands.describe(code="Одноразовый код из сообщения на игровом сервере")
-    @app_commands.guild_only()
-    async def seed_verify(self, interaction: discord.Interaction, code: str):
+    async def _link_verify(self, interaction: discord.Interaction, code: str, kind: str):
         await interaction.response.defer(ephemeral=True)
         normalized = code.strip().upper()
         if not CODE_RE.match(normalized):
@@ -1629,54 +1668,56 @@ class SeedingCog(commands.Cog):
                 str(interaction.user.id),
                 normalized,
                 config.LINK_CHALLENGE_MAX_ATTEMPTS,
-                "seeding",
+                kind,
             )
         except SeedDomainError as e:
             await interaction.followup.send(e.message, ephemeral=True)
             return
-        guild = self.bot.get_guild(config.GUILD_ID)
-        if guild and config.SEEDER_ROLE_ID:
-            try:
-                member = guild.get_member(interaction.user.id) or await guild.fetch_member(interaction.user.id)
-                role = guild.get_role(config.SEEDER_ROLE_ID)
-                if role and role not in member.roles:
-                    await member.add_roles(role, reason="WARDOGS seeding: verified")
-            except Exception:
-                pass
-        await interaction.followup.send(
-            f"✅ Привязка подтверждена!\n"
-            f"**Steam:** {user['steam_id']}\n"
-            f"**Баланс:** {user.get('balance', 0)} баллов\n"
-            f"Зарабатывайте баллы: будьте в голосовом канале сидинга **и** на игровом сервере.",
-            ephemeral=True,
+        did = str(interaction.user.id)
+        if kind == "seeding":
+            guild = self.bot.get_guild(config.GUILD_ID)
+            if guild and config.SEEDER_ROLE_ID:
+                try:
+                    member = guild.get_member(interaction.user.id) or await guild.fetch_member(interaction.user.id)
+                    role = guild.get_role(config.SEEDER_ROLE_ID)
+                    if role and role not in member.roles:
+                        await member.add_roles(role, reason="WARDOGS seeding: verified")
+                except Exception:
+                    pass
+        now = _now_ms()
+        vip_member = seed_get_vip_membership(user["id"])
+        should_vip = bool(
+            (vip_member and vip_member["state"] == "active" and (vip_member.get("active_until") or 0) > now)
+            or _panel_vip_active(user["steam_id"])
+            or _panel_vip_active_by_discord(did)
+            or self.donations.active(did, now)
         )
+        if should_vip:
+            await self._set_vip_role(did, True)
+        if kind == "seeding":
+            vip_line = "\nVIP-роль выдана и закреплена — со временем не слетает." if should_vip else ""
+            await interaction.followup.send(
+                f"✅ Привязка подтверждена!\n"
+                f"**Steam:** {user['steam_id']}\n"
+                f"**Баланс:** {user.get('balance', 0)} баллов\n"
+                f"Роль сидера выдана.{vip_line}\n"
+                f"Зарабатывайте баллы: будьте в голосовом канале сидинга **и** на игровом сервере.",
+                ephemeral=True,
+            )
+        else:
+            vip_line = "\nVIP-роль выдана — со временем не слетает." if should_vip else ""
+            await interaction.followup.send(
+                f"✅ Привязка подтверждена.\n**Steam:** {user['steam_id']}{vip_line}\n"
+                f"Оплаченный VIP с панели будет применён автоматически.",
+                ephemeral=True,
+            )
 
-    @seed_group.command(name="unlink", description="Отменить привязку Discord к Steam")
-    @app_commands.describe(confirm="Подтвердите отвязку аккаунта")
-    @app_commands.guild_only()
-    async def seed_unlink(self, interaction: discord.Interaction, confirm: bool):
-        await interaction.response.defer(ephemeral=True)
-        if not confirm:
-            await interaction.followup.send("Отвязка не выполнена (confirm=false).", ephemeral=True)
-            return
-        try:
-            user = seed_unlink_discord(str(interaction.user.id))
-        except SeedDomainError as e:
-            await interaction.followup.send(e.message, ephemeral=True)
-            return
-        await interaction.followup.send(
-            f"🔓 Привязка отменена. Steam {user['steam_id']} отвязан от вашего Discord.",
-            ephemeral=True,
-        )
-
-    @seed_group.command(name="status", description="Показать баланс, время и статус VIP")
-    @app_commands.guild_only()
-    async def seed_status(self, interaction: discord.Interaction):
+    async def _send_seed_status(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         user = seed_get_user_by_discord(str(interaction.user.id))
         if not user:
             await interaction.followup.send(
-                "Привязка не найдена. Используйте `/seed link steam_id:<ваш SteamID64>`, затем `/seed verify`.",
+                "Привязка не найдена. Используйте `/steam link steam_id:<ваш SteamID64>`, затем `/steam verify`.",
                 ephemeral=True,
             )
             return
@@ -1702,6 +1743,71 @@ class SeedingCog(commands.Cog):
             embed.add_field(name="VIP (оплата)", value=f"до <t:{int(paid_until / 1000)}:f>")
         embed.set_footer(text=f"ID: {user['id'][:8]}…")
         await interaction.followup.send(embed=embed, ephemeral=True)
+
+    async def _unlink_common(self, interaction: discord.Interaction, confirm: bool):
+        await interaction.response.defer(ephemeral=True)
+        if not confirm:
+            await interaction.followup.send("Отвязка не выполнена (confirm=false).", ephemeral=True)
+            return
+        try:
+            user = seed_unlink_discord(str(interaction.user.id))
+        except SeedDomainError as e:
+            await interaction.followup.send(e.message, ephemeral=True)
+            return
+        await interaction.followup.send(
+            f"🔓 Привязка отменена. Steam {user['steam_id']} отвязан от вашего Discord.",
+            ephemeral=True,
+        )
+
+    @steam_group.command(name="link", description="Привязать SteamID: код в игре, роль сидера и VIP")
+    @app_commands.describe(steam_id="Ваш 17-значный SteamID64")
+    @app_commands.guild_only()
+    async def steam_link(self, interaction: discord.Interaction, steam_id: str):
+        await self._link_start(interaction, steam_id, "seeding", "/steam verify")
+
+    @steam_group.command(name="verify", description="Подтвердить код, полученный в игре")
+    @app_commands.describe(code="Одноразовый код из сообщения на игровом сервере")
+    @app_commands.guild_only()
+    async def steam_verify(self, interaction: discord.Interaction, code: str):
+        await self._link_verify(interaction, code, "seeding")
+
+    @steam_group.command(name="status", description="Показать баланс, время и статус VIP")
+    @app_commands.guild_only()
+    async def steam_status(self, interaction: discord.Interaction):
+        await self._send_seed_status(interaction)
+
+    @steam_group.command(name="unlink", description="Отменить привязку Discord к Steam")
+    @app_commands.describe(confirm="Подтвердите отвязку аккаунта")
+    @app_commands.guild_only()
+    async def steam_unlink(self, interaction: discord.Interaction, confirm: bool):
+        await self._unlink_common(interaction, confirm)
+
+    # ---------- Slash: /seed ----------
+
+    seed_group = app_commands.Group(name="seed", description="Сидинг WARDOGS, баланс и VIP")
+
+    @seed_group.command(name="link", description="Привязать Steam (алиас /steam link)")
+    @app_commands.describe(steam_id="Ваш 17-значный SteamID64")
+    @app_commands.guild_only()
+    async def seed_link(self, interaction: discord.Interaction, steam_id: str):
+        await self._link_start(interaction, steam_id, "seeding", "/steam verify")
+
+    @seed_group.command(name="verify", description="Подтвердить код из игры (алиас /steam verify)")
+    @app_commands.describe(code="Одноразовый код из сообщения на игровом сервере")
+    @app_commands.guild_only()
+    async def seed_verify(self, interaction: discord.Interaction, code: str):
+        await self._link_verify(interaction, code, "seeding")
+
+    @seed_group.command(name="unlink", description="Отменить привязку Discord к Steam")
+    @app_commands.describe(confirm="Подтвердите отвязку аккаунта")
+    @app_commands.guild_only()
+    async def seed_unlink(self, interaction: discord.Interaction, confirm: bool):
+        await self._unlink_common(interaction, confirm)
+
+    @seed_group.command(name="status", description="Показать баланс, время и статус VIP")
+    @app_commands.guild_only()
+    async def seed_status(self, interaction: discord.Interaction):
+        await self._send_seed_status(interaction)
 
     @seed_group.command(name="top", description="Показать рейтинг текущей недели")
     @app_commands.guild_only()
@@ -1730,7 +1836,7 @@ class SeedingCog(commands.Cog):
             )
         embed.add_field(
             name="ℹ️ Как это работает",
-            value="VIP даёт Reserved slot на игровых серверах. Оплаченный VIP с панели — через `/vip-link`.",
+            value="VIP даёт Reserved slot на игровых серверах. Оплаченный VIP с панели — та же привязка `/steam link` + `/steam verify`.",
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -1768,7 +1874,7 @@ class SeedingCog(commands.Cog):
         cost = getattr(config, product["cost_attr"])
         user = seed_get_user_by_discord(str(interaction.user.id))
         if not user:
-            await interaction.followup.send("Сначала привяжите Steam через `/seed link`.", ephemeral=True)
+            await interaction.followup.send("Сначала привяжите Steam через `/steam link`.", ephemeral=True)
             return
         if ReservedProtectionService.is_protected(user["id"], user["steam_id"]):
             await interaction.followup.send(
@@ -1833,7 +1939,7 @@ class SeedingCog(commands.Cog):
             description=(
                 "1. Зайдите на игровой сервер WARDOGS **и** в голосовой канал сидинга.\n"
                 "2. Бот начисляет баллы автоматически (каждые 6 мин в первый час, далее каждые 3).\n"
-                "3. Привяжите Steam: `/seed link` → получите код в игре → `/seed verify`.\n"
+                "3. Привяжите Steam: `/steam link` → получите код в игре → `/steam verify`.\n"
                 "4. Копите баллы и покупайте VIP: `/seed shop` → `/seed buy`.\n"
                 "5. Топ-3 недели получают роль Super Seeder + бесплатный Reserved slot."
             ),
@@ -1844,101 +1950,28 @@ class SeedingCog(commands.Cog):
         )
         embed.add_field(
             name="Оплаченный VIP",
-            value="С панели panel.dendich.online — через `/vip-link link` + `/vip-link verify`.",
+            value="С панели panel.dendich.online — та же единая привязка `/steam link` + `/steam verify`.",
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ---------- Slash: /vip-link ----------
 
-    vip_link_group = app_commands.Group(name="vip-link", description="Steam-привязка для оплаченного VIP без участия в сидинге")
+    vip_link_group = app_commands.Group(
+        name="vip-link",
+        description="Steam-привязка только для оплаченного VIP (рекомендуем /steam link — единая привязка)",
+    )
 
     @vip_link_group.command(name="link", description="Привязать Steam только для оплаченного VIP")
     @app_commands.describe(steam_id="Ваш 17-значный SteamID64")
     @app_commands.guild_only()
     async def vip_link_link(self, interaction: discord.Interaction, steam_id: str):
-        await interaction.response.defer(ephemeral=True)
-        normalized = steam_id.strip()
-        if not STEAM_ID_RE.match(normalized):
-            await interaction.followup.send("Нужен SteamID64: 17 цифр, обычно начинается с 7656119.", ephemeral=True)
-            return
-        clients = [c for _, _, c in self._servers()]
-        if not clients:
-            await interaction.followup.send("RCON не настроен, привязка временно недоступна.", ephemeral=True)
-            return
-        results = await asyncio.gather(*[c.players() for c in clients], return_exceptions=True)
-        server_index = -1
-        player_name = "Игрок"
-        for i, res in enumerate(results):
-            if isinstance(res, Exception):
-                continue
-            for entry in res:
-                if entry["steam_id"] == normalized:
-                    server_index = i
-                    player_name = entry["name"]
-                    break
-            if server_index >= 0:
-                break
-        if server_index < 0:
-            err = next((r for r in results if isinstance(r, Exception)), None)
-            if err:
-                await interaction.followup.send(f"Ошибка RCON: {err}", ephemeral=True)
-                return
-            await interaction.followup.send("Сначала зайдите на один из игровых серверов, затем повторите команду.", ephemeral=True)
-            return
-        code = _human_code(8)
-        code_hash = seed_hash_code(str(interaction.user.id), code)
-        expires_at = _now_ms() + config.LINK_CHALLENGE_MINUTES * 60_000
-        try:
-            seed_prepare_link_challenge(
-                str(interaction.user.id),
-                normalized,
-                interaction.user.display_name or player_name,
-                code_hash,
-                expires_at,
-                "donation",
-            )
-        except SeedDomainError as e:
-            await interaction.followup.send(e.message, ephemeral=True)
-            return
-        try:
-            await clients[server_index].whisper(
-                normalized,
-                f"WARDOGS: код привязки {code}. В Discord: /vip-link verify. Никому не сообщайте код.",
-            )
-        except Exception as e:
-            seed_cancel_link_challenge(str(interaction.user.id))
-            await interaction.followup.send(f"Не удалось отправить код в игру: {e}", ephemeral=True)
-            return
-        await interaction.followup.send(
-            f"Код отправлен в игру игроку **{player_name}**.\n"
-            f"Подтвердите через `/vip-link verify code:{code}` в течение {config.LINK_CHALLENGE_MINUTES} мин.",
-            ephemeral=True,
-        )
+        await self._link_start(interaction, steam_id, "donation", "/vip-link verify")
 
     @vip_link_group.command(name="verify", description="Подтвердить код из игры для оплаченного VIP")
     @app_commands.describe(code="Одноразовый код из игрового сообщения")
     @app_commands.guild_only()
     async def vip_link_verify(self, interaction: discord.Interaction, code: str):
-        await interaction.response.defer(ephemeral=True)
-        normalized = code.strip().upper()
-        if not CODE_RE.match(normalized):
-            await interaction.followup.send("Код состоит из 8 символов без пробелов.", ephemeral=True)
-            return
-        try:
-            donor = seed_verify_link_challenge(
-                str(interaction.user.id),
-                normalized,
-                config.LINK_CHALLENGE_MAX_ATTEMPTS,
-                "donation",
-            )
-        except SeedDomainError as e:
-            await interaction.followup.send(e.message, ephemeral=True)
-            return
-        await interaction.followup.send(
-            f"✅ VIP-привязка подтверждена.\n**Steam:** {donor['steam_id']}\n"
-            f"Оплаченный VIP с панели будет применён автоматически.",
-            ephemeral=True,
-        )
+        await self._link_verify(interaction, code, "donation")
 
     @vip_link_group.command(name="status", description="Проверить VIP-привязку")
     @app_commands.guild_only()
@@ -1953,7 +1986,7 @@ class SeedingCog(commands.Cog):
                     ephemeral=True,
                 )
                 return
-            await interaction.followup.send("Отдельной VIP-привязки нет. Используйте `/vip-link link`.", ephemeral=True)
+            await interaction.followup.send("Отдельной VIP-привязки нет. Используйте `/steam link` (единая привязка).", ephemeral=True)
             return
         until = self.donations.until(str(interaction.user.id))
         status = f"до <t:{int(until / 1000)}:f>" if until and until > _now_ms() else "нет активного оплаченного VIP"
@@ -2441,6 +2474,130 @@ class SeedingCog(commands.Cog):
             title=f"🔒 Защищённые Reserved slots (стр. {page}/{total_pages})",
             description="\n".join(lines),
         )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @admin_group.command(name="vip-sync", description="Синхронизировать VIP-роль в Discord → VIP-слоты на сайте")
+    @app_commands.describe(reserved="Также выдать Reserved slot на игровых серверах через RCON")
+    @app_commands.guild_only()
+    async def admin_vip_sync(self, interaction: discord.Interaction, reserved: bool = False):
+        if not await self._check_admin(interaction):
+            return
+        await interaction.response.defer(ephemeral=True)
+        guild = interaction.guild
+        vip_role = guild.get_role(config.VIP_ROLE_ID_SEED) if config.VIP_ROLE_ID_SEED else None
+        if not vip_role:
+            await interaction.followup.send("VIP-роль не настроена (VIP_ROLE_ID_SEED).", ephemeral=True)
+            return
+        panel_db = get_panel_conn()
+        now = time.time()
+        created: list[tuple[str, str]] = []
+        skipped: list[str] = []
+        no_binding: list[str] = []
+        rcon_errors: list[str] = []
+        for member in guild.members:
+            if member.bot or vip_role not in member.roles:
+                continue
+            row = panel_db.execute(
+                "SELECT user_id FROM bindings WHERE discord_id = ?", (str(member.id),)
+            ).fetchone()
+            steam_id = str(row["user_id"]) if row else ""
+            from_seed = False
+            if not steam_id or not STEAM_ID_RE.match(steam_id):
+                seeder_user = seed_get_user_by_discord(str(member.id))
+                steam_id = (seeder_user or {}).get("steam_id") or ""
+                from_seed = bool(steam_id)
+            if not steam_id or not STEAM_ID_RE.match(steam_id):
+                donor = seed_get_donor_by_discord(str(member.id))
+                steam_id = (donor or {}).get("steam_id") or ""
+                from_seed = bool(steam_id)
+            if not steam_id or not STEAM_ID_RE.match(steam_id):
+                no_binding.append(member.display_name)
+                continue
+            if from_seed:
+                clash = panel_db.execute(
+                    "SELECT discord_id FROM bindings WHERE user_id = ? AND discord_id <> ?",
+                    (steam_id, str(member.id)),
+                ).fetchone()
+                if not clash:
+                    panel_db.execute(
+                        "INSERT INTO bindings (user_id, discord_id, discord_name, guild_member, roles, updated_utc) "
+                        "VALUES (?, ?, ?, 1, '[]', ?) "
+                        "ON CONFLICT(user_id) DO UPDATE SET discord_id = excluded.discord_id, "
+                        "discord_name = excluded.discord_name, guild_member = 1, updated_utc = excluded.updated_utc",
+                        (steam_id, str(member.id), member.display_name[:100], now),
+                    )
+            active = panel_db.execute(
+                "SELECT 1 FROM vip_slots WHERE steam_id = ? AND (expires_utc IS NULL OR expires_utc > ?) LIMIT 1",
+                (steam_id, now),
+            ).fetchone()
+            if active:
+                skipped.append(steam_id)
+                continue
+            display_name = " ".join(member.display_name.split())[:120]
+            for sid in ("ru1", "ru2"):
+                panel_db.execute(
+                    "INSERT INTO vip_slots "
+                    "(id, server_id, steam_id, display_name, expires_utc, note, created_by, "
+                    "created_utc, updated_utc, sync_state, sync_error) "
+                    "VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, 'pending', '') "
+                    "ON CONFLICT(server_id, steam_id) DO UPDATE SET "
+                    "expires_utc = NULL, updated_utc = ?, sync_state = 'pending', sync_error = ''",
+                    (
+                        secrets.token_hex(12), sid, steam_id, display_name,
+                        "Синхронизация Discord-роль VIP",
+                        f"discord-role-sync:{interaction.user.id}",
+                        now, now, now,
+                    ),
+                )
+            created.append((display_name, steam_id))
+            if reserved:
+                rcon_ok = 0
+                for label, client in (("Сервер 1", self.rcon), ("Сервер 2", self.rcon2)):
+                    if not client:
+                        continue
+                    try:
+                        await client.set_reserved(steam_id, True)
+                        rcon_ok += 1
+                    except Exception as e:
+                        rcon_errors.append(f"{steam_id} · {label}: {e}")
+                if rcon_ok:
+                    panel_db.execute(
+                        "UPDATE vip_slots SET sync_state = 'synced', synced_utc = ?, updated_utc = ? "
+                        "WHERE steam_id = ? AND sync_state = 'pending'",
+                        (now, now, steam_id),
+                    )
+        seed_audit(
+            "vip_role_sync",
+            str(interaction.user.id),
+            {"created": len(created), "skipped_active": len(skipped), "no_binding": len(no_binding)},
+        )
+        lines = [
+            f"Создано слотов: **{len(created)}** (постоянные, оба сервера)",
+            f"Уже активны на сайте: **{len(skipped)}**",
+            f"Без привязки Steam: **{len(no_binding)}**",
+        ]
+        if created:
+            names = "\n".join(f"• {n} — `{s}`" for n, s in created[:30])
+            lines.append(f"\n**Синхронизировано:**\n{names}")
+            if len(created) > 30:
+                lines.append(f"… и ещё {len(created) - 30}")
+        if no_binding:
+            hint = ", ".join(no_binding[:15])
+            more = f" и ещё {len(no_binding) - 15}" if len(no_binding) > 15 else ""
+            lines.append(
+                f"\n**Нужно привязать Steam** (роль останется незащищённой — попросите выполнить `/steam link`):\n{hint}{more}"
+            )
+        if rcon_errors:
+            lines.append("\n**Ошибки RCON:**\n" + "\n".join(f"• {e}" for e in rcon_errors[:10]))
+        embed = discord.Embed(
+            color=discord.Color.green() if created else discord.Color.blurple(),
+            title="🔄 Синхронизация VIP-роли → сайт",
+            description="\n".join(lines),
+        )
+        if reserved:
+            embed.set_footer(text="Reserved slots выданы через RCON; остальные слоты в статусе pending (панель дособерёт).")
+        else:
+            embed.set_footer(text="Слоты на сайте созданы; роль VIP бот больше не снимет. Reserved slot на серверах не менялся.")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     @admin_group.command(name="backup", description="Отправить снимок состояния сидинга в канал бэкапов")

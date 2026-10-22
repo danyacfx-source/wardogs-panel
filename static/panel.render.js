@@ -326,7 +326,10 @@ const _hoisted_202 = {
   key: 3,
   class: "panel empty"
 }
-const _hoisted_203 = { key: 6 }
+const _hoisted_203 = {
+  key: 6,
+  class: "players-stretch"
+}
 const _hoisted_204 = {
   key: 0,
   class: "panel err-box"

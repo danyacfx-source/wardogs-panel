@@ -1609,7 +1609,7 @@ def seed_verify_link_challenge(
     row = conn.execute(
         "SELECT * FROM seed_link_challenges WHERE discord_id = ?", (discord_id,)
     ).fetchone()
-    command = "/vip-link link" if purpose == "donation" else "/seed link"
+    command = "/vip-link link" if purpose == "donation" else "/steam link"
     if not row:
         raise SeedDomainError("challenge_missing", f"Активный код не найден. Сначала выполните {command}.")
     if row["expires_at"] < now:
@@ -2108,7 +2108,7 @@ def seed_purchase_vip(discord_id: str, sku: str, cost: int, duration_seconds: in
         return order
     user = seed_get_user_by_discord(discord_id)
     if not user:
-        raise SeedDomainError("not_linked", "Сначала привяжите Steam через /seed link.")
+        raise SeedDomainError("not_linked", "Сначала привяжите Steam через /steam link.")
     if user["balance"] < cost:
         raise SeedDomainError("insufficient_points", f"Недостаточно баллов: нужно {cost}, доступно {user['balance']}.")
     new_balance = user["balance"] - cost

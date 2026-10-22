@@ -716,7 +716,7 @@ async def seed_balance(request: Request):
         return {"ok": False, "error": "Привяжите Discord в профиле, чтобы купить VIP за баллы."}
     info = seed_store.get_balance(discord_id)
     if info is None:
-        return {"ok": False, "error": "Привязка Discord↔Steam не найдена. Используйте /seed link в Discord."}
+        return {"ok": False, "error": "Привязка Discord↔Steam не найдена. Используйте /steam link в Discord."}
     shop = await seed_store.get_shop_config()
     return {
         "ok": True,
