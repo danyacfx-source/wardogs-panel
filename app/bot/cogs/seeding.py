@@ -2112,15 +2112,20 @@ class SeedingCog(commands.Cog):
         seed_set_state("seeding_gathers", sessions)
         self._gather_sessions = sessions
         seed_audit("gather_started", str(interaction.user.id), {"id": request_id, "server": server_id, "target": target})
-        await self._deliver_gather_card(session)
         try:
-            await target_channel.send(
+            message = await target_channel.send(
                 content=f"<@&{notify_role.id}> 🐺 Сбор на {label.lower()}! Помогите собрать {target} игроков.",
                 embed=self._gather_embed(session),
+                view=self._gather_connect_view(session),
                 allowed_mentions=discord.AllowedMentions(roles=[notify_role]),
             )
+            session["cardMessageId"] = str(message.id)
+            sessions[server_id] = session
+            seed_set_state("seeding_gathers", sessions)
+            self._gather_sessions = sessions
         except Exception as e:
-            log.warning("gather ping failed: %s", e)
+            log.warning("gather card send failed: %s", e)
+            await self._deliver_gather_card(session)
         await interaction.followup.send(
             f"✅ Сбор на **{label}** объявлен: цель **{target}** игроков, срок **{minutes}** мин.\nКарточка: {target_channel.mention}",
             ephemeral=True,
