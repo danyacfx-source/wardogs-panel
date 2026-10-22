@@ -2476,10 +2476,10 @@ class SeedingCog(commands.Cog):
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @admin_group.command(name="vip-sync", description="Синхронизировать VIP-роль в Discord → VIP-слоты на сайте")
+    @admin_group.command(name="vip-role-sync", description="Синхронизировать VIP-роль в Discord → VIP-слоты на сайте")
     @app_commands.describe(reserved="Также выдать Reserved slot на игровых серверах через RCON")
     @app_commands.guild_only()
-    async def admin_vip_sync(self, interaction: discord.Interaction, reserved: bool = False):
+    async def admin_vip_role_sync(self, interaction: discord.Interaction, reserved: bool = False):
         if not await self._check_admin(interaction):
             return
         await interaction.response.defer(ephemeral=True)
