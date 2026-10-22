@@ -51,6 +51,17 @@ from cogs.clans_store import (
 log = logging.getLogger("clans")
 
 
+def modal_values(interaction: discord.Interaction) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for row in (interaction.data or {}).get("components") or []:
+        if not isinstance(row, dict):
+            continue
+        for item in row.get("components") or []:
+            if isinstance(item, dict) and item.get("custom_id"):
+                values[str(item["custom_id"])] = str(item.get("value") or "")
+    return values
+
+
 class ClansCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -598,30 +609,23 @@ class ClansCog(commands.Cog):
 
     def _first_application_modal(self):
         modal = discord.ui.Modal(custom_id="clan:apply:first", title="Заявка на клан · 1 из 2")
-        modal.add_item(discord.ui.TextInput(label="1. Название клана", min_length=2, max_length=80, required=True))
-        modal.add_item(discord.ui.TextInput(label="2. Тег клана", placeholder="Например: WDR", min_length=2, max_length=16, required=True))
-        modal.add_item(discord.ui.TextInput(label="3. Ник лидера", min_length=2, max_length=80, required=True))
-        modal.add_item(discord.ui.TextInput(label="4. Участников всего", placeholder="Число, включая людей вне WARDOGS RU", max_length=6, required=True))
+        modal.add_item(discord.ui.TextInput(custom_id="name", label="1. Название клана", min_length=2, max_length=80, required=True))
+        modal.add_item(discord.ui.TextInput(custom_id="tag", label="2. Тег клана", placeholder="Например: WDR", min_length=2, max_length=16, required=True))
+        modal.add_item(discord.ui.TextInput(custom_id="leader", label="3. Ник лидера", min_length=2, max_length=80, required=True))
+        modal.add_item(discord.ui.TextInput(custom_id="members", label="4. Участников всего", placeholder="Число, включая людей вне WARDOGS RU", max_length=6, required=True))
         return modal
 
     def _second_application_modal(self, user_id: int):
         modal = discord.ui.Modal(custom_id=f"clan:apply:second:{user_id}", title="Заявка на клан · 2 из 2")
-        modal.add_item(discord.ui.TextInput(label="5. Ссылка на Discord клана", max_length=120, required=True))
-        modal.add_item(discord.ui.TextInput(label="6. Кратко о клане", style=discord.TextStyle.paragraph, min_length=20, max_length=600, required=True))
-        modal.add_item(discord.ui.TextInput(label="7. Цели и задачи клана", style=discord.TextStyle.paragraph, min_length=10, max_length=600, required=True))
-        modal.add_item(discord.ui.TextInput(label="8. Ссылка на логотип клана Discord", placeholder="PNG, JPG/JPEG или WebP", max_length=500, required=True))
-        modal.add_item(discord.ui.TextInput(label="9. Иконка ролей Discord (до 256 КБ)", placeholder="Отдельный PNG, JPG/JPEG или WebP", max_length=500, required=True))
+        modal.add_item(discord.ui.TextInput(custom_id="discord", label="5. Ссылка на Discord клана", max_length=120, required=True))
+        modal.add_item(discord.ui.TextInput(custom_id="description", label="6. Кратко о клане", style=discord.TextStyle.paragraph, min_length=20, max_length=600, required=True))
+        modal.add_item(discord.ui.TextInput(custom_id="goals", label="7. Цели и задачи клана", style=discord.TextStyle.paragraph, min_length=10, max_length=600, required=True))
+        modal.add_item(discord.ui.TextInput(custom_id="logo", label="8. Ссылка на логотип клана Discord", placeholder="PNG, JPG/JPEG или WebP", max_length=500, required=True))
+        modal.add_item(discord.ui.TextInput(custom_id="role-icon", label="9. Иконка ролей Discord (до 256 КБ)", placeholder="Отдельный PNG, JPG/JPEG или WebP", max_length=500, required=True))
         return modal
 
     async def _submit_first(self, interaction: discord.Interaction):
-        fields = interaction.data.get("components", [])
-        values = {}
-        for comp in fields:
-            for row in comp:
-                if row.get("type") == 1:
-                    for item in row:
-                        if item.get("type") == 4:
-                            values[item.get("custom_id")] = item.get("value", "")
+        values = modal_values(interaction)
         member_count_str = clean(values.get("members", ""), 6)
         tag = clean(values.get("tag", ""), 16)
         tag = re.sub(r"[^\w\-]", "", tag)
@@ -657,14 +661,7 @@ class ClansCog(commands.Cog):
         if not draft or (datetime.now(timezone.utc) - datetime.fromisoformat(draft["createdAt"])).total_seconds() > 3600:
             await interaction.response.send_message("Черновик истёк. Начните заявку заново.", ephemeral=True)
             return
-        fields = interaction.data.get("components", [])
-        values = {}
-        for comp in fields:
-            for row in comp:
-                if row.get("type") == 1:
-                    for item in row:
-                        if item.get("type") == 4:
-                            values[item.get("custom_id")] = item.get("value", "")
+        values = modal_values(interaction)
         discord_url = clean(values.get("discord", ""), 120)
         if not INVITE_URL.match(discord_url):
             await interaction.response.send_message("Укажите полную ссылку вида https://discord.gg/код.", ephemeral=True)
@@ -831,11 +828,11 @@ class ClansCog(commands.Cog):
             custom_id=f"recruit:submit:{mode}:{clan['id']}",
             title="Карточка набора" if mode == "create" else "Изменить набор",
         )
-        modal.add_item(discord.ui.TextInput(label="Кого ищем", style=discord.TextStyle.paragraph, max_length=500, default=r.get("lookingFor", "") or None, required=True))
-        modal.add_item(discord.ui.TextInput(label="Требования", style=discord.TextStyle.paragraph, max_length=500, default=r.get("requirements", "") or None, required=True))
-        modal.add_item(discord.ui.TextInput(label="Прайм-тайм", max_length=100, default=r.get("schedule", "") or None, required=True))
-        modal.add_item(discord.ui.TextInput(label="Контакт", max_length=100, default=r.get("contact") or clan.get("leaderName", ""), required=True))
-        modal.add_item(discord.ui.TextInput(label="Ссылка на изображение Discord (необяз.)", max_length=300, default=r.get("imageUrl", "") or None, required=False))
+        modal.add_item(discord.ui.TextInput(custom_id="looking", label="Кого ищем", style=discord.TextStyle.paragraph, max_length=500, default=r.get("lookingFor", "") or None, required=True))
+        modal.add_item(discord.ui.TextInput(custom_id="requirements", label="Требования", style=discord.TextStyle.paragraph, max_length=500, default=r.get("requirements", "") or None, required=True))
+        modal.add_item(discord.ui.TextInput(custom_id="schedule", label="Прайм-тайм", max_length=100, default=r.get("schedule", "") or None, required=True))
+        modal.add_item(discord.ui.TextInput(custom_id="contact", label="Контакт", max_length=100, default=r.get("contact") or clan.get("leaderName", ""), required=True))
+        modal.add_item(discord.ui.TextInput(custom_id="image", label="Ссылка на изображение Discord (необяз.)", max_length=300, default=r.get("imageUrl", "") or None, required=False))
         return modal
 
     async def _submit_recruitment(self, interaction: discord.Interaction, mode: str, clan_id: str):
@@ -846,14 +843,7 @@ class ClansCog(commands.Cog):
         if mode == "create" and clan.get("recruitmentThreadId"):
             await interaction.response.send_message("У клана уже есть публикация. Используйте «Изменить».", ephemeral=True)
             return
-        fields = interaction.data.get("components", [])
-        values = {}
-        for comp in fields:
-            for row in comp:
-                if row.get("type") == 1:
-                    for item in row:
-                        if item.get("type") == 4:
-                            values[item.get("custom_id")] = item.get("value", "")
+        values = modal_values(interaction)
         image_url = clean(values.get("image", ""), 300)
         if image_url and not IMAGE_URL.match(image_url):
             await interaction.response.send_message("Изображение должно быть загружено в Discord. Скопируйте ссылку на вложение с cdn.discordapp.com или media.discordapp.net.", ephemeral=True)
@@ -964,10 +954,10 @@ class ClansCog(commands.Cog):
 
     def _join_application_modal(self, clan: dict):
         modal = discord.ui.Modal(custom_id=f"join:submit:{clan['id']}", title=f"Вступление в [{clan['tag']}]")
-        modal.add_item(discord.ui.TextInput(label="Игровой ник", min_length=2, max_length=80, required=True))
-        modal.add_item(discord.ui.TextInput(label="Возраст (необязательно)", max_length=3, required=False))
-        modal.add_item(discord.ui.TextInput(label="Опыт и предпочитаемая роль", style=discord.TextStyle.paragraph, min_length=3, max_length=500, required=True))
-        modal.add_item(discord.ui.TextInput(label="Почему хотите вступить, когда играете", style=discord.TextStyle.paragraph, min_length=10, max_length=700, required=True))
+        modal.add_item(discord.ui.TextInput(custom_id="nickname", label="Игровой ник", min_length=2, max_length=80, required=True))
+        modal.add_item(discord.ui.TextInput(custom_id="age", label="Возраст (необязательно)", max_length=3, required=False))
+        modal.add_item(discord.ui.TextInput(custom_id="experience", label="Опыт и предпочитаемая роль", style=discord.TextStyle.paragraph, min_length=3, max_length=500, required=True))
+        modal.add_item(discord.ui.TextInput(custom_id="motivation", label="Почему хотите вступить, когда играете", style=discord.TextStyle.paragraph, min_length=10, max_length=700, required=True))
         return modal
 
     def _join_application_embed(self, application: dict, clan: dict, user) -> discord.Embed:
@@ -1001,6 +991,7 @@ class ClansCog(commands.Cog):
             if app.get("clanId") == clan_id and app.get("applicantId") == interaction.user.id and app.get("status") == "pending":
                 await interaction.response.send_message(f"У вас уже есть активная заявка: <#{app['ticketId']}>.", ephemeral=True)
                 return
+        values = modal_values(interaction)
         await interaction.response.defer(ephemeral=True)
         try:
             category = await interaction.guild.fetch_channel(int(clan["channelIds"]["category"]))
@@ -1013,14 +1004,6 @@ class ClansCog(commands.Cog):
             overwrites=self._join_ticket_overwrites(interaction.guild, clan, interaction.user.id),
             reason=f"Join application to {clan['name']} from {interaction.user}",
         )
-        fields = interaction.data.get("components", [])
-        values = {}
-        for comp in fields:
-            for row in comp:
-                if row.get("type") == 1:
-                    for item in row:
-                        if item.get("type") == 4:
-                            values[item.get("custom_id")] = item.get("value", "")
         application = {
             "ticketId": str(ticket.id), "clanId": clan_id, "applicantId": interaction.user.id,
             "nickname": clean(values.get("nickname", ""), 80),
@@ -1101,14 +1084,14 @@ class ClansCog(commands.Cog):
             await interaction.followup.send("Карточки Discord и сайта обновлены.")
         elif action == "logo":
             modal = discord.ui.Modal(custom_id=f"clan:logo:{clan['id']}", title=f"Логотип [{clan['tag']}]")
-            modal.add_item(discord.ui.TextInput(label="Ссылка на логотип клана Discord", max_length=500, default=clan.get("logoUrl", ""), required=True))
+            modal.add_item(discord.ui.TextInput(custom_id="logo", label="Ссылка на логотип клана Discord", max_length=500, default=clan.get("logoUrl", ""), required=True))
             await interaction.response.send_modal(modal)
         elif action == "dissolve":
             if interaction.user.id != clan.get("leaderId") and not self._is_admin(interaction.user):
                 await interaction.response.send_message("Распустить клан может только лидер или администрация.", ephemeral=True)
                 return
             modal = discord.ui.Modal(custom_id=f"clan:dissolve:{clan['id']}", title="Подтверждение роспуска")
-            modal.add_item(discord.ui.TextInput(label=f"Введите тег {clan['tag']}", max_length=16, required=True))
+            modal.add_item(discord.ui.TextInput(custom_id="tag", label=f"Введите тег {clan['tag']}", max_length=16, required=True))
             await interaction.response.send_modal(modal)
 
     def _user_select_view(self, clan_id: str):
@@ -1184,14 +1167,7 @@ class ClansCog(commands.Cog):
         if not clan or (interaction.user.id != clan.get("leaderId") and not self._is_admin(interaction.user)):
             await interaction.response.send_message("Распустить клан может только лидер или администрация.", ephemeral=True)
             return
-        fields = interaction.data.get("components", [])
-        expected = ""
-        for comp in fields:
-            for row in comp:
-                if row.get("type") == 1:
-                    for item in row:
-                        if item.get("type") == 4:
-                            expected = clean(item.get("value", ""), 16)
+        expected = clean(modal_values(interaction).get("tag", ""), 16)
         if expected.lower() != clan["tag"].lower():
             await interaction.response.send_message("Тег не совпал. Клан не был распущен.", ephemeral=True)
             return
@@ -1311,7 +1287,7 @@ class ClansCog(commands.Cog):
                 await interaction.response.send_message("Кнопка доступна администрации.", ephemeral=True)
                 return
             modal = discord.ui.Modal(custom_id=f"clan:reject-submit:{parts[2]}", title="Отклонение заявки")
-            modal.add_item(discord.ui.TextInput(label="Причина", style=discord.TextStyle.paragraph, min_length=3, max_length=500, required=True))
+            modal.add_item(discord.ui.TextInput(custom_id="reason", label="Причина", style=discord.TextStyle.paragraph, min_length=3, max_length=500, required=True))
             await interaction.response.send_modal(modal)
             return
         if parts[0] == "recruit":
@@ -1357,7 +1333,7 @@ class ClansCog(commands.Cog):
                 await interaction.response.send_message("Решение может принять только руководство этого клана.", ephemeral=True)
                 return
             modal = discord.ui.Modal(custom_id=f"join:reject-submit:{parts[2]}", title="Отклонение заявки")
-            modal.add_item(discord.ui.TextInput(label="Причина", style=discord.TextStyle.paragraph, min_length=3, max_length=500, required=True))
+            modal.add_item(discord.ui.TextInput(custom_id="reason", label="Причина", style=discord.TextStyle.paragraph, min_length=3, max_length=500, required=True))
             await interaction.response.send_modal(modal)
             return
         if parts[0] == "manage":
@@ -1464,14 +1440,7 @@ class ClansCog(commands.Cog):
             if self._clan_rank(interaction.user, clan) < 3:
                 await interaction.response.send_message("Доступ запрещён.", ephemeral=True)
                 return
-            fields = interaction.data.get("components", [])
-            reason = ""
-            for comp in fields:
-                for row in comp:
-                    if row.get("type") == 1:
-                        for item in row:
-                            if item.get("type") == 4:
-                                reason = clean(item.get("value", ""), 500)
+            reason = clean(modal_values(interaction).get("reason", ""), 500)
             await self.store.update(lambda s: (
                 s["joinApplications"][ticket_id].update({"status": "rejected", "reason": reason, "decidedAt": iso_now(), "decidedBy": interaction.user.id}),
             ))
@@ -1491,14 +1460,7 @@ class ClansCog(commands.Cog):
                 await interaction.response.send_message("Доступ запрещён.", ephemeral=True)
                 return
             await interaction.response.defer(ephemeral=True)
-            fields = interaction.data.get("components", [])
-            logo_url = ""
-            for comp in fields:
-                for row in comp:
-                    if row.get("type") == 1:
-                        for item in row:
-                            if item.get("type") == 4:
-                                logo_url = item.get("value", "")
+            logo_url = modal_values(interaction).get("logo", "")
             try:
                 logo = await inspect_discord_image(self._session, logo_url, CLAN_LOGO_MAX_BYTES, "Логотип клана")
             except ValueError as e:
@@ -1521,14 +1483,7 @@ class ClansCog(commands.Cog):
             if not app or app.get("status") != "pending":
                 await interaction.response.send_message("Заявка уже обработана.", ephemeral=True)
                 return
-            fields = interaction.data.get("components", [])
-            reason = ""
-            for comp in fields:
-                for row in comp:
-                    if row.get("type") == 1:
-                        for item in row:
-                            if item.get("type") == 4:
-                                reason = clean(item.get("value", ""), 500)
+            reason = clean(modal_values(interaction).get("reason", ""), 500)
             await self.store.update(lambda s: s["applications"][ticket_id].update({"status": "rejected", "rejectReason": reason}))
             try:
                 applicant = await interaction.guild.fetch_member(int(app["applicantId"]))
@@ -1630,7 +1585,7 @@ class ClansCog(commands.Cog):
                 await interaction.response.send_message("Распустить клан может только лидер или администрация.", ephemeral=True)
                 return
             modal = discord.ui.Modal(custom_id=f"clan:dissolve:{clan['id']}", title="Подтверждение роспуска")
-            modal.add_item(discord.ui.TextInput(label=f"Введите тег {clan['tag']}", max_length=16, required=True))
+            modal.add_item(discord.ui.TextInput(custom_id="tag", label=f"Введите тег {clan['tag']}", max_length=16, required=True))
             await interaction.response.send_modal(modal)
             return
         rank = self._clan_rank(interaction.user, clan)
