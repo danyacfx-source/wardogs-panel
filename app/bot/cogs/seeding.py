@@ -16,7 +16,6 @@ import re
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlsplit
 
 import aiohttp
 import discord
@@ -1544,15 +1543,10 @@ class SeedingCog(commands.Cog):
         return view
 
     def _server_public_id(self, server_id: str) -> str:
-        """Публичный ID (хост) игрового сервера, вычисляемый из его RCON-адреса."""
-        client = self.rcon if server_id == "main" else self.rcon2
-        if not client:
-            return "—"
-        try:
-            host = urlsplit(client.base_url).hostname
-        except ValueError:
-            return "—"
-        return host or "—"
+        """Публичный ID (UUID) игрового сервера из конфига."""
+        if server_id == "second":
+            return config.SEED_SERVER_ID_SECOND or "—"
+        return config.SEED_SERVER_ID_MAIN or "—"
 
     async def _send_gather_instructions(self, interaction: discord.Interaction, session: dict):
         instructions = session.get("instructions") or (

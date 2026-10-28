@@ -107,6 +107,10 @@ SEED_RCON_2_PASSWORD = os.getenv("SEED_RCON_2_PASSWORD", os.getenv("WARDOGS_RCON
 SEED_RCON_TIMEOUT_MS = _int("SEED_RCON_TIMEOUT_MS", _int("RCON_TIMEOUT_MS", 6000))
 SEED_RCON_RETRY = _int("SEED_RCON_RETRY", _int("RCON_RETRY_ATTEMPTS", 1))
 
+# Публичные ID игровых серверов (UUID), показываются игроку в карточке «Как подключиться».
+SEED_SERVER_ID_MAIN = os.getenv("SEED_SERVER_ID_MAIN", "c89b3266-aed5-40d1-b022-6da6f6eba377").strip()
+SEED_SERVER_ID_SECOND = os.getenv("SEED_SERVER_ID_SECOND", "d35fd046-c9dd-420c-b83c-fa5a6e8421e5").strip()
+
 SEED_START_TIME = os.getenv("SEED_START_TIME", "08:00")
 SEED_END_TIME = os.getenv("SEED_END_TIME", "22:00")
 SEED_STOP_PLAYER_COUNT = _int("SEED_STOP_PLAYER_COUNT", 20)
