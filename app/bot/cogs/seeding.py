@@ -16,6 +16,7 @@ import re
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 
 import aiohttp
 import discord
@@ -1542,11 +1543,23 @@ class SeedingCog(commands.Cog):
         view.add_item(btn)
         return view
 
+    def _server_public_id(self, server_id: str) -> str:
+        """Публичный ID (хост) игрового сервера, вычисляемый из его RCON-адреса."""
+        client = self.rcon if server_id == "main" else self.rcon2
+        if not client:
+            return "—"
+        try:
+            host = urlsplit(client.base_url).hostname
+        except ValueError:
+            return "—"
+        return host or "—"
+
     async def _send_gather_instructions(self, interaction: discord.Interaction, session: dict):
         instructions = session.get("instructions") or (
             f"1. Запустите **WARDOGS**.\n2. Откройте список игровых серверов и найдите **{session.get('serverName') or session.get('label') or 'WARDOGS'}**.\n3. Подключитесь к этому серверу и дождитесь загрузки."
         )
         embed = discord.Embed(color=0x3498DB, title=f"🎮 Подключение · {session.get('label', '')}", description=instructions)
+        embed.add_field(name="🆔 ID сервера", value=self._server_public_id(session.get("serverId") or ""), inline=True)
         voice_ref = f"<#{config.SEED_VOICE_CHANNEL_ID}>" if config.SEED_VOICE_CHANNEL_ID else "голосовой канал сидинга"
         rules_ref = f"<#{config.SEED_RULES_CHANNEL_ID}>" if config.SEED_RULES_CHANNEL_ID else "канал правил"
         embed.add_field(name="🐾 Если участвуете в сидинге",
