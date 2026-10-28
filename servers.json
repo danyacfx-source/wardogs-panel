@@ -20,6 +20,16 @@
       "token": "",
       "timeout": 45,
       "connect_url": ""
+    },
+    {
+      "id": "ru3",
+      "name": "WARDOGS RU #3",
+      "scheme": "http",
+      "host": "162.33.28.17",
+      "port": 9011,
+      "token": "",
+      "timeout": 45,
+      "connect_url": ""
     }
   ]
 }
