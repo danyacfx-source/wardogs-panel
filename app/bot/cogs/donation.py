@@ -703,12 +703,6 @@ class DonationCog(commands.Cog):
                     await self._send_checkout(interaction, order)
                     return
 
-            if interaction.type == discord.InteractionType.application_command:
-                cmd = interaction.data.get("name", "")
-                if cmd == "donate":
-                    await self._cmd_status(interaction)
-                elif cmd == "donation-admin":
-                    await self._cmd_admin(interaction)
         except ManualDonationError as e:
             await self._respond_error(interaction, str(e))
         except Exception as e:
