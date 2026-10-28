@@ -1552,8 +1552,12 @@ class SeedingCog(commands.Cog):
         instructions = session.get("instructions") or (
             f"1. Запустите **WARDOGS**.\n2. Откройте список игровых серверов и найдите **{session.get('serverName') or session.get('label') or 'WARDOGS'}**.\n3. Подключитесь к этому серверу и дождитесь загрузки."
         )
-        embed = discord.Embed(color=0x3498DB, title=f"🎮 Подключение · {session.get('label', '')}", description=instructions)
-        embed.add_field(name="🆔 ID сервера", value=self._server_public_id(session.get("serverId") or ""), inline=True)
+        server_id = self._server_public_id(session.get("serverId") or "")
+        embed = discord.Embed(
+            color=0x3498DB,
+            title=f"🎮 Подключение · {session.get('label', '')}",
+            description=f"{instructions}\n\n🆔 ID сервера:\n`{server_id}`",
+        )
         voice_ref = f"<#{config.SEED_VOICE_CHANNEL_ID}>" if config.SEED_VOICE_CHANNEL_ID else "голосовой канал сидинга"
         rules_ref = f"<#{config.SEED_RULES_CHANNEL_ID}>" if config.SEED_RULES_CHANNEL_ID else "канал правил"
         embed.add_field(name="🐾 Если участвуете в сидинге",
