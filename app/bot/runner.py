@@ -79,6 +79,9 @@ async def on_app_command_error(interaction: discord.Interaction, error: Exceptio
         message = "Объект не найден (возможно, был удалён)."
     elif isinstance(original, commands.CheckFailure):
         return
+    else:
+        detail = str(original).strip() or original.__class__.__name__
+        message = f"Произошла ошибка: {detail[:300]}"
     try:
         if interaction.response.is_done():
             await interaction.followup.send(message, ephemeral=True)
