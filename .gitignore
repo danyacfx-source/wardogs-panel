@@ -9,6 +9,12 @@ site.db
 *.log
 _local/
 
+# Отладочные/диагностические скрипты (могут содержать захардкоженные токены)
+tools/_*.py
+tools/check_*.py
+tools/list_cmds.py
+tools/sync_test.py
+
 # Python-generated files
 __pycache__/
 *.py[cod]
