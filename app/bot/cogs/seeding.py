@@ -427,6 +427,7 @@ class SeedingCog(commands.Cog):
         self.bot = bot
         self.rcon: WardogsRconClient | None = None
         self.rcon2: WardogsRconClient | None = None
+        self.rcon3: WardogsRconClient | None = None
         self.donations = DonationFeedService()
         self._seed_running = False
         self._vip_running = False
@@ -463,6 +464,11 @@ class SeedingCog(commands.Cog):
         self.rcon2 = (
             self._make_rcon(config.SEED_RCON_2_URL, config.SEED_RCON_2_PASSWORD, "second")
             if config.SEED_RCON_2_URL and config.SEED_RCON_2_PASSWORD
+            else None
+        )
+        self.rcon3 = (
+            self._make_rcon(config.SEED_RCON_3_URL, config.SEED_RCON_3_PASSWORD, "third")
+            if config.SEED_RCON_3_URL and config.SEED_RCON_3_PASSWORD
             else None
         )
         # Warm-up capabilities (non-fatal)
@@ -664,6 +670,8 @@ class SeedingCog(commands.Cog):
             await self.rcon.close()
         if self.rcon2:
             await self.rcon2.close()
+        if self.rcon3:
+            await self.rcon3.close()
 
     def _make_rcon(self, url: str, password: str, label: str) -> WardogsRconClient | None:
         if not url or not password:
@@ -678,7 +686,7 @@ class SeedingCog(commands.Cog):
         )
 
     async def _warmup_rcon(self):
-        for client in (self.rcon, self.rcon2):
+        for client in (self.rcon, self.rcon2, self.rcon3):
             if not client:
                 continue
             try:
@@ -693,7 +701,16 @@ class SeedingCog(commands.Cog):
             out.append(("main", "Сервер 1", self.rcon))
         if self.rcon2:
             out.append(("second", "Сервер 2", self.rcon2))
+        if self.rcon3:
+            out.append(("third", "Сервер 3", self.rcon3))
         return out
+
+    def _rcon_for(self, server_id: str) -> WardogsRconClient | None:
+        return {"main": self.rcon, "second": self.rcon2, "third": self.rcon3}.get(server_id)
+
+    @staticmethod
+    def _label_for(server_id: str) -> str:
+        return {"main": "Сервер 1", "second": "Сервер 2", "third": "Сервер 3"}.get(server_id, server_id)
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
@@ -750,7 +767,7 @@ class SeedingCog(commands.Cog):
             try:
                 players, status = await asyncio.gather(client.players(), client.status())
                 population = max(len(players), status["player_count"])
-                gate_key = "population_gate" if sid == "main" else "population_gate_second"
+                gate_key = "population_gate" if sid == "main" else f"population_gate_{sid}"
                 gate = seed_get_state(gate_key, {"blocked": False, "belowSince": None}) or {"blocked": False, "belowSince": None}
                 if population >= config.SEED_STOP_PLAYER_COUNT:
                     gate = {"blocked": True, "belowSince": None}
@@ -1438,7 +1455,7 @@ class SeedingCog(commands.Cog):
                 seed_audit("gather_expired", "system", {"id": session.get("id"), "server": server_id})
                 changed = True
                 continue
-            client = self.rcon if server_id == "main" else self.rcon2
+            client = self._rcon_for(server_id)
             if not client:
                 continue
             try:
@@ -1546,6 +1563,8 @@ class SeedingCog(commands.Cog):
         """Публичный ID (UUID) игрового сервера из конфига."""
         if server_id == "second":
             return config.SEED_SERVER_ID_SECOND or "—"
+        if server_id == "third":
+            return config.SEED_SERVER_ID_THIRD or "—"
         return config.SEED_SERVER_ID_MAIN or "—"
 
     async def _send_gather_instructions(self, interaction: discord.Interaction, session: dict):
@@ -2049,6 +2068,7 @@ class SeedingCog(commands.Cog):
         server=[
             app_commands.Choice(name="Сервер 1", value="main"),
             app_commands.Choice(name="Сервер 2", value="second"),
+            app_commands.Choice(name="Сервер 3", value="third"),
         ]
     )
     @app_commands.guild_only()
@@ -2064,11 +2084,8 @@ class SeedingCog(commands.Cog):
     ):
         await interaction.response.defer(ephemeral=True)
         server_id = server.value
-        if server_id == "main" and not self.rcon:
-            await interaction.followup.send("RCON сервера 1 не настроен.", ephemeral=True)
-            return
-        if server_id == "second" and not self.rcon2:
-            await interaction.followup.send("RCON сервера 2 не настроен.", ephemeral=True)
+        if not self._rcon_for(server_id):
+            await interaction.followup.send(f"RCON {self._label_for(server_id).lower()} не настроен.", ephemeral=True)
             return
         target_channel = channel or interaction.channel
         if not isinstance(target_channel, discord.TextChannel):
@@ -2084,8 +2101,8 @@ class SeedingCog(commands.Cog):
         if existing and existing.get("status") == "active" and now < existing.get("expiresAt", 0):
             await interaction.followup.send("Для этого сервера уже идёт активный сбор. Дождитесь завершения или отмены.", ephemeral=True)
             return
-        client = self.rcon if server_id == "main" else self.rcon2
-        label = "Сервер 1" if server_id == "main" else "Сервер 2"
+        client = self._rcon_for(server_id)
+        label = self._label_for(server_id)
         population = None
         max_players = None
         server_name = ""
@@ -2155,6 +2172,7 @@ class SeedingCog(commands.Cog):
         server=[
             app_commands.Choice(name="Сервер 1", value="main"),
             app_commands.Choice(name="Сервер 2", value="second"),
+            app_commands.Choice(name="Сервер 3", value="third"),
         ]
     )
     @app_commands.guild_only()
@@ -2165,7 +2183,7 @@ class SeedingCog(commands.Cog):
         if not session:
             await interaction.followup.send("Для этого сервера сбор ещё не объявлялся.", ephemeral=True)
             return
-        client = self.rcon if server.value == "main" else self.rcon2
+        client = self._rcon_for(server.value)
         if client and session.get("status") == "active":
             try:
                 status = await client.status()
@@ -2188,6 +2206,7 @@ class SeedingCog(commands.Cog):
         server=[
             app_commands.Choice(name="Сервер 1", value="main"),
             app_commands.Choice(name="Сервер 2", value="second"),
+            app_commands.Choice(name="Сервер 3", value="third"),
         ]
     )
     @app_commands.guild_only()
@@ -2229,7 +2248,7 @@ class SeedingCog(commands.Cog):
             return
         await interaction.response.defer(ephemeral=True)
         lines = [f"**Discord:** OK ({self.bot.user})", f"**Пользователей:** {len(seed_list_users())}"]
-        for label, client in (("Сервер 1", self.rcon), ("Сервер 2", self.rcon2)):
+        for label, client in (("Сервер 1", self.rcon), ("Сервер 2", self.rcon2), ("Сервер 3", self.rcon3)):
             if not client:
                 lines.append(f"**{label} RCON:** не настроен")
                 continue
@@ -2607,7 +2626,7 @@ class SeedingCog(commands.Cog):
             created.append((display_name, steam_id))
             if reserved:
                 rcon_ok = 0
-                for label, client in (("Сервер 1", self.rcon), ("Сервер 2", self.rcon2)):
+                for label, client in (("Сервер 1", self.rcon), ("Сервер 2", self.rcon2), ("Сервер 3", self.rcon3)):
                     if not client:
                         continue
                     try:
