@@ -232,7 +232,13 @@ class DonationCog(commands.Cog):
     )
 
     async def _admin_guild(self, interaction: discord.Interaction):
-        member_perms = interaction.member.permissions if interaction.member else None
+        member_perms = getattr(interaction, "permissions", None)
+        if member_perms is None:
+            member = getattr(interaction, "member", None)
+            member_perms = getattr(member, "permissions", None) if member is not None else None
+        if member_perms is None:
+            user = getattr(interaction, "user", None)
+            member_perms = getattr(user, "guild_permissions", None) if user is not None else None
         if not member_perms or not member_perms.manage_guild:
             await interaction.response.send_message("Недостаточно прав", ephemeral=True)
             return None
