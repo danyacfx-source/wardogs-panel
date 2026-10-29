@@ -200,35 +200,60 @@ class PgConnection:
     is_pg = True
 
     def __init__(self, dsn: str, schema: str | None = None):
+        self._dsn = dsn
+        self._schema = schema
+        self._conn = None
+        self._connect()
+
+    def _connect(self) -> None:
         import psycopg
         from psycopg.rows import dict_row
 
-        self._conn = psycopg.connect(dsn, autocommit=True)
-        self._conn.row_factory = dict_row
-        if schema:
-            self._conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
-            self._conn.execute(f'SET search_path TO "{schema}", public')
+        conn = psycopg.connect(self._dsn, autocommit=True)
+        conn.row_factory = dict_row
+        try:
+            if self._schema:
+                conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{self._schema}"')
+                conn.execute(f'SET search_path TO "{self._schema}", public')
+        except Exception:
+            conn.close()
+            raise
+        self._conn = conn
+
+    def _ensure_open(self) -> None:
+        # PostgreSQL can close idle connections without restarting the bot.
+        if self._conn is None or self._conn.closed:
+            self._connect()
 
     def execute(self, sql: str, params=None):
         from psycopg import errors as pg_errors
 
         pg_sql = translate(sql)
-        try:
-            if params is None:
-                return self._conn.execute(pg_sql)
-            return self._conn.execute(pg_sql, tuple(params))
-        except pg_errors.UniqueViolation as exc:
-            raise sqlite3.IntegrityError(str(exc)) from exc
-        except pg_errors.IntegrityError as exc:
-            raise sqlite3.IntegrityError(str(exc)) from exc
-        except pg_errors.Error as exc:
-            raise sqlite3.OperationalError(str(exc)) from exc
+        # Retry a lost connection only for plain SELECT statements. Writes may
+        # already have committed before a network failure: never replay them.
+        read_only = pg_sql.lstrip().upper().startswith("SELECT ")
+        for attempt in range(2 if read_only else 1):
+            try:
+                self._ensure_open()
+                if params is None:
+                    return self._conn.execute(pg_sql)
+                return self._conn.execute(pg_sql, tuple(params))
+            except pg_errors.UniqueViolation as exc:
+                raise sqlite3.IntegrityError(str(exc)) from exc
+            except pg_errors.IntegrityError as exc:
+                raise sqlite3.IntegrityError(str(exc)) from exc
+            except pg_errors.Error as exc:
+                if read_only and attempt == 0 and self._conn is not None and self._conn.closed:
+                    continue
+                raise sqlite3.OperationalError(str(exc)) from exc
+        raise RuntimeError("Unreachable PostgreSQL retry state")
 
     def executemany(self, sql: str, seq_of_params):
         from psycopg import errors as pg_errors
 
         pg_sql = translate(sql)
         try:
+            self._ensure_open()
             with self._conn.cursor() as cur:
                 return cur.executemany(pg_sql, [tuple(p) for p in seq_of_params])
         except pg_errors.UniqueViolation as exc:
