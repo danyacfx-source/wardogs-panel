@@ -57,6 +57,7 @@ from .clans import (
 from .vip import (
     save_vip_slot,
     list_vip_slots,
+    list_active_vip_slots,
     list_player_vip_slots,
     get_vip_slot,
     mark_vip_sync,
