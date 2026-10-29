@@ -170,6 +170,52 @@ def _panel_vip_active_by_discord(discord_id: str) -> bool:
         return False
 
 
+
+def _ensure_vip_role_site_slots(
+    panel_db, steam_id: str, display_name: str, server_ids: tuple[str, ...],
+    now: float, actor_id: str,
+) -> tuple[list[str], set[str]]:
+    """Fill missing/expired site VIP entries without touching active entitlements.
+
+    A new Discord-only VIP is permanent. If a player already has active paid
+    VIP, missing servers inherit that entitlement's expiry instead of silently
+    turning a time-limited purchase into permanent access.
+    """
+    rows = panel_db.execute(
+        "SELECT server_id, expires_utc FROM vip_slots WHERE steam_id = ? "
+        "AND (expires_utc IS NULL OR expires_utc > ?)",
+        (steam_id, now),
+    ).fetchall()
+    active_ids = {str(row["server_id"]) for row in rows}
+    if not rows or any(row["expires_utc"] is None for row in rows):
+        expiry = None
+    else:
+        expiry = max(float(row["expires_utc"]) for row in rows)
+
+    created: list[str] = []
+    for sid in server_ids:
+        if sid in active_ids:
+            continue
+        cursor = panel_db.execute(
+            "INSERT INTO vip_slots "
+            "(id, server_id, steam_id, display_name, expires_utc, note, created_by, "
+            "created_utc, updated_utc, sync_state, sync_error) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', '') "
+            "ON CONFLICT(server_id, steam_id) DO UPDATE SET "
+            "display_name = excluded.display_name, expires_utc = excluded.expires_utc, "
+            "note = excluded.note, updated_utc = excluded.updated_utc, "
+            "synced_utc = NULL, sync_state = 'pending', sync_error = '' "
+            "WHERE vip_slots.expires_utc IS NOT NULL "
+            "AND vip_slots.expires_utc <= excluded.updated_utc",
+            (
+                secrets.token_hex(12), sid, steam_id, display_name, expiry,
+                "Синхронизация Discord-роль VIP", actor_id, now, now,
+            ),
+        )
+        if cursor.rowcount:
+            created.append(sid)
+    return created, active_ids
+
 def _fmt_duration(seconds: int) -> str:
     seconds = max(0, int(seconds))
     hours = seconds // 3600
@@ -2565,12 +2611,24 @@ class SeedingCog(commands.Cog):
         if not vip_role:
             await interaction.followup.send("VIP-роль не настроена (VIP_ROLE_ID_SEED).", ephemeral=True)
             return
+        server_ids = tuple(dict.fromkeys(config.VIP_PANEL_SERVER_IDS))
+        if not server_ids:
+            await interaction.followup.send("Игровые серверы не настроены в servers.json.", ephemeral=True)
+            return
         panel_db = get_panel_conn()
         now = time.time()
         created: list[tuple[str, str]] = []
+        created_slots = 0
+        repaired: list[str] = []
         skipped: list[str] = []
         no_binding: list[str] = []
         rcon_errors: list[str] = []
+        rcon_confirmed = 0
+        rcon_clients = {
+            "ru1": ("Сервер 1", self.rcon),
+            "ru2": ("Сервер 2", self.rcon2),
+            "ru3": ("Сервер 3", self.rcon3),
+        }
         for member in guild.members:
             if member.bot or vip_role not in member.roles:
                 continue
@@ -2603,54 +2661,60 @@ class SeedingCog(commands.Cog):
                         "discord_name = excluded.discord_name, guild_member = 1, updated_utc = excluded.updated_utc",
                         (steam_id, str(member.id), member.display_name[:100], now),
                     )
-            active = panel_db.execute(
-                "SELECT 1 FROM vip_slots WHERE steam_id = ? AND (expires_utc IS NULL OR expires_utc > ?) LIMIT 1",
-                (steam_id, now),
-            ).fetchone()
-            if active:
-                skipped.append(steam_id)
-                continue
             display_name = " ".join(member.display_name.split())[:120]
-            for sid in ("ru1", "ru2"):
-                panel_db.execute(
-                    "INSERT INTO vip_slots "
-                    "(id, server_id, steam_id, display_name, expires_utc, note, created_by, "
-                    "created_utc, updated_utc, sync_state, sync_error) "
-                    "VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, 'pending', '') "
-                    "ON CONFLICT(server_id, steam_id) DO UPDATE SET "
-                    "expires_utc = NULL, updated_utc = ?, sync_state = 'pending', sync_error = ''",
-                    (
-                        secrets.token_hex(12), sid, steam_id, display_name,
-                        "Синхронизация Discord-роль VIP",
-                        f"discord-role-sync:{interaction.user.id}",
-                        now, now, now,
-                    ),
-                )
-            created.append((display_name, steam_id))
+            added, active_ids = _ensure_vip_role_site_slots(
+                panel_db, steam_id, display_name, server_ids, now,
+                f"discord-role-sync:{interaction.user.id}",
+            )
+            if added:
+                created.append((display_name, steam_id))
+                created_slots += len(added)
+                if active_ids:
+                    repaired.append(steam_id)
+            else:
+                skipped.append(steam_id)
+
+            # Explicit RCON sync verifies each individual server. Successful
+            # RU1 does not mark pending RU2/RU3 rows as synchronized.
             if reserved:
-                rcon_ok = 0
-                for label, client in (("Сервер 1", self.rcon), ("Сервер 2", self.rcon2), ("Сервер 3", self.rcon3)):
-                    if not client:
+                for sid in server_ids:
+                    label, client = rcon_clients.get(sid, (sid, None))
+                    if client is None:
+                        rcon_errors.append(f"{steam_id} · {label}: RCON не настроен")
                         continue
                     try:
-                        await client.set_reserved(steam_id, True)
-                        rcon_ok += 1
+                        result = await client.set_reserved(steam_id, True)
+                        if not result.get("active"):
+                            rcon_errors.append(f"{steam_id} · {label}: слот не подтверждён")
+                            continue
+                        rcon_confirmed += 1
+                        panel_db.execute(
+                            "UPDATE vip_slots SET sync_state = 'synced', "
+                            "sync_error = '', synced_utc = ?, updated_utc = ? "
+                            "WHERE steam_id = ? AND server_id = ? AND sync_state = 'pending'",
+                            (now, now, steam_id, sid),
+                        )
                     except Exception as e:
                         rcon_errors.append(f"{steam_id} · {label}: {e}")
-                if rcon_ok:
-                    panel_db.execute(
-                        "UPDATE vip_slots SET sync_state = 'synced', synced_utc = ?, updated_utc = ? "
-                        "WHERE steam_id = ? AND sync_state = 'pending'",
-                        (now, now, steam_id),
-                    )
         seed_audit(
             "vip_role_sync",
             str(interaction.user.id),
-            {"created": len(created), "skipped_active": len(skipped), "no_binding": len(no_binding)},
+            {
+                "created_members": len(created),
+                "created_slots": created_slots,
+                "repaired_members": len(repaired),
+                "skipped_active": len(skipped),
+                "no_binding": len(no_binding),
+                "server_ids": list(server_ids),
+                "rcon_confirmed": rcon_confirmed,
+                "rcon_errors": len(rcon_errors),
+            },
         )
         lines = [
-            f"Создано слотов: **{len(created)}** (постоянные, оба сервера)",
-            f"Уже активны на сайте: **{len(skipped)}**",
+            f"Создано/восстановлено слотов: **{created_slots}** "
+            f"(для **{len(created)}** игроков, серверов: **{len(server_ids)}**)",
+            f"Дополнены недостающие серверы у VIP: **{len(repaired)}**",
+            f"Уже активны на всех серверах: **{len(skipped)}**",
             f"Без привязки Steam: **{len(no_binding)}**",
         ]
         if created:
@@ -2672,9 +2736,15 @@ class SeedingCog(commands.Cog):
             description="\n".join(lines),
         )
         if reserved:
-            embed.set_footer(text="Reserved slots выданы через RCON; остальные слоты в статусе pending (панель дособерёт).")
+            embed.set_footer(
+                text=f"RCON подтвердил {rcon_confirmed} слотов. "
+                "Неподтверждённые записи остались в pending; проверьте ошибки выше."
+            )
         else:
-            embed.set_footer(text="Слоты на сайте созданы; роль VIP бот больше не снимет. Reserved slot на серверах не менялся.")
+            embed.set_footer(
+                text="VIP-слоты на сайте дополнены; существующие сроки сохранены. "
+                "Reserved slots через RCON не менялись."
+            )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     @admin_group.command(name="backup", description="Отправить снимок состояния сидинга в канал бэкапов")
