@@ -1214,12 +1214,16 @@ class SeedingCog(commands.Cog):
             if old.get("userId") in selected:
                 continue
             await self._set_super_seeder_role(old.get("discordId") or "", False)
-            if old.get("slotOwnership") == "award" and not ReservedProtectionService.is_protected(old.get("userId", ""), old.get("steamId", "")):
+            owns_any = old.get("slotOwnership") == "award" or any(
+                value == "award" for value in (old.get("slotOwnershipByServer") or {}).values()
+            )
+            if owns_any and not ReservedProtectionService.is_protected(old.get("userId", ""), old.get("steamId", "")):
                 cleanup.append({
                     "userId": old.get("userId"),
                     "discordId": old.get("discordId"),
                     "steamId": old.get("steamId"),
-                    "slotOwnership": "award",
+                    "slotOwnership": old.get("slotOwnership", "unknown"),
+                    "slotOwnershipByServer": dict(old.get("slotOwnershipByServer") or {}),
                     "status": "pending_remove",
                     "reason": "ranking_rotated",
                     "queuedAt": now,
@@ -1238,6 +1242,7 @@ class SeedingCog(commands.Cog):
                 "active": True,
                 "roleStatus": (prior or {}).get("roleStatus", "checking"),
                 "slotOwnership": (prior or {}).get("slotOwnership", "unknown"),
+                "slotOwnershipByServer": dict((prior or {}).get("slotOwnershipByServer") or {}),
                 "slotStatus": (prior or {}).get("slotStatus", "checking"),
                 "slotProtected": ReservedProtectionService.is_protected(row["id"], row["steam_id"]),
             })
@@ -1266,6 +1271,7 @@ class SeedingCog(commands.Cog):
             log.warning("weekly_award_rcon_unavailable: %s", e)
             for w in active:
                 w["slotStatus"] = "waiting_rcon"
+            await self._weekly_reconcile_secondary_awards(state)
             seed_set_state("weekly_super_seeders_v1", state)
             return
 
@@ -1303,39 +1309,93 @@ class SeedingCog(commands.Cog):
             except Exception as e:
                 winner["slotStatus"] = "waiting_rcon"
                 log.warning("weekly slot rcon failed: %s", e)
+        await self._weekly_reconcile_secondary_awards(state)
         seed_set_state("weekly_super_seeders_v1", state)
 
-    async def _weekly_reconcile_cleanup(self, state: dict):
-        if not self.rcon or not state.get("cleanup"):
-            return
-        try:
-            snapshot = await self.rcon.reserved_snapshot()
-        except Exception as e:
-            log.warning("weekly_cleanup_rcon_unavailable: %s", e)
-            return
-        live = snapshot.get("live") or []
-        doc = snapshot.get("document") or []
-        for entry in list(state["cleanup"]):
-            steam_id = entry.get("steamId") or ""
-            if ReservedProtectionService.is_protected(entry.get("userId", ""), steam_id):
-                state["cleanup"] = [e for e in state["cleanup"] if e is not entry]
-                continue
-            membership = seed_get_vip_membership(entry.get("userId") or "")
-            if membership and membership["state"] != "inactive":
-                entry["status"] = "waiting_vip"
-                continue
-            if steam_id not in live and steam_id not in doc:
-                state["cleanup"] = [e for e in state["cleanup"] if e is not entry]
+    async def _weekly_reconcile_secondary_awards(self, state: dict):
+        """Grant weekly reserved slots on RU2/RU3, remembering which were ours."""
+        winners = [w for w in state.get("winners", []) if w.get("active") is not False]
+        for sid, label, client in self._servers():
+            if sid == "main" or not winners:
                 continue
             try:
-                result = await self.rcon.set_reserved(steam_id, False)
-                if result.get("active") is False:
-                    state["cleanup"] = [e for e in state["cleanup"] if e is not entry]
+                snapshot = await client.reserved_snapshot()
+            except Exception as exc:
+                log.warning("Weekly award %s unavailable: %s", label, exc)
+                continue
+            live = snapshot.get("live") or []
+            document = snapshot.get("document") or []
+            for winner in winners:
+                steam_id = winner.get("steamId") or ""
+                if not steam_id:
+                    continue
+                owners = winner.setdefault("slotOwnershipByServer", {})
+                protected = ReservedProtectionService.is_protected(winner.get("userId", ""), steam_id)
+                present = steam_id in live or steam_id in document
+                if sid not in owners:
+                    owners[sid] = "external" if protected or present else "award"
+                if steam_id not in live:
+                    try:
+                        result = await client.set_reserved(steam_id, True)
+                        winner.setdefault("slotStatusByServer", {})[sid] = (
+                            "active" if result.get("active") else "waiting_rcon"
+                        )
+                    except Exception as exc:
+                        winner.setdefault("slotStatusByServer", {})[sid] = "waiting_rcon"
+                        log.warning("Weekly award %s/%s failed: %s", steam_id, label, exc)
                 else:
-                    entry["status"] = "waiting_rcon"
-            except Exception as e:
+                    winner.setdefault("slotStatusByServer", {})[sid] = "active"
+
+    async def _weekly_reconcile_cleanup(self, state: dict):
+        if not state.get("cleanup"):
+            return
+        clients = {sid: (label, client) for sid, label, client in self._servers()}
+        for entry in list(state["cleanup"]):
+            steam_id = entry.get("steamId") or ""
+            user_id = entry.get("userId") or ""
+            discord_id = entry.get("discordId") or ""
+            if ReservedProtectionService.is_protected(user_id, steam_id):
+                state["cleanup"].remove(entry)
+                continue
+            membership = seed_get_vip_membership(user_id)
+            if (
+                (membership and membership["state"] != "inactive")
+                or self.donations.active(discord_id)
+                or _panel_vip_active(steam_id)
+            ):
+                entry["status"] = "waiting_vip"
+                continue
+            owners = entry.setdefault("slotOwnershipByServer", {})
+            # Legacy awards have ownership stored only for the first server.
+            if entry.get("slotOwnership") == "award":
+                owners.setdefault("main", "award")
+            pending = False
+            for sid, owner in list(owners.items()):
+                if owner != "award":
+                    continue
+                label, client = clients.get(sid, (sid, None))
+                if not client:
+                    pending = True
+                    continue
+                try:
+                    snapshot = await client.reserved_snapshot()
+                    live = snapshot.get("live") or []
+                    document = snapshot.get("document") or []
+                    if steam_id in live or steam_id in document:
+                        result = await client.set_reserved(steam_id, False)
+                        if result.get("active") is not False:
+                            pending = True
+                            continue
+                    owners.pop(sid, None)
+                    if sid == "main":
+                        entry["slotOwnership"] = "cleared"
+                except Exception as exc:
+                    pending = True
+                    log.warning("Weekly cleanup %s/%s failed: %s", steam_id, label, exc)
+            if pending:
                 entry["status"] = "waiting_rcon"
-                log.warning("weekly cleanup rcon failed: %s", e)
+            else:
+                state["cleanup"].remove(entry)
         seed_set_state("weekly_super_seeders_v1", state)
 
     async def _set_super_seeder_role(self, discord_id: str, present: bool):
