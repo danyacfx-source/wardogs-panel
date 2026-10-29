@@ -2953,6 +2953,64 @@ async def _has_active_vip_slot_anywhere(steam_id: str) -> bool:
     return False
 
 
+async def reconcile_vip_slots():
+    """Backfill active VIP to every configured game server and retry pending slots.
+
+    Existing active entitlements and paid expiry are never overwritten.
+    Called periodically, so a newly added RU3 and temporary RCON outages
+    are repaired without requiring a manual Discord command.
+    """
+    active = await db.list_active_vip_slots()
+    if not active or not POOL:
+        return {"created": 0, "synced": 0, "failed": 0}
+
+    by_steam = {}
+    configured = set(POOL)
+    for slot in active:
+        if slot["server_id"] in configured:
+            by_steam.setdefault(slot["steam_id"], {})[slot["server_id"]] = slot
+
+    stats = {"created": 0, "synced": 0, "failed": 0}
+    for steam_id, slots in by_steam.items():
+        source = next(
+            (s for s in slots.values() if s["expires_utc"] is None),
+            None,
+        )
+        if source is None:
+            source = max(slots.values(), key=lambda s: float(s["expires_utc"]))
+        expiry = source["expires_utc"]
+
+        for server_id in POOL:
+            item = slots.get(server_id)
+            if item is None:
+                try:
+                    item = await db.save_vip_slot(
+                        server_id, steam_id, source["display_name"], expiry,
+                        source["note"], source["created_by"] or "vip-mirror",
+                    )
+                except Exception:
+                    log.exception("VIP mirror could not be saved for %s/%s", steam_id, server_id)
+                    stats["failed"] += 1
+                    continue
+                stats["created"] += 1
+            elif item["sync_state"] not in ("pending", "error"):
+                continue
+
+            try:
+                synced, error = await _sync_vip_record(item, add=True)
+                if synced:
+                    stats["synced"] += 1
+                else:
+                    stats["failed"] += 1
+                    log.warning("VIP mirror not synced for %s/%s: %s", steam_id, server_id, error)
+            except Exception:
+                stats["failed"] += 1
+                log.exception("VIP mirror failed for %s/%s", steam_id, server_id)
+    if stats["created"] or stats["failed"]:
+        log.info("VIP reconcile: %s", stats)
+    return stats
+
+
 async def expire_vip_slots():
     """Background-safe expiry pass called by the application maintenance loop."""
     for item in await db.list_expired_vip_slots():
