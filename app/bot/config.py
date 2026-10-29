@@ -100,6 +100,11 @@ CLAN_ADMIN_ROLE_ID = _int("CLAN_ADMIN_ROLE_ID")
 CLAN_BACKUP_CHANNEL_ID = _int("CLAN_BACKUP_CHANNEL_ID")
 
 # ---- Seeding ----
+# VIP role -> panel synchronization must cover every configured game server,
+# independently of the (possibly overridden) SW_SERVERS side-swap list.
+VIP_PANEL_SERVER_IDS = tuple(server["id"] for server in _panel.SERVERS)
+
+
 def _seed_rcon_config(server_id: str, url_key: str, password_key: str,
                       legacy_url_key: str, legacy_password_key: str) -> tuple[str, str]:
     """Use the panel's existing servers.json/RCON_TOKEN_* unless overridden.
