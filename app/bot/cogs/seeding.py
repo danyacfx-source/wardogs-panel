@@ -766,33 +766,36 @@ class SeedingCog(commands.Cog):
         for sid, label, client in self._servers():
             try:
                 players, status = await asyncio.gather(client.players(), client.status())
-                population = max(len(players), status["player_count"])
-                gate_key = "population_gate" if sid == "main" else f"population_gate_{sid}"
-                gate = seed_get_state(gate_key, {"blocked": False, "belowSince": None}) or {"blocked": False, "belowSince": None}
-                if population >= config.SEED_STOP_PLAYER_COUNT:
-                    gate = {"blocked": True, "belowSince": None}
-                elif gate.get("blocked"):
-                    if gate.get("belowSince") is None:
-                        gate["belowSince"] = now
-                    if now - gate["belowSince"] >= config.SEED_RESUME_BELOW_SECONDS * 1000:
-                        gate = {"blocked": False, "belowSince": None}
-                else:
-                    gate["belowSince"] = None
-                seed_set_state(gate_key, gate)
-                snap = {
-                    "id": sid,
-                    "label": label,
-                    "state": "population_limit" if gate.get("blocked") else "active",
-                    "population": population,
-                    "maxPlayers": status.get("max_players"),
-                    "players": players,
-                }
-                all_snapshots.append(snap)
-                if snap["state"] == "active":
-                    active_servers.append(snap)
             except Exception as e:
                 log.warning("RCON poll failed %s: %s", sid, e)
                 all_snapshots.append({"id": sid, "label": label, "state": "rcon_unavailable", "players": [], "population": None})
+                continue
+
+            # DB failures are not RCON failures: let seed_loop report them.
+            population = max(len(players), status["player_count"])
+            gate_key = "population_gate" if sid == "main" else f"population_gate_{sid}"
+            gate = seed_get_state(gate_key, {"blocked": False, "belowSince": None}) or {"blocked": False, "belowSince": None}
+            if population >= config.SEED_STOP_PLAYER_COUNT:
+                gate = {"blocked": True, "belowSince": None}
+            elif gate.get("blocked"):
+                if gate.get("belowSince") is None:
+                    gate["belowSince"] = now
+                if now - gate["belowSince"] >= config.SEED_RESUME_BELOW_SECONDS * 1000:
+                    gate = {"blocked": False, "belowSince": None}
+            else:
+                gate["belowSince"] = None
+            seed_set_state(gate_key, gate)
+            snap = {
+                "id": sid,
+                "label": label,
+                "state": "population_limit" if gate.get("blocked") else "active",
+                "population": population,
+                "maxPlayers": status.get("max_players"),
+                "players": players,
+            }
+            all_snapshots.append(snap)
+            if snap["state"] == "active":
+                active_servers.append(snap)
 
         eligible: dict[str, dict] = {}
         if active_servers and config.SEED_VOICE_CHANNEL_ID:
