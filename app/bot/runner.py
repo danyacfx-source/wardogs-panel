@@ -214,7 +214,13 @@ async def _lease_heartbeat():
     except Exception:
         return
     while True:
-        database.renew_lease(RUN_ID)
+        try:
+            database.renew_lease(RUN_ID)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # A transient database outage must not permanently stop the lease task.
+            log.exception("Bot lease heartbeat failed")
         await asyncio.sleep(10)
 
 
