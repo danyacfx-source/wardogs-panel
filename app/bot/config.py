@@ -100,12 +100,39 @@ CLAN_ADMIN_ROLE_ID = _int("CLAN_ADMIN_ROLE_ID")
 CLAN_BACKUP_CHANNEL_ID = _int("CLAN_BACKUP_CHANNEL_ID")
 
 # ---- Seeding ----
-SEED_RCON_URL = os.getenv("SEED_RCON_URL", os.getenv("WARDOGS_RCON_URL", ""))
-SEED_RCON_PASSWORD = os.getenv("SEED_RCON_PASSWORD", os.getenv("WARDOGS_RCON_PASSWORD", ""))
-SEED_RCON_2_URL = os.getenv("SEED_RCON_2_URL", os.getenv("WARDOGS_RCON_2_URL", ""))
-SEED_RCON_2_PASSWORD = os.getenv("SEED_RCON_2_PASSWORD", os.getenv("WARDOGS_RCON_2_PASSWORD", ""))
-SEED_RCON_3_URL = os.getenv("SEED_RCON_3_URL", os.getenv("WARDOGS_RCON_3_URL", ""))
-SEED_RCON_3_PASSWORD = os.getenv("SEED_RCON_3_PASSWORD", os.getenv("WARDOGS_RCON_3_PASSWORD", ""))
+def _seed_rcon_config(server_id: str, url_key: str, password_key: str,
+                      legacy_url_key: str, legacy_password_key: str) -> tuple[str, str]:
+    """Use the panel's existing servers.json/RCON_TOKEN_* unless overridden.
+
+    An explicit URL without a password must NOT inherit the token for a
+    different panel server: that could send credentials to an unintended host.
+    """
+    explicit_url = (os.getenv(url_key) or os.getenv(legacy_url_key) or "").strip()
+    explicit_password = (os.getenv(password_key) or os.getenv(legacy_password_key) or "").strip()
+    server = next((srv for srv in _panel.SERVERS if srv["id"] == server_id), None)
+    panel_url = (
+        f'{server["scheme"]}://{server["host"]}:{server["port"]}'
+        if server else ""
+    )
+    panel_password = str(server.get("token") or "").strip() if server else ""
+    return (
+        explicit_url or panel_url,
+        explicit_password or (panel_password if not explicit_url else ""),
+    )
+
+
+SEED_RCON_URL, SEED_RCON_PASSWORD = _seed_rcon_config(
+    "ru1", "SEED_RCON_URL", "SEED_RCON_PASSWORD",
+    "WARDOGS_RCON_URL", "WARDOGS_RCON_PASSWORD",
+)
+SEED_RCON_2_URL, SEED_RCON_2_PASSWORD = _seed_rcon_config(
+    "ru2", "SEED_RCON_2_URL", "SEED_RCON_2_PASSWORD",
+    "WARDOGS_RCON_2_URL", "WARDOGS_RCON_2_PASSWORD",
+)
+SEED_RCON_3_URL, SEED_RCON_3_PASSWORD = _seed_rcon_config(
+    "ru3", "SEED_RCON_3_URL", "SEED_RCON_3_PASSWORD",
+    "WARDOGS_RCON_3_URL", "WARDOGS_RCON_3_PASSWORD",
+)
 SEED_RCON_TIMEOUT_MS = _int("SEED_RCON_TIMEOUT_MS", _int("RCON_TIMEOUT_MS", 6000))
 SEED_RCON_RETRY = _int("SEED_RCON_RETRY", _int("RCON_RETRY_ATTEMPTS", 1))
 
