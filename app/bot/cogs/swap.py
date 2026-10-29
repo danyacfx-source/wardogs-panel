@@ -29,12 +29,14 @@ LINK_HINT = "Привяжите Steam: `/steam link` → получите код
 
 def _server_index(sid: str) -> int | None:
     """Нормализует id сервера: ru1/main/1, ru2/second/2, ru3/third/3."""
+    aliases = {"1": 0, "main": 0, "ru1": 0, "2": 1, "second": 1, "ru2": 1, "3": 2, "third": 2, "ru3": 2}
+    if sid in aliases:
+        return aliases[sid]
     ids = [str(s.get("id")) for s in config.SERVERS]
     if sid in ids:
         idx = ids.index(sid)
         return idx if idx < 3 else None
-    aliases = {"1": 0, "main": 0, "ru1": 0, "2": 1, "second": 1, "ru2": 1, "3": 2, "third": 2, "ru3": 2}
-    return aliases.get(sid)
+    return None
 
 
 def _get_rcon_client(sid: str) -> WardogsRconClient | None:
