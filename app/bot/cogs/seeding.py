@@ -940,6 +940,29 @@ class SeedingCog(commands.Cog):
         # in sync too, while tracking ownership so pre-existing slots survive.
         await self._vip_reconcile_secondary_servers(ids, now)
 
+    async def _try_activate_vip_all_servers(self, user_id: str, steam_id: str) -> bool:
+        """Start paid VIP time only after all three live RCON lists confirm it."""
+        clients = (
+            ("RU1", self.rcon),
+            ("RU2", self.rcon2),
+            ("RU3", self.rcon3),
+        )
+        for label, client in clients:
+            if client is None:
+                seed_set_vip_error(user_id, f"RCON {label} не настроен.")
+                return False
+            try:
+                live = await client.live_reserved_ids()
+            except Exception as exc:
+                log.warning("VIP activation check %s/%s failed: %s", steam_id, label, exc)
+                seed_set_vip_error(user_id, f"Ожидание RCON {label}.")
+                return False
+            if live is None or steam_id not in live:
+                seed_set_vip_error(user_id, f"Ожидание Reserved slot на {label}.")
+                return False
+        seed_activate_vip(user_id)
+        return True
+
     async def _vip_reconcile_secondary_servers(self, user_ids: set[str], now: int):
         state_key = "vip_secondary_slot_ownership_v1"
         state = seed_get_state(state_key, {}) or {}
@@ -988,6 +1011,8 @@ class SeedingCog(commands.Cog):
                         await client.set_reserved(steam_id, True)
                 except Exception as exc:
                     log.warning("VIP secondary reserved sync failed %s/%s: %s", steam_id, label, exc)
+            if membership and membership["state"] == "pending_add":
+                await self._try_activate_vip_all_servers(user_id, steam_id)
 
         # Expired entitlements must not delete pre-existing, protected or
         # independently purchased VIP reservations on any secondary server.
@@ -1071,14 +1096,14 @@ class SeedingCog(commands.Cog):
                     claims[steam_id] = {"discordId": discord_id, "owner": "bot"}
                 result = await self.rcon.set_reserved(steam_id, True)
                 if result.get("active") and member and member["state"] == "pending_add":
-                    seed_activate_vip(user_id)
+                    await self._try_activate_vip_all_servers(user_id, steam_id)
                 elif member and member["state"] == "pending_add":
                     seed_set_vip_error(user_id, "Ожидание Reserved slot на игровом сервере.")
                 elif not member:
                     # paid-only: ensure slot; no membership row needed
                     pass
             elif member and member["state"] == "pending_add":
-                seed_activate_vip(user_id)
+                await self._try_activate_vip_all_servers(user_id, steam_id)
             return
 
         # cleanup paid claim if no longer paid
@@ -1106,16 +1131,16 @@ class SeedingCog(commands.Cog):
                 member = seed_get_vip_membership(user_id)
             if member.get("managed_by_bot") == 0:
                 if steam_id in live:
-                    seed_activate_vip(user_id)
+                    await self._try_activate_vip_all_servers(user_id, steam_id)
                 else:
                     seed_set_vip_error(user_id, "Ожидание Reserved slot на игровом сервере.")
                 return
             if steam_id in live:
-                seed_activate_vip(user_id)
+                await self._try_activate_vip_all_servers(user_id, steam_id)
                 return
             result = await self.rcon.set_reserved(steam_id, True)
             if result.get("active"):
-                seed_activate_vip(user_id)
+                await self._try_activate_vip_all_servers(user_id, steam_id)
             else:
                 seed_set_vip_error(user_id, "Ожидание Reserved slot на игровом сервере.")
             return
