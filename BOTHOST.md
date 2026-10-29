@@ -48,6 +48,8 @@ WARDOGS_ADMIN_ROLES=
 # Allowlist действий админки: IP/CIDR через запятую. Пусто = без ограничений.
 WARDOGS_ADMIN_IPS=
 RCON_TOKEN_RU1=
+RCON_TOKEN_RU2=
+RCON_TOKEN_RU3=
 
 # Донаты (сайт-часть донатилки)
 DONATE_CHECKOUT_SECRET=
@@ -63,7 +65,17 @@ YOOMONEY_NOTIFICATION_SECRET=
 Секрет `WARDOGS_SERVERS_JSON` не применяйте: Bothost обрезает длинные значения
 переменных окружения и JSON ломается.
 
-Токен в JSON не нужен: для сервера `ru1` он берётся из `RCON_TOKEN_RU1`.
+Токены в JSON не нужны: `ru1`, `ru2`, `ru3` используют
+`RCON_TOKEN_RU1`, `RCON_TOKEN_RU2`, `RCON_TOKEN_RU3` соответственно.
+
+Встроенный Discord-бот сидинга использует те же адреса и токены серверов
+из `servers.json` автоматически. Команды `/seed-gather start`,
+`/seed-gather status` и `/seed-gather stop` работают для каждого
+из трёх серверов отдельно. Переменные `SEED_RCON_URL` / `SEED_RCON_PASSWORD`,
+`SEED_RCON_2_URL` / `SEED_RCON_2_PASSWORD`,
+`SEED_RCON_3_URL` / `SEED_RCON_3_PASSWORD` нужны только для переопределения
+параметров. Если указываете другой URL, задайте и пароль: токен из панели
+не должен автоматически отправляться на другой адрес.
 
 ## После первого запуска
 
