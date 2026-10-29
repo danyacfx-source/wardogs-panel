@@ -936,6 +936,106 @@ class SeedingCog(commands.Cog):
                 log.warning("vip_user_reconcile_failed user=%s: %s", user_id, e)
         if claims != seed_get_state("paid_slot_claims", {}):
             seed_set_state("paid_slot_claims", claims)
+        # Seeding-store VIPs are separate from site vip_slots: keep RU2/RU3
+        # in sync too, while tracking ownership so pre-existing slots survive.
+        await self._vip_reconcile_secondary_servers(ids, now)
+
+    async def _vip_reconcile_secondary_servers(self, user_ids: set[str], now: int):
+        state_key = "vip_secondary_slot_ownership_v1"
+        state = seed_get_state(state_key, {}) or {}
+        changed = False
+        clients = {sid: (label, client) for sid, label, client in self._servers() if sid != "main"}
+
+        for user_id in user_ids:
+            identity = seed_get_vip_identity_by_id(user_id)
+            if not identity or not identity.get("linked"):
+                continue
+            steam_id = identity["steam_id"]
+            discord_id = identity["discord_id"]
+            membership = seed_get_vip_membership(user_id)
+            active = (
+                self.donations.active(discord_id, now)
+                or bool(
+                    membership
+                    and (
+                        membership["state"] == "pending_add"
+                        or (
+                            membership["state"] == "active"
+                            and (membership.get("active_until") or 0) > now
+                        )
+                    )
+                )
+            )
+            if not active:
+                continue
+            entry = state.setdefault(steam_id, {
+                "userId": user_id, "discordId": discord_id, "servers": {},
+            })
+            owners = entry.setdefault("servers", {})
+            for sid, label, client in self._servers():
+                if sid == "main" or not client:
+                    continue
+                try:
+                    snapshot = await client.reserved_snapshot()
+                    live = snapshot.get("live") or []
+                    present = steam_id in live or steam_id in (snapshot.get("document") or [])
+                    if sid not in owners:
+                        owners[sid] = "external" if present or ReservedProtectionService.is_protected(
+                            user_id, steam_id
+                        ) else "bot"
+                        changed = True
+                    if steam_id not in live:
+                        await client.set_reserved(steam_id, True)
+                except Exception as exc:
+                    log.warning("VIP secondary reserved sync failed %s/%s: %s", steam_id, label, exc)
+
+        # Expired entitlements must not delete pre-existing, protected or
+        # independently purchased VIP reservations on any secondary server.
+        for steam_id, entry in list(state.items()):
+            user_id = entry.get("userId") or ""
+            discord_id = entry.get("discordId") or ""
+            membership = seed_get_vip_membership(user_id)
+            active = (
+                self.donations.active(discord_id, now)
+                or _panel_vip_active(steam_id)
+                or bool(
+                    membership and (
+                        membership["state"] == "pending_add"
+                        or (
+                            membership["state"] == "active"
+                            and (membership.get("active_until") or 0) > now
+                        )
+                    )
+                )
+            )
+            if active:
+                continue
+            if ReservedProtectionService.is_protected(user_id, steam_id):
+                del state[steam_id]
+                changed = True
+                continue
+            owners = entry.get("servers") or {}
+            for sid, owner in list(owners.items()):
+                if owner != "bot":
+                    del owners[sid]
+                    changed = True
+                    continue
+                _label, client = clients.get(sid, (sid, None))
+                if client is None:
+                    continue
+                try:
+                    result = await client.set_reserved(steam_id, False)
+                    if result.get("active") is False:
+                        del owners[sid]
+                        changed = True
+                except Exception as exc:
+                    log.warning("VIP secondary cleanup failed %s/%s: %s", steam_id, sid, exc)
+            if not owners:
+                del state[steam_id]
+                changed = True
+
+        if changed:
+            seed_set_state(state_key, state)
 
     async def _vip_reconcile_user(self, user_id: str, now: int, claims: dict):
         if not self.rcon:
