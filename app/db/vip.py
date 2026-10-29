@@ -68,6 +68,23 @@ async def list_vip_slots(server_id):
     return [_vip_row(row) for row in rows]
 
 
+async def list_active_vip_slots(now=None):
+    """All active site VIP entitlements, across every configured server.
+
+    Used to repair missing mirror records after a third server is added.
+    """
+    now = _now() if now is None else float(now)
+    async with _conn() as db:
+        cur = await db.execute(
+            "SELECT id, server_id, steam_id, display_name, expires_utc, note, created_by, "
+            "created_utc, updated_utc, synced_utc, sync_state, sync_error "
+            "FROM vip_slots WHERE expires_utc IS NULL OR expires_utc > ?",
+            (now,),
+        )
+        rows = await cur.fetchall()
+    return [_vip_row(row) for row in rows]
+
+
 async def list_player_vip_slots(steam_id):
     async with _conn() as db:
         cur = await db.execute(
