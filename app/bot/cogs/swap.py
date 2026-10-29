@@ -1,6 +1,6 @@
 """SW-карточки: смена стороны с проверкой перевеса.
 
-В канале SW_CHANNEL_ID лежат две карточки (на каждый сервер): кнопки сторон.
+В канале SW_CHANNEL_ID лежат карточки всех настроенных серверов: кнопки сторон.
 Нажавший переводит сам себя по привязанному SteamID (seed link или bindings
 панели). Лимиты для обычных: до +2, кулдаун 1 свап за игру. VIP (seed или
 покупной): без лимита перевеса, без кулдауна. Каждый свап логируется в sw_log.
@@ -28,12 +28,12 @@ LINK_HINT = "Привяжите Steam: `/steam link` → получите код
 
 
 def _server_index(sid: str) -> int | None:
-    """Нормализует id сервера: ru1/main/1 -> 0, ru2/second/2 -> 1."""
+    """Нормализует id сервера: ru1/main/1, ru2/second/2, ru3/third/3."""
     ids = [str(s.get("id")) for s in config.SERVERS]
     if sid in ids:
         idx = ids.index(sid)
-        return idx if idx < 2 else None
-    aliases = {"1": 0, "main": 0, "ru1": 0, "2": 1, "second": 1, "ru2": 1}
+        return idx if idx < 3 else None
+    aliases = {"1": 0, "main": 0, "ru1": 0, "2": 1, "second": 1, "ru2": 1, "3": 2, "third": 2, "ru3": 2}
     return aliases.get(sid)
 
 
@@ -43,6 +43,8 @@ def _get_rcon_client(sid: str) -> WardogsRconClient | None:
         return WardogsRconClient(config.SEED_RCON_URL, config.SEED_RCON_PASSWORD, label="sw")
     if idx == 1 and config.SEED_RCON_2_URL and config.SEED_RCON_2_PASSWORD:
         return WardogsRconClient(config.SEED_RCON_2_URL, config.SEED_RCON_2_PASSWORD, label="sw")
+    if idx == 2 and config.SEED_RCON_3_URL and config.SEED_RCON_3_PASSWORD:
+        return WardogsRconClient(config.SEED_RCON_3_URL, config.SEED_RCON_3_PASSWORD, label="sw")
     return None
 
 
@@ -277,13 +279,13 @@ class SwapCog(commands.Cog):
         return f"{counts}|{map_name}"
 
     async def _ensure_cards(self) -> bool:
-        """Публикует/чинит карточки обоих серверов. Апсерт по сохранённому message_id."""
+        """Публикует/чинит карточки всех настроенных серверов. Апсерт по сохранённому message_id."""
         channel = await self._channel()
         if channel is None:
             log.warning("SW-карточки: канал %s недоступен", config.SW_CHANNEL_ID)
             return False
         ok = True
-        for s in config.SERVERS[:2]:
+        for s in config.SERVERS:
             sid = str(s.get("id"))
             _players, counts, map_name = await self._fetch_state(sid)
             embed = _card_embed(sid, counts, map_name)
@@ -318,7 +320,7 @@ class SwapCog(commands.Cog):
         channel = await self._channel()
         if channel is None:
             return
-        for s in config.SERVERS[:2]:
+        for s in config.SERVERS:
             sid = str(s.get("id"))
             _players, counts, map_name = await self._fetch_state(sid)
             if counts is None:
@@ -348,7 +350,7 @@ class SwapCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot):
-    for s in config.SERVERS[:2]:
+    for s in config.SERVERS:
         try:
             bot.add_view(SWCardView(str(s.get("id"))))
         except Exception:
