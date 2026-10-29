@@ -186,9 +186,19 @@ DONATION_CHANNEL_TOP = _int("DONATION_CHANNEL_TOP")
 DONATION_TIERS = _json_list("DONATION_TIERS")
 
 # ---- SW ----
-SW_SERVERS = _json_list("SW_SERVERS")
-if not SW_SERVERS:
-    SW_SERVERS = [{"id": s["id"], "name": s["name"]} for s in _panel.SERVERS]
+def _sw_servers_with_panel(configured: list, panel_servers: list) -> list:
+    """Keep custom SW labels, but include every configured game server."""
+    servers = [dict(s) for s in configured if isinstance(s, dict) and s.get("id")]
+    known = {str(s["id"]) for s in servers}
+    for panel_server in panel_servers:
+        sid = str(panel_server["id"])
+        if sid not in known:
+            servers.append({"id": sid, "name": panel_server["name"]})
+            known.add(sid)
+    return servers
+
+
+SW_SERVERS = _sw_servers_with_panel(_json_list("SW_SERVERS"), _panel.SERVERS)
 SERVERS = SW_SERVERS
 SW_ADMIN_ROLE_IDS = _ints("SW_ADMIN_ROLE_IDS")
 SW_CHANNEL_ID = _int("SW_CHANNEL_ID", 1560706815149351002)

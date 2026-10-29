@@ -566,11 +566,11 @@ class SeedingCog(commands.Cog):
         rules.add_field(name="⏰ Когда начисляются баллы",
                         value=f"Ежедневно с **{start_h} до {end_h} МСК**. Вне этого времени сидинг не учитывается.")
         rules.add_field(name="🎮 Что нужно для участия",
-                        value=f"Одновременно находиться на одном из двух серверов WARDOGS и в голосовом канале {voice} с привязанным SteamID64. Время и баллы общие; одновременное присутствие не удваивает начисление.")
+                        value=f"Одновременно находиться на одном из трёх серверов WARDOGS и в голосовом канале {voice} с привязанным SteamID64. Время и баллы общие; одновременное присутствие не удваивает начисление.")
         rules.add_field(name="⭐ Начисление",
                         value="Первый непрерывный час — **1 балл каждые 6 минут** (до 10 баллов).\nСо второго часа — **1 балл каждые 3 минуты** (20 баллов в час).")
         rules.add_field(name="🧭 Баллы за обычную игру",
-                        value=f"Круглосуточно на обоих серверах, без Discord и голосового канала. Первый час — **1 балл за 12 минут** (5/час), затем **1 балл за 6 минут** (10/час). "
+                        value=f"Круглосуточно на всех трёх серверах, без Discord и голосового канала. Первый час — **1 балл за 12 минут** (5/час), затем **1 балл за 6 минут** (10/час). "
                               f"Если выполнены условия сидинга, начисляется только сидинг. При **{stop_n}+** игроков действует обычная игра.")
         rules.add_field(name="👝 Общий баланс магазина",
                         value="Баллы игры сохраняются по SteamID без привязки и становятся доступны после `/steam link` и `/steam verify`. "
@@ -582,11 +582,11 @@ class SeedingCog(commands.Cog):
         # 2. Как начать
         start = discord.Embed(color=0x2ECC71, title="🚀 Как начать сидинг — пошагово",
                               description=f"**Все команды можно выполнять прямо в этом канале.** Начните вводить `/seed`, затем выберите нужный пункт из меню Discord.\n\n"
-                                          f"**1. Зайдите на любой из двух игровых серверов WARDOGS.**\nОставайтесь в игре до завершения привязки — бот должен увидеть ваш SteamID среди игроков.\n\n"
+                                          f"**1. Зайдите на любой из трёх игровых серверов WARDOGS.**\nОставайтесь в игре до завершения привязки — бот должен увидеть ваш SteamID среди игроков.\n\n"
                                           f"**2. Подготовьте SteamID64.**\nЭто 17 цифр, обычно начинающихся с `7656`. Укажите именно SteamID64, а не ссылку на профиль и не игровой ник.\n\n"
                                           f"**3. Выполните `/steam link`.**\nВ поле `steam_id` вставьте SteamID64. Бот отправит одноразовый восьмизначный код личным сообщением внутри игры.\n\n"
                                           f"**4. Выполните `/steam verify`.**\nВ поле `code` введите код из игры. После успешной проверки вы получите роль {seeder_role}; действующий VIP выдаётся сразу и не слетает.\n\n"
-                                          f"**5. Перейдите в голосовой канал {voice}.**\nПока вы одновременно в игре на одном из двух серверов и в этом голосовом канале, бот считает общее время по правилам выше.\n\n"
+                                          f"**5. Перейдите в голосовой канал {voice}.**\nПока вы одновременно в игре на одном из трёх серверов и в этом голосовом канале, бот считает общее время по правилам выше.\n\n"
                                           f"**6. Проверьте результат.**\nКоманда `/steam status` показывает баланс, время, состояние сидинга и VIP. `/seed top` показывает текущий рейтинг.\n\n"
                                           f"**Нужен только оплаченный VIP?** Та же привязка `/steam link` + `/steam verify` — она подходит и для оплаченного VIP (без начисления баллов, если вы не сидер). Отдельная `/vip-link` осталась как запасной вариант.\n\n"
                                           f"**Отвязка:** `/steam unlink confirm:true` (или `/vip-link unlink` для отдельной VIP-привязки). При действующем VIP отвязка недоступна; история сидера сохраняется.")
@@ -599,7 +599,7 @@ class SeedingCog(commands.Cog):
         rewards.add_field(name="🎟️ VIP на 7 дней", value=f"**{vip_7} баллов**", inline=True)
         rewards.add_field(name="💎 VIP на 30 дней", value=f"**{vip_30} баллов**", inline=True)
         rewards.add_field(name="Что входит",
-                          value=f"Роль {vip_role} и Reserved slot на обоих серверах. Срок начинается после подтверждённой активации слота на обоих.")
+                          value=f"Роль {vip_role} и Reserved slot на всех трёх серверах. Срок начинается после подтверждённой активации слота на всех трёх.")
         rewards.add_field(name="🔒 Уже есть постоянный слот?",
                           value="Магазин не спишет баллы за дублирующий VIP. Защищённый администрацией Reserved slot сохраняется независимо от VIP и рейтинга.")
         rewards.set_footer(text="Баланс и статус: /seed status")
@@ -608,13 +608,13 @@ class SeedingCog(commands.Cog):
         ranking = discord.Embed(color=0x3498DB, title="🏆 Еженедельный рейтинг и награды",
                                 description=f"Рейтинг в {rank} строится по подтверждённому времени сидинга за текущую неделю и обновляется автоматически.")
         ranking.add_field(name="🥇🥈🥉 Награда топ-3",
-                          value=f"Три лучших сидера завершившейся недели получают роль {super_role} и бесплатный Reserved slot на обоих серверах.")
+                          value=f"Три лучших сидера завершившейся недели получают роль {super_role} и бесплатный Reserved slot на всех трёх серверах.")
         ranking.add_field(name="📅 Срок награды",
                           value="Неделя считается с понедельника 00:00 до следующего понедельника 00:00 МСК. Роль и слот действуют до следующего обновления, затем бот передаёт их новой тройке лидеров.")
         ranking.add_field(name="📊 Две карточки рейтинга",
                           value="Первая показывает живой рейтинг текущей недели, вторая — трёх победителей прошлой недели и состояние их наград.")
         ranking.add_field(name="🔐 Постоянные Reserved slots",
-                          value="Слоты на обоих серверах, отдельно защищённые администрацией, не снимаются при окончании VIP или при смене победителей рейтинга.")
+                          value="Слоты на всех трёх серверах, отдельно защищённые администрацией, не снимаются при окончании VIP или при смене победителей рейтинга.")
         ranking.set_footer(text="Чем больше подтверждённого времени — тем выше место")
 
         payload = {"embeds": [rules, start, rewards, ranking], "allowed_mentions": no_mention}
@@ -660,21 +660,21 @@ class SeedingCog(commands.Cog):
         embed = discord.Embed(
             color=0xF1C40F,
             title="👑 Магазин наград WARDOGS | RU",
-            description="Обменивайте общий баланс баллов за сидинг и обычную игру на VIP: Discord-роль и Reserved slot на обоих серверах.",
+            description="Обменивайте общий баланс баллов за сидинг и обычную игру на VIP: Discord-роль и Reserved slot на всех трёх серверах.",
         )
         for sku, product in VIP_CATALOG.items():
             cost = getattr(config, product["cost_attr"])
             embed.add_field(
                 name=f"{product['shop_emoji']} {product['label']} • {cost} баллов",
-                value=f"Роль {vip_role} и Reserved slot на обоих серверах на {product['duration_text']} после подтверждённой активации.",
+                value=f"Роль {vip_role} и Reserved slot на всех трёх серверах на {product['duration_text']} после подтверждённой активации.",
                 inline=False,
             )
         embed.add_field(
             name="ℹ️ Как купить",
             value="1. Подтвердите Steam через `/steam link` и `/steam verify`. Накопленные за игру баллы станут доступны; проверьте общий баланс через `/steam status`.\n"
                   "2. Нажмите кнопку нужного тарифа ниже.\n"
-                  "3. Бот выдаст VIP-роль и синхронизирует Reserved slot на обоих серверах.\n\n"
-                  "Срок VIP начинается только после появления SteamID в live reserved slots обоих серверов. Покупка и ответ бота видны только вам.",
+                  "3. Бот выдаст VIP-роль и синхронизирует Reserved slot на всех трёх серверах.\n\n"
+                  "Срок VIP начинается только после появления SteamID в live reserved slots всех трёх серверов. Покупка и ответ бота видны только вам.",
             inline=False,
         )
         embed.set_footer(text="WARDOGS | RU • Система сидинга • Баланс и статус: /seed status")
@@ -936,6 +936,131 @@ class SeedingCog(commands.Cog):
                 log.warning("vip_user_reconcile_failed user=%s: %s", user_id, e)
         if claims != seed_get_state("paid_slot_claims", {}):
             seed_set_state("paid_slot_claims", claims)
+        # Seeding-store VIPs are separate from site vip_slots: keep RU2/RU3
+        # in sync too, while tracking ownership so pre-existing slots survive.
+        await self._vip_reconcile_secondary_servers(ids, now)
+
+    async def _try_activate_vip_all_servers(self, user_id: str, steam_id: str) -> bool:
+        """Start paid VIP time only after all three live RCON lists confirm it."""
+        clients = (
+            ("RU1", self.rcon),
+            ("RU2", self.rcon2),
+            ("RU3", self.rcon3),
+        )
+        for label, client in clients:
+            if client is None:
+                seed_set_vip_error(user_id, f"RCON {label} не настроен.")
+                return False
+            try:
+                live = await client.live_reserved_ids()
+            except Exception as exc:
+                log.warning("VIP activation check %s/%s failed: %s", steam_id, label, exc)
+                seed_set_vip_error(user_id, f"Ожидание RCON {label}.")
+                return False
+            if live is None or steam_id not in live:
+                seed_set_vip_error(user_id, f"Ожидание Reserved slot на {label}.")
+                return False
+        seed_activate_vip(user_id)
+        return True
+
+    async def _vip_reconcile_secondary_servers(self, user_ids: set[str], now: int):
+        state_key = "vip_secondary_slot_ownership_v1"
+        state = seed_get_state(state_key, {}) or {}
+        changed = False
+        clients = {sid: (label, client) for sid, label, client in self._servers() if sid != "main"}
+
+        for user_id in user_ids:
+            identity = seed_get_vip_identity_by_id(user_id)
+            if not identity or not identity.get("linked"):
+                continue
+            steam_id = identity["steam_id"]
+            discord_id = identity["discord_id"]
+            membership = seed_get_vip_membership(user_id)
+            active = (
+                self.donations.active(discord_id, now)
+                or bool(
+                    membership
+                    and (
+                        membership["state"] == "pending_add"
+                        or (
+                            membership["state"] == "active"
+                            and (membership.get("active_until") or 0) > now
+                        )
+                    )
+                )
+            )
+            if not active:
+                continue
+            entry = state.setdefault(steam_id, {
+                "userId": user_id, "discordId": discord_id, "servers": {},
+            })
+            owners = entry.setdefault("servers", {})
+            for sid, label, client in self._servers():
+                if sid == "main" or not client:
+                    continue
+                try:
+                    snapshot = await client.reserved_snapshot()
+                    live = snapshot.get("live") or []
+                    present = steam_id in live or steam_id in (snapshot.get("document") or [])
+                    if sid not in owners:
+                        owners[sid] = "external" if present or ReservedProtectionService.is_protected(
+                            user_id, steam_id
+                        ) else "bot"
+                        changed = True
+                    if steam_id not in live:
+                        await client.set_reserved(steam_id, True)
+                except Exception as exc:
+                    log.warning("VIP secondary reserved sync failed %s/%s: %s", steam_id, label, exc)
+            if membership and membership["state"] == "pending_add":
+                await self._try_activate_vip_all_servers(user_id, steam_id)
+
+        # Expired entitlements must not delete pre-existing, protected or
+        # independently purchased VIP reservations on any secondary server.
+        for steam_id, entry in list(state.items()):
+            user_id = entry.get("userId") or ""
+            discord_id = entry.get("discordId") or ""
+            membership = seed_get_vip_membership(user_id)
+            active = (
+                self.donations.active(discord_id, now)
+                or _panel_vip_active(steam_id)
+                or bool(
+                    membership and (
+                        membership["state"] == "pending_add"
+                        or (
+                            membership["state"] == "active"
+                            and (membership.get("active_until") or 0) > now
+                        )
+                    )
+                )
+            )
+            if active:
+                continue
+            if ReservedProtectionService.is_protected(user_id, steam_id):
+                del state[steam_id]
+                changed = True
+                continue
+            owners = entry.get("servers") or {}
+            for sid, owner in list(owners.items()):
+                if owner != "bot":
+                    del owners[sid]
+                    changed = True
+                    continue
+                _label, client = clients.get(sid, (sid, None))
+                if client is None:
+                    continue
+                try:
+                    result = await client.set_reserved(steam_id, False)
+                    if result.get("active") is False:
+                        del owners[sid]
+                        changed = True
+                except Exception as exc:
+                    log.warning("VIP secondary cleanup failed %s/%s: %s", steam_id, sid, exc)
+            if not owners:
+                del state[steam_id]
+                changed = True
+
+        if changed:
+            seed_set_state(state_key, state)
 
     async def _vip_reconcile_user(self, user_id: str, now: int, claims: dict):
         if not self.rcon:
@@ -971,14 +1096,14 @@ class SeedingCog(commands.Cog):
                     claims[steam_id] = {"discordId": discord_id, "owner": "bot"}
                 result = await self.rcon.set_reserved(steam_id, True)
                 if result.get("active") and member and member["state"] == "pending_add":
-                    seed_activate_vip(user_id)
+                    await self._try_activate_vip_all_servers(user_id, steam_id)
                 elif member and member["state"] == "pending_add":
                     seed_set_vip_error(user_id, "Ожидание Reserved slot на игровом сервере.")
                 elif not member:
                     # paid-only: ensure slot; no membership row needed
                     pass
             elif member and member["state"] == "pending_add":
-                seed_activate_vip(user_id)
+                await self._try_activate_vip_all_servers(user_id, steam_id)
             return
 
         # cleanup paid claim if no longer paid
@@ -1006,16 +1131,16 @@ class SeedingCog(commands.Cog):
                 member = seed_get_vip_membership(user_id)
             if member.get("managed_by_bot") == 0:
                 if steam_id in live:
-                    seed_activate_vip(user_id)
+                    await self._try_activate_vip_all_servers(user_id, steam_id)
                 else:
                     seed_set_vip_error(user_id, "Ожидание Reserved slot на игровом сервере.")
                 return
             if steam_id in live:
-                seed_activate_vip(user_id)
+                await self._try_activate_vip_all_servers(user_id, steam_id)
                 return
             result = await self.rcon.set_reserved(steam_id, True)
             if result.get("active"):
-                seed_activate_vip(user_id)
+                await self._try_activate_vip_all_servers(user_id, steam_id)
             else:
                 seed_set_vip_error(user_id, "Ожидание Reserved slot на игровом сервере.")
             return
@@ -1114,12 +1239,16 @@ class SeedingCog(commands.Cog):
             if old.get("userId") in selected:
                 continue
             await self._set_super_seeder_role(old.get("discordId") or "", False)
-            if old.get("slotOwnership") == "award" and not ReservedProtectionService.is_protected(old.get("userId", ""), old.get("steamId", "")):
+            owns_any = old.get("slotOwnership") == "award" or any(
+                value == "award" for value in (old.get("slotOwnershipByServer") or {}).values()
+            )
+            if owns_any and not ReservedProtectionService.is_protected(old.get("userId", ""), old.get("steamId", "")):
                 cleanup.append({
                     "userId": old.get("userId"),
                     "discordId": old.get("discordId"),
                     "steamId": old.get("steamId"),
-                    "slotOwnership": "award",
+                    "slotOwnership": old.get("slotOwnership", "unknown"),
+                    "slotOwnershipByServer": dict(old.get("slotOwnershipByServer") or {}),
                     "status": "pending_remove",
                     "reason": "ranking_rotated",
                     "queuedAt": now,
@@ -1138,6 +1267,7 @@ class SeedingCog(commands.Cog):
                 "active": True,
                 "roleStatus": (prior or {}).get("roleStatus", "checking"),
                 "slotOwnership": (prior or {}).get("slotOwnership", "unknown"),
+                "slotOwnershipByServer": dict((prior or {}).get("slotOwnershipByServer") or {}),
                 "slotStatus": (prior or {}).get("slotStatus", "checking"),
                 "slotProtected": ReservedProtectionService.is_protected(row["id"], row["steam_id"]),
             })
@@ -1166,6 +1296,7 @@ class SeedingCog(commands.Cog):
             log.warning("weekly_award_rcon_unavailable: %s", e)
             for w in active:
                 w["slotStatus"] = "waiting_rcon"
+            await self._weekly_reconcile_secondary_awards(state)
             seed_set_state("weekly_super_seeders_v1", state)
             return
 
@@ -1203,39 +1334,93 @@ class SeedingCog(commands.Cog):
             except Exception as e:
                 winner["slotStatus"] = "waiting_rcon"
                 log.warning("weekly slot rcon failed: %s", e)
+        await self._weekly_reconcile_secondary_awards(state)
         seed_set_state("weekly_super_seeders_v1", state)
 
-    async def _weekly_reconcile_cleanup(self, state: dict):
-        if not self.rcon or not state.get("cleanup"):
-            return
-        try:
-            snapshot = await self.rcon.reserved_snapshot()
-        except Exception as e:
-            log.warning("weekly_cleanup_rcon_unavailable: %s", e)
-            return
-        live = snapshot.get("live") or []
-        doc = snapshot.get("document") or []
-        for entry in list(state["cleanup"]):
-            steam_id = entry.get("steamId") or ""
-            if ReservedProtectionService.is_protected(entry.get("userId", ""), steam_id):
-                state["cleanup"] = [e for e in state["cleanup"] if e is not entry]
-                continue
-            membership = seed_get_vip_membership(entry.get("userId") or "")
-            if membership and membership["state"] != "inactive":
-                entry["status"] = "waiting_vip"
-                continue
-            if steam_id not in live and steam_id not in doc:
-                state["cleanup"] = [e for e in state["cleanup"] if e is not entry]
+    async def _weekly_reconcile_secondary_awards(self, state: dict):
+        """Grant weekly reserved slots on RU2/RU3, remembering which were ours."""
+        winners = [w for w in state.get("winners", []) if w.get("active") is not False]
+        for sid, label, client in self._servers():
+            if sid == "main" or not winners:
                 continue
             try:
-                result = await self.rcon.set_reserved(steam_id, False)
-                if result.get("active") is False:
-                    state["cleanup"] = [e for e in state["cleanup"] if e is not entry]
+                snapshot = await client.reserved_snapshot()
+            except Exception as exc:
+                log.warning("Weekly award %s unavailable: %s", label, exc)
+                continue
+            live = snapshot.get("live") or []
+            document = snapshot.get("document") or []
+            for winner in winners:
+                steam_id = winner.get("steamId") or ""
+                if not steam_id:
+                    continue
+                owners = winner.setdefault("slotOwnershipByServer", {})
+                protected = ReservedProtectionService.is_protected(winner.get("userId", ""), steam_id)
+                present = steam_id in live or steam_id in document
+                if sid not in owners:
+                    owners[sid] = "external" if protected or present else "award"
+                if steam_id not in live:
+                    try:
+                        result = await client.set_reserved(steam_id, True)
+                        winner.setdefault("slotStatusByServer", {})[sid] = (
+                            "active" if result.get("active") else "waiting_rcon"
+                        )
+                    except Exception as exc:
+                        winner.setdefault("slotStatusByServer", {})[sid] = "waiting_rcon"
+                        log.warning("Weekly award %s/%s failed: %s", steam_id, label, exc)
                 else:
-                    entry["status"] = "waiting_rcon"
-            except Exception as e:
+                    winner.setdefault("slotStatusByServer", {})[sid] = "active"
+
+    async def _weekly_reconcile_cleanup(self, state: dict):
+        if not state.get("cleanup"):
+            return
+        clients = {sid: (label, client) for sid, label, client in self._servers()}
+        for entry in list(state["cleanup"]):
+            steam_id = entry.get("steamId") or ""
+            user_id = entry.get("userId") or ""
+            discord_id = entry.get("discordId") or ""
+            if ReservedProtectionService.is_protected(user_id, steam_id):
+                state["cleanup"].remove(entry)
+                continue
+            membership = seed_get_vip_membership(user_id)
+            if (
+                (membership and membership["state"] != "inactive")
+                or self.donations.active(discord_id)
+                or _panel_vip_active(steam_id)
+            ):
+                entry["status"] = "waiting_vip"
+                continue
+            owners = entry.setdefault("slotOwnershipByServer", {})
+            # Legacy awards have ownership stored only for the first server.
+            if entry.get("slotOwnership") == "award":
+                owners.setdefault("main", "award")
+            pending = False
+            for sid, owner in list(owners.items()):
+                if owner != "award":
+                    continue
+                label, client = clients.get(sid, (sid, None))
+                if not client:
+                    pending = True
+                    continue
+                try:
+                    snapshot = await client.reserved_snapshot()
+                    live = snapshot.get("live") or []
+                    document = snapshot.get("document") or []
+                    if steam_id in live or steam_id in document:
+                        result = await client.set_reserved(steam_id, False)
+                        if result.get("active") is not False:
+                            pending = True
+                            continue
+                    owners.pop(sid, None)
+                    if sid == "main":
+                        entry["slotOwnership"] = "cleared"
+                except Exception as exc:
+                    pending = True
+                    log.warning("Weekly cleanup %s/%s failed: %s", steam_id, label, exc)
+            if pending:
                 entry["status"] = "waiting_rcon"
-                log.warning("weekly cleanup rcon failed: %s", e)
+            else:
+                state["cleanup"].remove(entry)
         seed_set_state("weekly_super_seeders_v1", state)
 
     async def _set_super_seeder_role(self, discord_id: str, present: bool):
@@ -1447,7 +1632,7 @@ class SeedingCog(commands.Cog):
             )
         embed.add_field(
             name="🏅 Награда",
-            value=f"Роль <@&{config.SUPER_SEEDER_ROLE_ID}> + бесплатный Reserved slot на обоих игровых серверах.",
+            value=f"Роль <@&{config.SUPER_SEEDER_ROLE_ID}> + бесплатный Reserved slot на всех трёх игровых серверах.",
         )
         embed.set_footer(text="Награды пересматриваются автоматически каждую неделю")
         return embed
