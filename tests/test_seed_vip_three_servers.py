@@ -105,3 +105,32 @@ def test_weekly_award_secondary_cleanup_only_owned_slots(monkeypatch):
         assert STEAM not in third.live
 
     asyncio.run(run())
+
+
+def test_vip_time_starts_only_after_all_three_servers_confirm(monkeypatch):
+    activated = []
+    errors = []
+    monkeypatch.setattr(seeding, "seed_activate_vip", lambda uid: activated.append(uid))
+    monkeypatch.setattr(seeding, "seed_set_vip_error", lambda uid, msg: errors.append(msg))
+
+    class LiveRcon:
+        def __init__(self, present):
+            self.present = present
+
+        async def live_reserved_ids(self):
+            return [STEAM] if self.present else []
+
+    first = LiveRcon(True)
+    second = LiveRcon(True)
+    third = LiveRcon(False)
+    cog = SimpleNamespace(rcon=first, rcon2=second, rcon3=third)
+
+    async def run():
+        assert not await seeding.SeedingCog._try_activate_vip_all_servers(cog, "u1", STEAM)
+        assert activated == []
+        assert "RU3" in errors[-1]
+        third.present = True
+        assert await seeding.SeedingCog._try_activate_vip_all_servers(cog, "u1", STEAM)
+        assert activated == ["u1"]
+
+    asyncio.run(run())
