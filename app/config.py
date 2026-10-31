@@ -238,7 +238,7 @@ if not isinstance(_raw, dict):
 REFRESH = max(2.0, min(300.0, float(_raw.get("refresh_seconds") or REFRESH)))
 
 SERVERS = []
-_server_id_re = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+_server_id_re = re.compile(r"^[A-Za-z0-9_-]{1,32}\Z")
 for i, s in enumerate(_raw.get("servers") or [], 1):
     if not isinstance(s, dict):
         raise RuntimeError(f"Конфигурация сервера #{i} должна быть объектом")

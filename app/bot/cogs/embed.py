@@ -7,7 +7,7 @@ from discord import app_commands
 from discord.ext import commands
 
 
-HEX_RE = re.compile(r"^#?([0-9a-fA-F]{6})$")
+HEX_RE = re.compile(r"^#?([0-9a-fA-F]{6})\Z")
 
 COLOR_NAMES = {
     "red": 0xE74C3C,

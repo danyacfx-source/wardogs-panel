@@ -9,14 +9,14 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-STEAM_ID_RE = re.compile(r"^\d{17}$")
-CLAN_ID_RE = re.compile(r"^[0-9a-f]{24}$")
-OBJECT_ID_RE = re.compile(r"^[0-9a-f]{24}$")
-BOT_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{2,47}$")
-BOT_EVENT_RE = re.compile(r"^[a-z][a-z0-9_.-]{1,79}$")
-CLAN_TAG_RE = re.compile(r"^[\wА-Яа-яЁё-]{1,16}$", re.UNICODE)
-PUBLIC_TAG_RE = re.compile(r"^[A-ZА-Я0-9_-]{2,12}$")
-DISCORD_ID_RE = re.compile(r"^\d{17,20}$")
+STEAM_ID_RE = re.compile(r"^\d{17}\Z")
+CLAN_ID_RE = re.compile(r"^[0-9a-f]{24}\Z")
+OBJECT_ID_RE = re.compile(r"^[0-9a-f]{24}\Z")
+BOT_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{2,47}\Z")
+BOT_EVENT_RE = re.compile(r"^[a-z][a-z0-9_.-]{1,79}\Z")
+CLAN_TAG_RE = re.compile(r"^[\wА-Яа-яЁё-]{1,16}\Z", re.UNICODE)
+PUBLIC_TAG_RE = re.compile(r"^[A-ZА-Я0-9_-]{2,12}\Z")
+DISCORD_ID_RE = re.compile(r"^\d{17,20}\Z")
 
 TICKET_STATUSES = {"open", "in_progress", "resolved", "closed"}
 TICKET_PRIORITIES = {"low", "normal", "high", "urgent"}

@@ -69,9 +69,9 @@ log = logging.getLogger("seeding")
 
 MSK = timezone(timedelta(hours=3))
 STEAM_ID_RE = re.compile(r"^7656119[0-9]{10}\Z")
-SNOWFLAKE_RE = re.compile(r"^\d{17,20}$")
+SNOWFLAKE_RE = re.compile(r"^\d{17,20}\Z")
 CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
-CODE_RE = re.compile(r"^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$")
+CODE_RE = re.compile(r"^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}\Z")
 
 VIP_CATALOG = {
     "1d": {"sku": "1d", "label": "VIP на 1 день", "cost_attr": "VIP_1_DAY_COST", "duration_seconds": 86_400,

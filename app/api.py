@@ -226,9 +226,9 @@ CSRF_COOKIE = "__Host-wds_csrf" if config.COOKIE_SECURE else "wds_csrf"
 STEAM_STATE_COOKIE = ("__Secure-wds_steam_state" if config.COOKIE_SECURE else "wds_steam_state")
 DISCORD_STATE_COOKIE = ("__Secure-wds_discord_state" if config.COOKIE_SECURE else "wds_discord_state")
 DEV_STEAM_ID = "76561190000000000"
-STEAM_ID_RE = re.compile(r"^\d{17}$")
-BOT_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{2,47}$")
-BOT_EVENT_RE = re.compile(r"^[a-z][a-z0-9_.-]{1,79}$")
+STEAM_ID_RE = re.compile(r"^\d{17}\Z")
+BOT_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{2,47}\Z")
+BOT_EVENT_RE = re.compile(r"^[a-z][a-z0-9_.-]{1,79}\Z")
 BOT_SCOPES = {
     "heartbeat", "events.write", "stats.write", "bindings.read", "bindings.write",
     "tickets.read", "tickets.write", "moderation.write", "voice.manage", "commands.read",
@@ -1847,7 +1847,7 @@ async def ticket_delete(ticket_id: str, request: Request):
 
 # --- Типы тикетов Discord-бота (селект «Создать тикет») ---
 
-_TICKET_TYPE_ID_RE = re.compile(r"^[a-z0-9_-]{1,48}$")
+_TICKET_TYPE_ID_RE = re.compile(r"^[a-z0-9_-]{1,48}\Z")
 
 
 async def _ticket_type_body(request: Request) -> dict:
@@ -2689,7 +2689,7 @@ async def site_audit_integrity(request: Request):
 _KILLFEED_MAX_BODY = 64 * 1024
 _clan_sync_seen: dict[str, float] = {}
 _KILLFEED_MAX_KILLS = 200
-_STEAM_ID_RE = re.compile(r"^\d{17}$")
+_STEAM_ID_RE = re.compile(r"^\d{17}\Z")
 _KILL_TAG_PREFIXES = (
     "Meta.Progression.Context.Player.KillContext.",
     "Meta.PlayerKillFlag.Player.",

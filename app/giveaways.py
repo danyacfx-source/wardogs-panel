@@ -27,7 +27,7 @@ REGISTRY_KEY = "giveaways"
 MAX_ITEMS = 20
 
 KEYWORD_RE = re.compile(r"(?:розыгрыш|участв|победител|копи[яий])", re.I)
-SNOWFLAKE_RE = re.compile(r"^\d{17,20}$")
+SNOWFLAKE_RE = re.compile(r"^\d{17,20}\Z")
 MENTION_RE = re.compile(r"<@!?(\d{17,20})>")
 EMOJI_RE = re.compile(r"<a?:[A-Za-z0-9_]+:\d{17,20}>")
 TIMESTAMP_TAG_RE = re.compile(r"<t:\d{9,12}(?::[A-Za-z])?>")

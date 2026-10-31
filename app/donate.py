@@ -50,10 +50,10 @@ PANEL_LABEL_PREFIX = "WD-"
 FEED_PAGE_LIMIT = 100
 MIN_DONATION_KOPECKS = 5000
 MAX_DONATION_KOPECKS = 10_000_000
-ORDER_ID_RE = re.compile(r"^[a-f0-9]{32}$")
-BUYER_ID_RE = re.compile(r"^\d{17,20}$")
-OPERATION_ID_RE = re.compile(r"^[A-Za-z0-9-]{1,80}$")
-HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
+ORDER_ID_RE = re.compile(r"^[a-f0-9]{32}\Z")
+BUYER_ID_RE = re.compile(r"^\d{17,20}\Z")
+OPERATION_ID_RE = re.compile(r"^[A-Za-z0-9-]{1,80}\Z")
+HEX64_RE = re.compile(r"^[0-9a-f]{64}\Z")
 KINDS = {"donation", "personal", "clan"}
 # Имена продуктов повторяют src/catalog.js бота — используются только для
 # отображения, решения о платеже принимаются по подписи.

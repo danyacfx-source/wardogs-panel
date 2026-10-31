@@ -31,7 +31,7 @@ ALL_PERMS = {
     "change_map", "change_lighting", "match_end", "match_restart",
     "audit", "config_view", "config_edit", "roles",
 }
-DISCORD_ID_RE = re.compile(r"^\d{1,20}$")
+DISCORD_ID_RE = re.compile(r"^\d{1,20}\Z")
 
 
 def redirect_uri():
