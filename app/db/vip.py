@@ -211,3 +211,16 @@ async def mark_vip_order(order_id, status, expected=None):
         cur = await database.execute(query, tuple(params))
         await database.commit()
         return cur.rowcount > 0
+
+
+async def queue_vip_removal(vip_id, error=""):
+    """Ставит запись на снятие в очередь: срок переводится в «уже истёк»,
+    статус sync = error, и фоновый проход истечения повторит снятие на сервере."""
+    now = _now()
+    async with _conn() as db:
+        await db.execute(
+            "UPDATE vip_slots SET expires_utc = ?, sync_state = 'error', sync_error = ?, "
+            "updated_utc = ? WHERE id = ?",
+            (now, str(error or "")[:500], now, vip_id),
+        )
+        await db.commit()

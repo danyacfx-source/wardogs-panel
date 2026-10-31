@@ -1771,6 +1771,13 @@ async def ticket_create(request: Request):
 async def ticket_update(ticket_id: str, request: Request):
     user = await _require_perm(request, "tickets_edit")
     ticket_id = _ticket_id(ticket_id)
+    # Чтение-изменение-запись одного тикета сериализуем: иначе параллельные PATCH
+    # откатывали бы поля друг друга.
+    async with _ticket_locks[ticket_id]:
+        return await _ticket_update_locked(ticket_id, request, user)
+
+
+async def _ticket_update_locked(ticket_id, request, user):
     current = await db.get_ticket(ticket_id)
     if not current:
         raise HTTPException(status_code=404, detail="Тикет не найден")
@@ -2120,18 +2127,18 @@ async def _actor_label(steam_id):
 async def _apply_ban_across(primary_sid, steam_id, reason):
     """Выдаёт POST /v1/bans на всех серверах панели.
 
-    Возвращает (applied, pending, primary_error): applied — серверы с
-    подтверждённым баном (включая 409 «уже есть»); pending — серверы, где
-    игрока нет онлайн (там бан поставит очередь при входе); primary_error —
-    жёсткая ошибка основного сервера, выдача прервана.
+    Возвращает (applied, pending, failed): applied — серверы с подтверждённым
+    баном (включая 409 «уже есть»); pending — серверы, где игрока нет онлайн
+    (бан поставит очередь при входе); failed — [(server_id, error)] для
+    серверов, где запись не прошла. Неуспешные записи ставятся в очередь
+    повторов (remote_ops), поэтому ошибка одного сервера не прерывает выдачу.
     """
     reason = str(reason or "").strip()[:500]
     body = {"steamId": steam_id}
     if reason:
         body["reason"] = reason
     targets = [t for t in [_get_server(primary_sid)] + _other_servers(primary_sid) if t]
-    applied, pending = [], []
-    primary_error = None
+    applied, pending, failed = [], [], []
     for target in targets:
         try:
             await target.api.request("POST", "/v1/bans", json_body=body)
@@ -2141,13 +2148,10 @@ async def _apply_ban_across(primary_sid, steam_id, reason):
                 applied.append(target.id)
             elif e.status == 404 and e.code == "player_not_found":
                 pending.append(target.id)
-            elif target.id == primary_sid:
-                primary_error = e
-                break
             else:
-                log.warning("Зеркальный бан %s не удался на %s: %s", steam_id, target.id, e.message)
-                pending.append(target.id)
-    return applied, pending, primary_error
+                log.warning("Бан %s не удался на %s: %s", steam_id, target.id, e.message)
+                failed.append((target.id, e))
+    return applied, pending, failed
 
 
 async def _enrich_bans(sid, data):
@@ -3155,6 +3159,57 @@ async def process_queued_bans():
         )
 
 
+async def process_remote_ops():
+    """Повторяет неудавшиеся записи банов на серверах (очередь remote_ops).
+
+    Успех или «уже в нужном состоянии» (409 / 404 при снятии) убирает запись.
+    Игрок оффлайн при выдаче переводится в очередь оффлайн-банов. Прочие ошибки —
+    повтор с экспоненциальной задержкой до часа.
+    """
+    ops = await db.list_due_remote_ops()
+    for op in ops:
+        srv = _get_server(op["server_id"])
+        if not srv:
+            await db.delete_remote_op(op["id"])
+            continue
+        steam_id = op["steam_id"]
+        payload = op["payload"] or {}
+        try:
+            if op["kind"] == "ban_add":
+                body = {"steamId": steam_id}
+                if payload.get("reason"):
+                    body["reason"] = payload["reason"]
+                try:
+                    await srv.api.request("POST", "/v1/bans", json_body=body)
+                except RCONError as e:
+                    if e.status == 404 and e.code == "player_not_found":
+                        await db.enqueue_queued_ban(
+                            steam_id, payload.get("display_name") or "", payload.get("reason") or "",
+                            payload.get("expires_utc"), payload.get("created_by") or "", [],
+                        )
+                    elif e.status != 409:
+                        raise
+            elif op["kind"] == "ban_remove":
+                try:
+                    await srv.api.request("DELETE", f"/v1/bans/{steam_id}")
+                except RCONError as e:
+                    if e.status != 404:
+                        raise
+            else:
+                log.warning("Неизвестный тип операции очереди: %s", op["kind"])
+            await db.delete_remote_op(op["id"])
+            await _invalidate(op["server_id"])
+            log.info("Очередь: %s %s на %s выполнено", op["kind"], steam_id, op["server_id"])
+        except RCONError as e:
+            attempts = op["attempts"] + 1
+            await db.reschedule_remote_op(op["id"], attempts, e.message, min(3600, 30 * 2 ** min(attempts, 7)))
+            log.warning("Очередь: %s %s на %s — повтор позже: %s", op["kind"], steam_id, op["server_id"], e.message)
+        except Exception as e:
+            attempts = op["attempts"] + 1
+            await db.reschedule_remote_op(op["id"], attempts, str(e), min(3600, 30 * 2 ** min(attempts, 7)))
+            log.exception("Очередь: сбой %s %s на %s", op["kind"], steam_id, op["server_id"])
+
+
 async def ban_queue_loop(stop_event):
     """Фоновый цикл: применение очереди оффлайн-банов каждые 15 секунд."""
     while not stop_event.is_set():
@@ -3162,6 +3217,10 @@ async def ban_queue_loop(stop_event):
             await process_queued_bans()
         except Exception:
             log.exception("Ошибка обработки очереди банов")
+        try:
+            await process_remote_ops()
+        except Exception:
+            log.exception("Ошибка очереди повторов банов")
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=15)
         except asyncio.TimeoutError:
@@ -3279,12 +3338,12 @@ async def vip_slot_delete(sid: str, vip_id: str, request: Request):
     item = await db.get_vip_slot(vip_id, sid)
     if not item:
         raise HTTPException(status_code=404, detail="VIP-запись не найдена")
+    queued_servers = []
     synced, error = await _sync_vip_record(item, add=False)
     if not synced:
-        return JSONResponse(
-            {"ok": False, "detail": error, "item": await db.get_vip_slot(vip_id, sid)},
-            status_code=502,
-        )
+        # Снятие не прошло — ставим в очередь повторов (истечение повторит снятие).
+        await db.queue_vip_removal(item["id"], error)
+        queued_servers.append(sid)
     # Снятие VIP тоже глобальное: снимаем entitlement и чистим записи зеркальных серверов.
     for other in _other_servers(sid):
         other_item = next(
@@ -3297,16 +3356,17 @@ async def vip_slot_delete(sid: str, vip_id: str, request: Request):
         if other_synced:
             await db.delete_vip_slot(other_item["id"], other.id)
         else:
-            log.warning(
-                "Зеркальное снятие VIP %s не удалось на %s: %s",
-                item["steam_id"], other.id, other_error,
-            )
-    await db.delete_vip_slot(vip_id, sid)
+            await db.queue_vip_removal(other_item["id"], other_error)
+            queued_servers.append(other.id)
+            log.warning("Снятие VIP %s не удалось на %s — в очереди: %s", item["steam_id"], other.id, other_error)
+    if sid not in queued_servers:
+        await db.delete_vip_slot(vip_id, sid)
     await db.log_site_audit(user["steam_id"], sid, "vip.delete", item["steam_id"])
     disclog.emit(
         "vip.delete", actor=user["steam_id"], server=srv.name, steam_id=item["steam_id"],
+        detail=f"в очереди повтора: {', '.join(queued_servers)}" if queued_servers else "",
     )
-    return {"ok": True}
+    return {"ok": True, "queued_servers": queued_servers}
 
 
 @router.get("/server/{sid}/reserved-slots")
@@ -3627,19 +3687,23 @@ async def server_ban_add(sid: str, request: Request):
     if not await _allow_action_once(user["steam_id"], sid, "ban.add", steam_id):
         await _idempotency_abort(user["steam_id"], idem_key)
         return JSONResponse({"error": {"code": "duplicate_action", "message": "Повторите действие через секунду"}}, status_code=409)
-    applied, pending, primary_error = await _apply_ban_across(sid, steam_id, reason)
-    if primary_error is not None:
-        await _idempotency_abort(user["steam_id"], idem_key)
-        return _rcon_error(primary_error)
+    applied, pending, failed = await _apply_ban_across(sid, steam_id, reason)
+    # Неудачные серверы ставим в очередь повторов: намерение бана сохраняется.
+    for failed_sid, _err in failed:
+        await db.enqueue_remote_op("ban_add", failed_sid, steam_id, {
+            "reason": reason, "display_name": display_name,
+            "expires_utc": expires_utc, "created_by": user["steam_id"],
+        })
     # Игрока нет ни на одном сервере — бан уходит в очередь панели:
     # выдадим его при первом же появлении игрока в /v1/players.
     if pending:
         await db.enqueue_queued_ban(
             steam_id, display_name, reason, expires_utc, user["steam_id"], applied
         )
-    # Бан действует на все серверы: сохраняем managed-записи по применённым.
+    # Бан действует на все серверы: сохраняем managed-записи по применённым и
+    # по ожидающим повтора (панель показывает намерение, очередь доводит его).
     managed = None
-    for applied_sid in applied:
+    for applied_sid in [*applied, *(fsid for fsid, _ in failed)]:
         saved = await db.save_managed_ban(
             applied_sid, steam_id, display_name, reason, expires_utc, user["steam_id"]
         )
@@ -3656,9 +3720,11 @@ async def server_ban_add(sid: str, request: Request):
             "в очереди до входа игрока" if pending else "",
         ) if x),
     )
+    failed_sids = [fsid for fsid, _ in failed]
     response = {
         "ok": True, "managed_ban": managed, "mirrored": mirrored,
-        "queued": bool(pending), "queued_servers": pending,
+        "queued": bool(pending or failed_sids), "queued_servers": [*pending, *failed_sids],
+        "retrying_servers": failed_sids,
     }
     await _idempotency_complete(user["steam_id"], idem_key, response)
     return response
@@ -3679,27 +3745,27 @@ async def server_ban_del(sid: str, steam_id: str, request: Request):
         return JSONResponse({"error": {"code": "duplicate_action", "message": "Повторите действие через секунду"}}, status_code=409)
     # Запись могла жить только в очереди (игрока не было онлайн) — снимаем её.
     queued_removed = await db.delete_queued_ban(steam_id)
-    try:
-        await srv.api.request("DELETE", f"/v1/bans/{steam_id}")
-    except RCONError as e:
-        if e.status != 404:
-            await _idempotency_abort(user["steam_id"], idem_key)
-            return _rcon_error(e)
-    # Снятие тоже глобальное: чистим остальные серверы и их managed-записи.
-    others = _other_servers(sid)
-    for other in others:
+    # Снятие глобальное: пробуем все серверы. Неудачные уходят в очередь повторов,
+    # а панель считает бан снятым (намерение зафиксировано в очереди).
+    retrying = []
+    for target in [srv, *_other_servers(sid)]:
         try:
-            await other.api.request("DELETE", f"/v1/bans/{steam_id}")
+            await target.api.request("DELETE", f"/v1/bans/{steam_id}")
         except RCONError as e:
             if e.status != 404:
-                log.warning("Зеркальное снятие банa %s не удалось на %s: %s", steam_id, other.id, e.message)
-    for applied_sid in [sid] + [s.id for s in others]:
+                log.warning("Снятие бана %s не удалось на %s: %s", steam_id, target.id, e.message)
+                await db.enqueue_remote_op("ban_remove", target.id, steam_id, {"created_by": user["steam_id"]})
+                retrying.append(target.id)
+    for applied_sid in [sid] + [s.id for s in _other_servers(sid)]:
         await db.delete_managed_ban(applied_sid, steam_id)
         await _invalidate(applied_sid)
     await db.log_site_audit(user["steam_id"], sid, "ban.remove", steam_id)
-    disclog.emit("ban.remove", actor=await _actor_label(user["steam_id"]), server=srv.name, steam_id=steam_id)
-    await _idempotency_complete(user["steam_id"], idem_key, {"ok": True, "queued_removed": queued_removed})
-    return {"ok": True, "queued_removed": queued_removed}
+    disclog.emit(
+        "ban.remove", actor=await _actor_label(user["steam_id"]), server=srv.name, steam_id=steam_id,
+        detail=f"в очереди повтора: {', '.join(retrying)}" if retrying else "",
+    )
+    await _idempotency_complete(user["steam_id"], idem_key, {"ok": True, "queued_removed": queued_removed, "retrying_servers": retrying})
+    return {"ok": True, "queued_removed": queued_removed, "retrying_servers": retrying}
 
 
 @router.patch("/server/{sid}/bans/{steam_id}")
@@ -3736,19 +3802,22 @@ async def server_ban_update(sid: str, steam_id: str, request: Request):
     try:
         await srv.api.request("DELETE", f"/v1/bans/{steam_id}")
     except RCONError as exc:
+        # Снятие не прошло — выдача ниже вернёт 409 и бан останется на месте;
+        # при недоступности сервера он уйдёт в очередь повторов.
         if exc.status != 404:
-            return _rcon_error(exc)
+            log.warning("Снятие бана %s для правки не удалось на %s: %s", steam_id, sid, exc.message)
     for other in _other_servers(sid):
         try:
             await other.api.request("DELETE", f"/v1/bans/{steam_id}")
         except RCONError as exc:
             if exc.status != 404:
                 log.warning("Зеркальное снятие бана %s не удалось на %s: %s", steam_id, other.id, exc.message)
-    applied, pending, primary_error = await _apply_ban_across(sid, steam_id, reason)
-    if primary_error is not None:
-        # Восстановление со старой причиной (best-effort).
-        await _apply_ban_across(sid, steam_id, current["reason"])
-        return _rcon_error(primary_error)
+    applied, pending, failed = await _apply_ban_across(sid, steam_id, reason)
+    for failed_sid, _err in failed:
+        await db.enqueue_remote_op("ban_add", failed_sid, steam_id, {
+            "reason": reason, "display_name": display_name,
+            "expires_utc": expires_utc, "created_by": user["steam_id"],
+        })
     if pending:
         await db.enqueue_queued_ban(
             steam_id, display_name, reason, expires_utc, user["steam_id"], applied
@@ -3756,7 +3825,7 @@ async def server_ban_update(sid: str, steam_id: str, request: Request):
     else:
         await db.delete_queued_ban(steam_id)
     managed = None
-    for applied_sid in applied:
+    for applied_sid in [*applied, *(fsid for fsid, _ in failed)]:
         saved = await db.save_managed_ban(
             applied_sid, steam_id, display_name, reason, expires_utc, user["steam_id"]
         )
@@ -3921,6 +3990,8 @@ async def _has_active_vip_slot(sid, steam_id):
 
 # SW cooldown: одна смена стороны за игру. Ключ — (sid, steam_id),
 # значение — map, на которой был сделан свап. Смена карты = новая игра.
+_swap_locks = defaultdict(asyncio.Lock)
+_ticket_locks = defaultdict(asyncio.Lock)
 _sw_cooldown: dict[tuple[str, str], str] = {}
 
 
@@ -3964,7 +4035,10 @@ async def server_player_swap(sid: str, steam_id: str, request: Request):
     payload = await _validated(request, PlayerSwapRequest)
     faction = str(payload.faction or "").strip()
     async def action(srv):
-        ok, code, message = await swap_player(srv, sid, steam_id, faction)
+        # Проверки кулдауна и перевеса читают состояние, которое меняет сам свап:
+        # сериализуем свапы на сервере, иначе два параллельных прошли бы оба.
+        async with _swap_locks[sid]:
+            ok, code, message = await swap_player(srv, sid, steam_id, faction)
         if not ok:
             status = 409 if code in {"not_online", "balance", "cooldown"} else 400
             return JSONResponse({"error": {"code": code, "message": message}}, status_code=status)

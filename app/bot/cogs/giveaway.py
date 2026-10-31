@@ -20,6 +20,7 @@ from database import (
     insert_recovered_giveaway,
     remove_participant,
     set_giveaway_done,
+    claim_giveaway_finish,
     set_giveaway_message_id,
 )
 
@@ -124,6 +125,9 @@ class GiveawayCog(commands.Cog):
             await asyncio.sleep(15)
 
     async def _finish(self, g: dict):
+        # Завершение забираем атомарно: параллельный проход не выберет победителей второй раз.
+        if not claim_giveaway_finish(g["id"]):
+            return
         participants = get_participants(g["id"])
         winners_to_pick = min(int(g["winners"]), len(participants))
         winners = random.sample(participants, winners_to_pick) if winners_to_pick else []

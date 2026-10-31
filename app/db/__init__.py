@@ -55,6 +55,7 @@ from .clans import (
 )
 
 from .vip import (
+    queue_vip_removal,
     save_vip_slot,
     list_vip_slots,
     list_active_vip_slots,
@@ -77,6 +78,13 @@ from .tickets import (
     update_ticket,
     delete_ticket,
     add_ticket_comment,
+)
+
+from .remote_ops import (
+    enqueue_remote_op,
+    list_due_remote_ops,
+    delete_remote_op,
+    reschedule_remote_op,
 )
 
 from .bans import (

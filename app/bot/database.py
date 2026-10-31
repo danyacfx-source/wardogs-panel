@@ -860,11 +860,15 @@ def acquire_lease(run_id: str) -> bool:
     if row["run_id"] == run_id:
         return True
     if row["expires_at"] < cutoff:
-        conn.execute(
-            "UPDATE bot_lease SET run_id = ?, expires_at = ? WHERE id = 1",
-            (run_id, _utcnow()),
+        # Условное обновление: захватить можно только всё ещё просроченную аренду.
+        # Два процесса, увидевшие просрочку одновременно, не заберут лицензию оба.
+        taken = conn.execute(
+            "UPDATE bot_lease SET run_id = ?, expires_at = ? WHERE id = 1 AND expires_at < ? AND run_id = ?",
+            (run_id, _utcnow(), cutoff, row["run_id"]),
         )
         conn.commit()
+        if taken.rowcount != 1:
+            return False
         check = conn.execute("SELECT run_id FROM bot_lease WHERE id = 1").fetchone()
         return check and check["run_id"] == run_id
     return False
@@ -966,6 +970,17 @@ def insert_recovered_giveaway(channel_id: int, guild_id: int, prize: str, ends_a
         "VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
         (channel_id, guild_id, prize, ends_at, winners, created_by, message_id),
     )
+
+
+def claim_giveaway_finish(giveaway_id: int) -> bool:
+    """Атомарно забирает завершение розыгрыша. True — только для одного вызывающего."""
+    conn = get_conn()
+    cur = conn.execute(
+        "UPDATE giveaways SET done = 1, finished_at = ? WHERE id = ? AND done = 0",
+        (_utcnow(), giveaway_id),
+    )
+    conn.commit()
+    return cur.rowcount == 1
 
 
 def set_giveaway_done(giveaway_id: int):
@@ -1871,10 +1886,13 @@ def seed_apply_seeding_tick(eligible: list[dict], now_ms: int, week_key: str, gr
         new_total_seconds = user["total_seconds"] + delta
         new_lifetime = user["lifetime_points"] + points
         new_balance = user["balance"] + points
+        # Баланс меняем относительно текущего значения: покупка или корректировка,
+        # случившаяся после загрузки снимка, не должна перезаписываться.
         conn.execute(
-            "UPDATE seed_users SET total_seconds = ?, lifetime_points = ?, balance = ?, updated_at = ? WHERE id = ?",
-            (new_total_seconds, new_lifetime, new_balance, now_ms, user["id"]),
+            "UPDATE seed_users SET total_seconds = ?, lifetime_points = ?, balance = balance + ?, updated_at = ? WHERE id = ?",
+            (new_total_seconds, new_lifetime, points, now_ms, user["id"]),
         )
+        new_balance = conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)).fetchone()[0]
         wr = conn.execute(
             "SELECT * FROM seed_weekly_stats WHERE user_id = ? AND week_key = ?",
             (user["id"], week_key),
@@ -1950,6 +1968,28 @@ def seed_list_seeders(week_key: str) -> list[dict]:
     return out
 
 
+from contextlib import contextmanager as _contextmanager
+
+
+@_contextmanager
+def _write_tx(conn):
+    """Атомарная запись: BEGIN IMMEDIATE на SQLite (блокирует запись до COMMIT), BEGIN на PostgreSQL.
+
+    Внутри блока нельзя вызывать функции с собственным commit() (seed_set_state) —
+    они закрыли бы транзакцию раньше времени.
+    """
+    conn.execute("BEGIN" if db_backend.using_pg() else "BEGIN IMMEDIATE")
+    try:
+        yield conn
+        conn.execute("COMMIT")
+    except BaseException:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
+
+
 def seed_adjust_points(discord_id: str, delta: int, reason: str, actor_id: str, idempotency_key: str) -> dict:
     if not isinstance(delta, int) or delta == 0 or abs(delta) > 1_000_000:
         raise SeedDomainError("bad_amount", "Сумма должна быть целым числом от -1000000 до 1000000, кроме нуля.")
@@ -1961,16 +2001,20 @@ def seed_adjust_points(discord_id: str, delta: int, reason: str, actor_id: str, 
     ref = f"admin:{idempotency_key}"
     if conn.execute("SELECT id FROM seed_point_ledger WHERE ref = ?", (ref,)).fetchone():
         return user
-    if user["balance"] + delta < 0:
-        raise SeedDomainError("negative_balance", "Баланс не может стать отрицательным.")
-    new_balance = user["balance"] + delta
-    conn.execute("UPDATE seed_users SET balance = ?, updated_at = ? WHERE id = ?", (new_balance, now, user["id"]))
-    conn.execute(
-        "INSERT INTO seed_point_ledger (user_id, ref, delta, balance_after, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (user["id"], ref, delta, new_balance, f"admin:{reason[:100]}", now),
-    )
-    seed_audit("points_adjusted", actor_id, {"user_id": user["id"], "delta": delta, "reason": reason[:100]})
-    conn.commit()
+    with _write_tx(conn):
+        # Условное обновление: баланс не уйдёт в минус даже при параллельных запросах.
+        cur = conn.execute(
+            "UPDATE seed_users SET balance = balance + ?, updated_at = ? WHERE id = ? AND balance + ? >= 0",
+            (delta, now, user["id"], delta),
+        )
+        if cur.rowcount != 1:
+            raise SeedDomainError("negative_balance", "Баланс не может стать отрицательным.")
+        new_balance = conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)).fetchone()[0]
+        conn.execute(
+            "INSERT INTO seed_point_ledger (user_id, ref, delta, balance_after, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (user["id"], ref, delta, new_balance, f"admin:{reason[:100]}", now),
+        )
+        seed_audit("points_adjusted", actor_id, {"user_id": user["id"], "delta": delta, "reason": reason[:100]})
     return {**user, "balance": new_balance}
 
 
@@ -1988,18 +2032,26 @@ def seed_grant_points_all(amount: int, reason: str, actor_id: str, idempotency_k
         if prev.get("kind") != "points":
             raise SeedDomainError("duplicate_command", "ID команды уже использован.")
         return {**prev, "applied": False}
-    users = seed_list_users()
-    for user in users:
-        new_balance = user["balance"] + amount
-        conn.execute("UPDATE seed_users SET balance = ?, updated_at = ? WHERE id = ?", (new_balance, now, user["id"]))
+    result = None
+    with _write_tx(conn):
+        users = conn.execute("SELECT id FROM seed_users WHERE linked = 1").fetchall()
+        for row in users:
+            user_id = row[0]
+            conn.execute(
+                "UPDATE seed_users SET balance = balance + ?, updated_at = ? WHERE id = ?",
+                (amount, now, user_id),
+            )
+            new_balance = conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user_id,)).fetchone()[0]
+            conn.execute(
+                "INSERT INTO seed_point_ledger (user_id, ref, delta, balance_after, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (user_id, f"admin-bulk-points:{idempotency_key}:{user_id}", amount, new_balance, f"admin_all:{note}", now),
+            )
+        result = {"kind": "points", "count": len(users), "amount": amount, "total_points": len(users) * amount}
+        seed_audit("points_granted_all", actor_id, {**result, "reason": note})
         conn.execute(
-            "INSERT INTO seed_point_ledger (user_id, ref, delta, balance_after, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (user["id"], f"admin-bulk-points:{idempotency_key}:{user['id']}", amount, new_balance, f"admin_all:{note}", now),
+            "INSERT INTO seed_system_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (marker, _json.dumps(result)),
         )
-    result = {"kind": "points", "count": len(users), "amount": amount, "total_points": len(users) * amount}
-    seed_audit("points_granted_all", actor_id, {**result, "reason": note})
-    seed_set_state(marker, result)
-    conn.commit()
     return {**result, "applied": True}
 
 
@@ -2109,53 +2161,61 @@ def seed_purchase_vip(discord_id: str, sku: str, cost: int, duration_seconds: in
     user = seed_get_user_by_discord(discord_id)
     if not user:
         raise SeedDomainError("not_linked", "Сначала привяжите Steam через /steam link.")
-    if user["balance"] < cost:
-        raise SeedDomainError("insufficient_points", f"Недостаточно баллов: нужно {cost}, доступно {user['balance']}.")
-    new_balance = user["balance"] - cost
-    conn.execute("UPDATE seed_users SET balance = ?, updated_at = ? WHERE id = ?", (new_balance, now, user["id"]))
-    order_id = _uuid.uuid4().hex
-    conn.execute(
-        "INSERT INTO seed_point_ledger (user_id, ref, delta, balance_after, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (user["id"], f"vip:{order_id}", -cost, new_balance, f"vip_purchase:{sku}", now),
-    )
-    member = seed_get_vip_membership(user["id"])
-    if not member:
-        state = "pending_add"
-        queued = duration_seconds
-        active_until = None
-        pending_since = now
-    elif member["state"] == "active" and (member["active_until"] or 0) > now:
-        state = "active"
-        active_until = member["active_until"] + duration_seconds * 1000
-        queued = 0
-        pending_since = None
-    elif member["state"] == "pending_remove":
-        state = "pending_add"
-        queued = (member["queued_seconds"] or 0) + duration_seconds
-        active_until = None
-        pending_since = now
-    else:
-        state = "pending_add"
-        queued = (member["queued_seconds"] or 0) + duration_seconds
-        active_until = member.get("active_until")
-        pending_since = member.get("pending_since") or now
-    conn.execute(
-        """
-        INSERT INTO seed_vip_memberships (user_id, state, queued_seconds, active_until, managed_by_bot, pending_since, last_error, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, '', ?)
-        ON CONFLICT(user_id) DO UPDATE SET
-            state=excluded.state, queued_seconds=excluded.queued_seconds, active_until=excluded.active_until,
-            pending_since=excluded.pending_since, last_error='', updated_at=excluded.updated_at
-        """,
-        (user["id"], state, queued, active_until, None, pending_since, now),
-    )
-    order_state = "active" if state == "active" else "queued"
-    conn.execute(
-        "INSERT INTO seed_vip_orders (id, user_id, sku, cost, duration_seconds, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (f"vip:{idempotency_key}", user["id"], sku, cost, duration_seconds, order_state, now),
-    )
-    seed_audit("vip_purchased", discord_id, {"order_id": order_id, "user_id": user["id"], "sku": sku, "cost": cost})
-    conn.commit()
+    with _write_tx(conn):
+        # Повторный запрос с тем же ключом (параллельный двойной клик) уже записан в
+        # seed_vip_orders под этим же ключом — проверяем внутри транзакции.
+        if conn.execute("SELECT 1 FROM seed_vip_orders WHERE id = ?", (f"vip:{idempotency_key}",)).fetchone():
+            raise SeedDomainError("duplicate_command", "Эта покупка уже оформлена.")
+        cur = conn.execute(
+            "UPDATE seed_users SET balance = balance - ?, updated_at = ? WHERE id = ? AND balance >= ?",
+            (cost, now, user["id"], cost),
+        )
+        if cur.rowcount != 1:
+            available = conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)).fetchone()[0]
+            raise SeedDomainError("insufficient_points", f"Недостаточно баллов: нужно {cost}, доступно {available}.")
+        new_balance = conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)).fetchone()[0]
+        order_id = _uuid.uuid4().hex
+        conn.execute(
+            "INSERT INTO seed_point_ledger (user_id, ref, delta, balance_after, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (user["id"], f"vip:{order_id}", -cost, new_balance, f"vip_purchase:{sku}", now),
+        )
+        member = seed_get_vip_membership(user["id"])
+        if not member:
+            state = "pending_add"
+            queued = duration_seconds
+            active_until = None
+            pending_since = now
+        elif member["state"] == "active" and (member["active_until"] or 0) > now:
+            state = "active"
+            active_until = member["active_until"] + duration_seconds * 1000
+            queued = 0
+            pending_since = None
+        elif member["state"] == "pending_remove":
+            state = "pending_add"
+            queued = (member["queued_seconds"] or 0) + duration_seconds
+            active_until = None
+            pending_since = now
+        else:
+            state = "pending_add"
+            queued = (member["queued_seconds"] or 0) + duration_seconds
+            active_until = member.get("active_until")
+            pending_since = member.get("pending_since") or now
+        conn.execute(
+            """
+            INSERT INTO seed_vip_memberships (user_id, state, queued_seconds, active_until, managed_by_bot, pending_since, last_error, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, '', ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                state=excluded.state, queued_seconds=excluded.queued_seconds, active_until=excluded.active_until,
+                pending_since=excluded.pending_since, last_error='', updated_at=excluded.updated_at
+            """,
+            (user["id"], state, queued, active_until, None, pending_since, now),
+        )
+        order_state = "active" if state == "active" else "queued"
+        conn.execute(
+            "INSERT INTO seed_vip_orders (id, user_id, sku, cost, duration_seconds, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (f"vip:{idempotency_key}", user["id"], sku, cost, duration_seconds, order_state, now),
+        )
+        seed_audit("vip_purchased", discord_id, {"order_id": order_id, "user_id": user["id"], "sku": sku, "cost": cost})
     return {
         "id": order_id,
         "user_id": user["id"],
