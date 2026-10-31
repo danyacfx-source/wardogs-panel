@@ -2289,6 +2289,15 @@ class SeedingCog(commands.Cog):
         description="Сбор игроков для координаторов и администраторов WARDOGS",
     )
 
+    def _can_manage_gather(self, interaction: discord.Interaction) -> bool:
+        """Сбор игроков: право «Управление сервером» или роль SEED_GATHER_ROLE_ID (если задана)."""
+        user = interaction.user
+        if getattr(user, "guild_permissions", None) and user.guild_permissions.manage_guild:
+            return True
+        if config.SEED_GATHER_ROLE_ID and any(r.id == config.SEED_GATHER_ROLE_ID for r in getattr(user, "roles", [])):
+            return True
+        return False
+
     @gather_group.command(name="start", description="Позвать игроков и опубликовать обновляемую карточку сбора")
     @app_commands.describe(
         server="Игровой сервер",
@@ -2316,6 +2325,10 @@ class SeedingCog(commands.Cog):
         minutes: app_commands.Range[int, 15, 360] = 120,
         instructions: str = "",
     ):
+        if not self._can_manage_gather(interaction):
+            return await interaction.response.send_message(
+                "Сбор могут запускать администраторы и координаторы сидинга.", ephemeral=True
+            )
         await interaction.response.defer(ephemeral=True)
         server_id = server.value
         if not self._rcon_for(server_id):
@@ -2411,6 +2424,10 @@ class SeedingCog(commands.Cog):
     )
     @app_commands.guild_only()
     async def gather_status(self, interaction: discord.Interaction, server: app_commands.Choice[str]):
+        if not self._can_manage_gather(interaction):
+            return await interaction.response.send_message(
+                "Сбор могут запускать администраторы и координаторы сидинга.", ephemeral=True
+            )
         await interaction.response.defer(ephemeral=True)
         sessions = seed_get_state("seeding_gathers", {}) or {}
         session = sessions.get(server.value)
@@ -2445,6 +2462,10 @@ class SeedingCog(commands.Cog):
     )
     @app_commands.guild_only()
     async def gather_stop(self, interaction: discord.Interaction, server: app_commands.Choice[str]):
+        if not self._can_manage_gather(interaction):
+            return await interaction.response.send_message(
+                "Сбор могут запускать администраторы и координаторы сидинга.", ephemeral=True
+            )
         await interaction.response.defer(ephemeral=True)
         sessions = seed_get_state("seeding_gathers", {}) or {}
         session = sessions.get(server.value)
