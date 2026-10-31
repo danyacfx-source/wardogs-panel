@@ -3,7 +3,10 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import asyncio
 import logging
+from collections import defaultdict
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -16,6 +19,11 @@ import database
 from database import get_conn
 
 log = logging.getLogger("tickets")
+
+# Один пользователь не может открыть два тикета параллельно: проверка «уже есть
+# открытый тикет» и запись в БД разделены созданием канала (await), и двойной
+# клик иначе проходил проверку дважды.
+_ticket_locks: dict = defaultdict(asyncio.Lock)
 
 _panel_db_mod = None
 
@@ -207,7 +215,10 @@ class TicketPanelView(discord.ui.View):
 
     async def _create_ticket(self, interaction: discord.Interaction, ticket_type: str):
         await interaction.response.defer(ephemeral=True)
+        async with _ticket_locks[interaction.user.id]:
+            await self._create_ticket_locked(interaction, ticket_type)
 
+    async def _create_ticket_locked(self, interaction: discord.Interaction, ticket_type: str):
         conn = get_conn()
         existing = conn.execute(
             "SELECT 1 FROM tickets WHERE user_id = ? AND status = 'open'",
