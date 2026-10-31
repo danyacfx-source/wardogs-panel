@@ -37,7 +37,6 @@ class AutomodCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._spam = {}
-        self._own_actions = set()
         self.run_id = getattr(bot, "run_id", "?")
         log.info("Автомод запущен, run_id=%s", self.run_id)
 
@@ -141,7 +140,6 @@ class AutomodCog(commands.Cog):
             for word in badwords:
                 pattern = r"\b" + re.escape(word.lower()) + r"\b"
                 if re.search(pattern, content_lower):
-                    self._own_actions.add(message.id)
                     try:
                         await message.delete()
                     except discord.Forbidden:
@@ -167,7 +165,6 @@ class AutomodCog(commands.Cog):
         # 3. Ссылки
         if cfg["links_allowed"] != "1":
             if URL_RE.search(message.content):
-                self._own_actions.add(message.id)
                 try:
                     await message.delete()
                 except discord.Forbidden:
@@ -188,7 +185,6 @@ class AutomodCog(commands.Cog):
             and len(letters) > 0
             and sum(1 for c in letters if c.isupper()) / len(letters) * 100 >= caps_pct
         ):
-            self._own_actions.add(message.id)
             try:
                 await message.delete()
             except discord.Forbidden:
@@ -390,6 +386,10 @@ class AutomodCog(commands.Cog):
     @automod.command(name="spam", description="Настроить антispам")
     @app_commands.describe(msgs="Сообщений", secs="За секунд", mute_mins="Мут на минут")
     async def automod_spam(self, interaction: discord.Interaction, msgs: int, secs: int, mute_mins: int):
+        if not (2 <= msgs <= 50 and 1 <= secs <= 600 and 1 <= mute_mins <= 10080):
+            return await interaction.response.send_message(
+                "❌ Допустимо: сообщений 2–50, секунд 1–600, мут 1–10080 мин.", ephemeral=True
+            )
         set_automod_config("spam_msgs", msgs)
         set_automod_config("spam_secs", secs)
         set_automod_config("spam_mute_mins", mute_mins)
@@ -418,6 +418,10 @@ class AutomodCog(commands.Cog):
     @automod.command(name="warnmute", description="Настроить автомут за варны")
     @app_commands.describe(warns="Кол-во варнов", mute_mins="Мут на минут")
     async def automod_warnmute(self, interaction: discord.Interaction, warns: int, mute_mins: int):
+        if not (1 <= warns <= 50 and 1 <= mute_mins <= 40320):
+            return await interaction.response.send_message(
+                "❌ Допустимо: варнов 1–50, мут 1–40320 мин.", ephemeral=True
+            )
         set_automod_config("warns_to_mute", warns)
         set_automod_config("warn_mute_mins", mute_mins)
         await interaction.response.send_message(f"✅ Автомут: {warns} варнов → мут {mute_mins} мин.", ephemeral=True)
