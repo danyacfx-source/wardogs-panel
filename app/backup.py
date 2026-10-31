@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import os
 import logging
 import time
 from pathlib import Path
@@ -93,6 +94,11 @@ async def restore_backup(db_path: Path | None = None) -> bool:
         return False
 
     bot_id = await _bot_user_id()
+    if not bot_id:
+        # Без id бота нельзя отличить свой бэкап от чужого файла в канале:
+        # при сбое /users/@me фильтр автора отключался бы и принимались бы любые site_*.db.
+        log.warning("Не удалось определить id бота — восстановление БД пропущено")
+        return False
     try:
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bot {config.DISCORD_BOT_TOKEN}"}
@@ -109,7 +115,7 @@ async def restore_backup(db_path: Path | None = None) -> bool:
 
             for msg in messages:
                 author_id = str(msg.get("author", {}).get("id", ""))
-                if bot_id and author_id != str(bot_id):
+                if author_id != str(bot_id):
                     continue
                 for att in msg.get("attachments", []):
                     fname = att.get("filename", "")
@@ -124,10 +130,13 @@ async def restore_backup(db_path: Path | None = None) -> bool:
                         if dl.status != 200:
                             continue
                         data = await dl.read()
-                        if len(data) < 1024:
+                        if len(data) < 1024 or not data.startswith(b"SQLite format 3\x00"):
                             continue
                         path.parent.mkdir(parents=True, exist_ok=True)
-                        path.write_bytes(data)
+                        # Атомарная запись: обрыв посреди записи не оставит битый файл БД.
+                        tmp_path = path.with_name(path.name + ".restore-tmp")
+                        tmp_path.write_bytes(data)
+                        os.replace(tmp_path, path)
                         log.info(
                             "БД восстановлена из бэкапа: %s (%d байт)",
                             fname,
