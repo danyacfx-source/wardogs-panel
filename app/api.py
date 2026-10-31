@@ -107,14 +107,8 @@ def _vip_pay_url(order) -> str:
     return f'{config.PUBLIC_URL}/donate/vip/{order["id"]}'
 
 
-async def fulfill_vip_order(order, operation_id: str = ""):
-    """Помечает заявку оплаченной и выдаёт VIP-слоты её получателям.
-
-    Вызывается из webhook ЮMoney (app/donate.py). Каждый шаг ограничен
-    переходом статуса, поэтому повторное уведомление ничего не дублирует.
-    """
-    if not order or not await db.mark_vip_order(order['id'], 'paid', expected='awaiting_payment'):
-        return False
+async def _grant_vip_slots(order):
+    """Выдаёт VIP-слоты получателям заказа. Ошибка основного сервера поднимается наружу."""
     expires_utc = time.time() + float(order.get('months') or 1) * 30 * 86400
     results = []
     for steam_id in order.get('recipients') or []:
@@ -154,6 +148,24 @@ async def fulfill_vip_order(order, operation_id: str = ""):
             "VIP-заказ %s: слот %s на %s — %s",
             order['id'], steam_id, order['server_id'], 'выдан' if synced else error,
         )
+    return results
+
+
+async def fulfill_vip_order(order, operation_id: str = ""):
+    """Помечает заявку оплаченной и выдаёт VIP-слоты её получателям.
+
+    Вызывается из webhook ЮMoney (app/donate.py). Каждый шаг ограничен
+    переходом статуса, поэтому повторное уведомление ничего не дублирует.
+    """
+    if not order or not await db.mark_vip_order(order['id'], 'paid', expected='awaiting_payment'):
+        return False
+    try:
+        results = await _grant_vip_slots(order)
+    except Exception:
+        # Выдача не удалась: откатываем статус, чтобы повторное уведомление
+        # ЮMoney снова попало в fulfill_vip_order, а не было принято как «уже обработано».
+        await db.mark_vip_order(order['id'], 'awaiting_payment', expected='paid')
+        raise
     issued = all(item['synced'] for item in results)
     if issued:
         await db.mark_vip_order(order['id'], 'fulfilled', expected='paid')

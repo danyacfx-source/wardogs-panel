@@ -96,11 +96,10 @@ async def fetch_profiles(steam_ids):
         async with aiohttp.ClientSession(timeout=timeout) as session:
             for i in range(0, len(steam_ids), 100):
                 chunk = steam_ids[i : i + 100]
-                url = (
-                    "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/"
-                    f"?key={config.STEAM_API_KEY}&steamids={','.join(chunk)}"
-                )
-                async with session.get(url) as resp:
+                async with session.get(
+                    "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/",
+                    params={"key": config.STEAM_API_KEY, "steamids": ",".join(chunk)},
+                ) as resp:
                     if resp.status != 200:
                         continue
                     data = await resp.json()
@@ -138,11 +137,10 @@ async def fetch_player_bans(steam_ids):
         async with aiohttp.ClientSession(timeout=timeout) as session:
             for index in range(0, len(ids), 100):
                 chunk = ids[index:index + 100]
-                url = (
-                    "https://api.steampowered.com/ISteamUser/GetPlayerBans/v1/"
-                    f"?key={config.STEAM_API_KEY}&steamids={','.join(chunk)}"
-                )
-                async with session.get(url) as response:
+                async with session.get(
+                    "https://api.steampowered.com/ISteamUser/GetPlayerBans/v1/",
+                    params={"key": config.STEAM_API_KEY, "steamids": ",".join(chunk)},
+                ) as response:
                     if response.status != 200:
                         continue
                     payload = await response.json()
