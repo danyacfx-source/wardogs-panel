@@ -13,6 +13,7 @@ import ipaddress
 import io
 import json
 import logging
+import math
 import re
 import secrets
 import time
@@ -196,10 +197,11 @@ async def vip_order_create(request: Request):
     recipients = list(payload.recipients or [])
     if not plan or sid not in POOL:
         raise HTTPException(400, 'Проверьте тариф, покупателя и сервер')
-    if len(recipients) > plan['seats']:
-        raise HTTPException(400, 'Состав должен содержать уникальные SteamID64 в пределах тарифа')
     if not recipients and plan['seats']==1:
         recipients=[buyer]
+    recipients=list(dict.fromkeys(str(r) for r in recipients))
+    if len(recipients) != plan['seats'] or not all(STEAM_ID_RE.fullmatch(r) for r in recipients):
+        raise HTTPException(400, 'Состав должен содержать уникальные SteamID64 в количестве тарифа')
     order={'id':'WD-'+secrets.token_hex(8).upper(),'buyer_steam_id':buyer,'server_id':sid,'plan_id':plan['id'],'amount':plan['amount'],'months':plan['months'],'seats':plan['seats'],'recipients':recipients,'status':'awaiting_payment','created_utc':time.time(),'actor_steam_id':user['steam_id']}
     await db.create_vip_order(order)
     await db.log_site_audit(user['steam_id'],sid,'vip.order.create',order['id'])
@@ -2873,6 +2875,8 @@ def _parse_vip_expiry(value):
         return None
     if isinstance(value, (int, float)):
         timestamp = float(value)
+        if not math.isfinite(timestamp):
+            raise HTTPException(status_code=400, detail="Некорректная дата окончания VIP")
     else:
         text = str(value).strip()
         if text.endswith("Z"):
@@ -2884,7 +2888,7 @@ def _parse_vip_expiry(value):
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
         timestamp = parsed.timestamp()
-    if timestamp <= time.time() + 60:
+    if not math.isfinite(timestamp) or timestamp <= time.time() + 60:
         raise HTTPException(status_code=400, detail="Окончание VIP должно быть в будущем")
     if timestamp > time.time() + 10 * 365 * 86400:
         raise HTTPException(status_code=400, detail="Срок VIP не может превышать 10 лет")
@@ -3362,6 +3366,8 @@ async def _reserved_config_update(srv: Server, steam_id: str, add: bool):
         newline = "\r\n" if "\r\n" in text else "\n"
         clear_re = re.compile(r"(?im)^\s*!DefaultReservedPlayerIds\s*=\s*ClearArray\s*$")
         match = clear_re.search(text)
+        if not STEAM_ID_RE.fullmatch(str(steam_id or "")):
+            raise HTTPException(status_code=400, detail="SteamID64 должен состоять из 17 цифр")
         entry = f".DefaultReservedPlayerIds={steam_id}"
         if match:
             updated = text[:match.end()] + newline + entry + text[match.end():]
