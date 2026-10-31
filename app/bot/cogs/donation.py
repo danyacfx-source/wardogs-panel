@@ -768,7 +768,9 @@ class DonationCog(commands.Cog):
             await interaction.response.send_message("Выбор истёк. Откройте список VIP заново.", ephemeral=True)
             return
         product = PRODUCTS[cart["productId"]]
-        recipients = list(cart["recipients"]) + [str(v) for v in values]
+        # Без дубликатов и не больше мест в продукте: иначе один и тот же
+        # участник получит слот дважды или заказ уйдёт на лишних получателей.
+        recipients = list(dict.fromkeys([*cart["recipients"], *(str(v) for v in values)]))[: product["seats"]]
         save_donation_cart({**cart, "recipients": recipients})
         if len(recipients) < product["seats"]:
             left = product["seats"] - len(recipients)
