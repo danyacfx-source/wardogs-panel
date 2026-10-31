@@ -470,6 +470,7 @@ class DonationFeedService:
 
 class SeedingCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
+        self._vip_buy_recent: dict = {}
         self.bot = bot
         self.rcon: WardogsRconClient | None = None
         self.rcon2: WardogsRconClient | None = None
@@ -2143,6 +2144,14 @@ class SeedingCog(commands.Cog):
         if not product:
             await interaction.followup.send("Неизвестный вариант VIP.", ephemeral=True)
             return
+        # Каждый клик даёт свой idempotency_key, поэтому двойной клик списывал баллы дважды.
+        # Один и тот же вариант не принимаем чаще раза в 10 секунд.
+        buy_key = (interaction.user.id, sku)
+        last_buy = self._vip_buy_recent.get(buy_key, 0.0)
+        if time.monotonic() - last_buy < 10:
+            await interaction.followup.send("Покупка уже обрабатывается. Подождите несколько секунд.", ephemeral=True)
+            return
+        self._vip_buy_recent[buy_key] = time.monotonic()
         cost = getattr(config, product["cost_attr"])
         user = seed_get_user_by_discord(str(interaction.user.id))
         if not user:
