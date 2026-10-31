@@ -1461,7 +1461,7 @@ async def public_clan_sync(request: Request):
         raise HTTPException(status_code=404, detail="clan-sync disabled")
     timestamp = (request.headers.get("x-wardogs-timestamp") or "").strip()
     signature = (request.headers.get("x-wardogs-signature") or "").strip().lower()
-    if not timestamp.isdigit() or not re.fullmatch(r"[0-9a-f]{64}", signature):
+    if not re.fullmatch(r"[0-9]{1,12}", timestamp) or not re.fullmatch(r"[0-9a-f]{64}", signature):
         raise HTTPException(status_code=403, detail="bad signature")
     ts = int(timestamp)
     if abs(time.time() - ts) > 300:
@@ -1474,6 +1474,15 @@ async def public_clan_sync(request: Request):
     ).hexdigest()
     if not hmac.compare_digest(expected, signature):
         raise HTTPException(status_code=403, detail="bad signature")
+    # Подписанный запрос можно было бы повторить в пределах окна 300 с:
+    # каждую подпись принимаем только один раз и помним её до конца окна.
+    now = time.time()
+    for seen_sig, seen_until in list(_clan_sync_seen.items()):
+        if seen_until < now:
+            _clan_sync_seen.pop(seen_sig, None)
+    if signature in _clan_sync_seen:
+        raise HTTPException(status_code=409, detail="replayed request")
+    _clan_sync_seen[signature] = ts + 300
     try:
         body = json.loads(raw)
     except Exception as exc:
@@ -2678,6 +2687,7 @@ async def site_audit_integrity(request: Request):
 # ---------- kill feed ----------
 
 _KILLFEED_MAX_BODY = 64 * 1024
+_clan_sync_seen: dict[str, float] = {}
 _KILLFEED_MAX_KILLS = 200
 _STEAM_ID_RE = re.compile(r"^\d{17}$")
 _KILL_TAG_PREFIXES = (

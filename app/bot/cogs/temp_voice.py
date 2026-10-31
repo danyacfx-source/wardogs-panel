@@ -1,3 +1,4 @@
+import re
 import sys
 import os
 
@@ -122,7 +123,7 @@ def _make_modals(vc):
 
         async def on_submit(self, interaction: discord.Interaction):
             raw = self.user.value.strip().replace("<@!", "").replace("<@", "").replace(">", "")
-            ids = [x for x in raw.replace(",", " ").split() if x.strip().isdigit()]
+            ids = [x for x in raw.replace(",", " ").split() if re.fullmatch(r"[0-9]{5,25}", x.strip())]
             if not ids:
                 bot = interaction.client
                 # Если не введён ID — даём ссылку-приглашение
@@ -154,10 +155,9 @@ def _make_modals(vc):
 
         async def on_submit(self, interaction: discord.Interaction):
             raw = self.user.value.strip().strip("<@!>")
-            try:
-                uid = int(raw)
-            except ValueError:
+            if not re.fullmatch(r"[0-9]{5,25}", raw):
                 return await interaction.response.send_message("Укажите ID.", ephemeral=True)
+            uid = int(raw)
             member = interaction.guild.get_member(uid)
             if not member:
                 return await interaction.response.send_message("Участник не найден.", ephemeral=True)
