@@ -682,17 +682,11 @@ async def my_profile(request: Request):
     for vip in vip_slots:
         vip["active"] = vip["expires_utc"] is None or vip["expires_utc"] > now
         vip["server_name"] = server_names.get(vip["server_id"], vip["server_id"])
-    tickets = [
-        ticket
-        for ticket in await db.list_tickets(limit=500)
-        if steam_id in (ticket.get("player_steam_id"), ticket.get("created_by"), ticket.get("assigned_to"))
-    ]
+    # Фильтры по игроку делаются в SQL: раньше брались последние 500 записей всей базы
+    # и отбрасывались, поэтому старые записи пользователя пропадали, а счётчик занижался.
+    tickets = await db.list_tickets(limit=1000, involving=steam_id)
     tickets.sort(key=lambda ticket: ticket.get("updated_utc") or 0, reverse=True)
-    audit = [
-        item
-        for item in await db.get_site_audit(limit=500)
-        if item.get("actor_steam_id") == steam_id
-    ][:20]
+    audit = await db.get_site_audit(limit=20, actor_steam_id=steam_id)
     return {
         "ok": True,
         "me": me,
@@ -3677,7 +3671,12 @@ async def server_ban_add(sid: str, request: Request):
             pass
     if display_name:
         try:
-            await db.upsert_user(steam_id, display_name)
+            # Ник из запроса не перезаписывает уже известный ник игрока.
+            known = await db.get_user(steam_id)
+            if not (known and (known.get("persona") or "").strip()):
+                await db.upsert_user(steam_id, display_name)
+            else:
+                await db.touch_user(steam_id)
         except Exception:
             pass
     expires_utc = _parse_vip_expiry(payload.expires_utc)
@@ -4025,6 +4024,9 @@ async def swap_player(srv, sid, steam_id, faction):
     await srv.api.request("PATCH", f"/v1/players/{steam_id}", json_body={"faction": faction})
     if game_key:
         _sw_cooldown[(sid, steam_id)] = game_key
+        # Память ограничена: самые старые записи вытесняются (dict хранит порядок вставки).
+        while len(_sw_cooldown) > 20000:
+            _sw_cooldown.pop(next(iter(_sw_cooldown)), None)
     return True, "swapped", f"{steam_id} переведён в «{faction}» (перевес был {diff})"
 
 

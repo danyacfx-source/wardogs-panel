@@ -339,15 +339,19 @@ async def log_site_audit(actor_steam_id, server_id, event, detail=""):
         _audit_verify_cache["result"] = None
 
 
-async def get_site_audit(limit=200):
+async def get_site_audit(limit=200, actor_steam_id=None):
+    """Аудит; actor_steam_id — фильтр по инициатору прямо в SQL (не в памяти)."""
+    where = "WHERE a.actor_steam_id = ? " if actor_steam_id else ""
+    params = ((actor_steam_id,) if actor_steam_id else ()) + (max(1, min(int(limit), 1000)),)
     async with _conn() as db:
         cur = await db.execute(
             "SELECT a.timestamp_utc, a.actor_steam_id, a.server_id, a.event, a.detail, "
             "COALESCE(u.persona, '') "
             "FROM site_audit a "
             "LEFT JOIN users u ON u.steam_id = a.actor_steam_id "
+            + where +
             "ORDER BY a.id DESC LIMIT ?",
-            (max(1, min(int(limit), 1000)),),
+            params,
         )
         rows = await cur.fetchall()
     return [

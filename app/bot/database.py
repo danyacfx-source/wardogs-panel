@@ -87,10 +87,9 @@ def _insert_returning_id(conn, sql: str, params) -> int:
 
 def _ensure_column(conn, table: str, column: str, ddl: str):
     if db_backend.using_pg():
-        try:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {ddl}")
-        except Exception:
-            pass
+        # Ошибку не глушим: иначе схема тихо отстанет от кода. IF NOT EXISTS уже
+        # делает повторный запуск безопасным.
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {ddl}")
         return
     cols = [r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
     if column not in cols:
@@ -1328,6 +1327,19 @@ def get_donor_total(user_id):
     return row["total"] if row else 0
 
 
+def add_donor_total(user_id, amount, public=True):
+    """Атомарно прибавляет сумму к накопленному донату и возвращает новый итог."""
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO donations_donors(user_id,total,public) VALUES(?,?,?) "
+        "ON CONFLICT(user_id) DO UPDATE SET total = donations_donors.total + excluded.total, public=excluded.public",
+        (user_id, amount, 1 if public else 0),
+    )
+    row = conn.execute("SELECT total FROM donations_donors WHERE user_id = ?", (user_id,)).fetchone()
+    conn.commit()
+    return int(row[0]) if row else int(amount)
+
+
 def set_donor_total(user_id, total, public=True):
     conn = get_conn()
     conn.execute(
@@ -1639,17 +1651,23 @@ def seed_verify_link_challenge(
         )
     supplied_hash = _hash_code(discord_id, code)
     if not _hmac.compare_digest(str(row["code_hash"]), supplied_hash):
-        attempts = int(row["attempts"]) + 1
-        if attempts >= max_attempts:
-            conn.execute("DELETE FROM seed_link_challenges WHERE discord_id = ?", (discord_id,))
-            seed_audit("link_challenge_locked", discord_id, {})
-            conn.commit()
+        # Счётчик увеличиваем атомарно: параллельные неверные коды не теряют попытки.
+        with _write_tx(conn):
+            conn.execute(
+                "UPDATE seed_link_challenges SET attempts = attempts + 1 WHERE discord_id = ?",
+                (discord_id,),
+            )
+            attempts = int(conn.execute(
+                "SELECT attempts FROM seed_link_challenges WHERE discord_id = ?", (discord_id,)
+            ).fetchone()[0])
+            if attempts >= max_attempts:
+                conn.execute("DELETE FROM seed_link_challenges WHERE discord_id = ?", (discord_id,))
+                seed_audit("link_challenge_locked", discord_id, {})
+                locked = True
+            else:
+                locked = False
+        if locked:
             raise SeedDomainError("challenge_locked", "Слишком много попыток. Запросите новый код.")
-        conn.execute(
-            "UPDATE seed_link_challenges SET attempts = ? WHERE discord_id = ?",
-            (attempts, discord_id),
-        )
-        conn.commit()
         raise SeedDomainError("bad_code", f"Неверный код. Осталось попыток: {max_attempts - attempts}.")
 
     steam_id = row["steam_id"]
@@ -1702,39 +1720,39 @@ def seed_verify_link_challenge(
             "purpose": "donation",
         }
 
-    if donor_discord:
-        conn.execute("DELETE FROM seed_donor_links WHERE id = ?", (donor_discord["id"],))
-        seed_audit("donation_identity_promoted", discord_id, {"donor_id": donor_discord["id"]})
+    with _write_tx(conn):
+        if donor_discord:
+            conn.execute("DELETE FROM seed_donor_links WHERE id = ?", (donor_discord["id"],))
+            seed_audit("donation_identity_promoted", discord_id, {"donor_id": donor_discord["id"]})
 
-    if archived:
-        user = archived[0]
-        conn.execute(
-            "UPDATE seed_users SET discord_id = ?, steam_id = ?, display_name = ?, linked = 1, updated_at = ? WHERE id = ?",
-            (discord_id, steam_id, row["display_name"], now, user["id"]),
-        )
-        seed_audit("identity_relinked", discord_id, {"user_id": user["id"]})
-        user_id = user["id"]
-        balance = user["balance"]
-        total_seconds = user["total_seconds"]
-        lifetime_points = user["lifetime_points"]
-    else:
-        user_id = _uuid.uuid4().hex
-        conn.execute(
-            """
-            INSERT INTO seed_users (id, discord_id, steam_id, display_name, balance, total_seconds, lifetime_points, linked, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 0, 0, 0, 1, ?, ?)
-            """,
-            (user_id, discord_id, steam_id, row["display_name"], now, now),
-        )
-        seed_audit("identity_linked", discord_id, {"user_id": user_id})
-        balance = total_seconds = lifetime_points = 0
+        if archived:
+            user = archived[0]
+            conn.execute(
+                "UPDATE seed_users SET discord_id = ?, steam_id = ?, display_name = ?, linked = 1, updated_at = ? WHERE id = ?",
+                (discord_id, steam_id, row["display_name"], now, user["id"]),
+            )
+            seed_audit("identity_relinked", discord_id, {"user_id": user["id"]})
+            user_id = user["id"]
+            balance = user["balance"]
+            total_seconds = user["total_seconds"]
+            lifetime_points = user["lifetime_points"]
+        else:
+            user_id = _uuid.uuid4().hex
+            conn.execute(
+                """
+                INSERT INTO seed_users (id, discord_id, steam_id, display_name, balance, total_seconds, lifetime_points, linked, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 0, 0, 0, 1, ?, ?)
+                """,
+                (user_id, discord_id, steam_id, row["display_name"], now, now),
+            )
+            seed_audit("identity_linked", discord_id, {"user_id": user_id})
+            balance = total_seconds = lifetime_points = 0
 
-    conn.execute(
-        "INSERT OR IGNORE INTO seed_point_ledger (user_id, ref, delta, balance_after, reason, created_at) VALUES (?, ?, 0, ?, ?, ?)",
-        (user_id, f"link:{user_id}", balance, "account_linked", now),
-    )
-    conn.execute("DELETE FROM seed_link_challenges WHERE discord_id = ?", (discord_id,))
-    conn.commit()
+        conn.execute(
+            "INSERT OR IGNORE INTO seed_point_ledger (user_id, ref, delta, balance_after, reason, created_at) VALUES (?, ?, 0, ?, ?, ?)",
+            (user_id, f"link:{user_id}", balance, "account_linked", now),
+        )
+        conn.execute("DELETE FROM seed_link_challenges WHERE discord_id = ?", (discord_id,))
     return {
         "id": user_id,
         "discord_id": discord_id,
@@ -2074,20 +2092,17 @@ def _add_time_for_user(user: dict, minutes: int, note: str, ref: str, week_key: 
             "INSERT INTO seed_weekly_stats (user_id, week_key, seconds, points, manual_seconds) VALUES (?, ?, ?, ?, ?)",
             (user["id"], week_key, seconds, points, seconds),
         )
-    new_total = user["total_seconds"] + seconds
     new_lifetime = user["lifetime_points"] + points
-    new_balance = user["balance"] + points
     conn.execute(
-        "UPDATE seed_users SET total_seconds = ?, lifetime_points = ?, balance = ?, updated_at = ? WHERE id = ?",
-        (new_total, new_lifetime, new_balance, now, user["id"]),
+        "UPDATE seed_users SET total_seconds = total_seconds + ?, lifetime_points = ?, balance = balance + ?, updated_at = ? WHERE id = ?",
+        (seconds, new_lifetime, points, now, user["id"]),
     )
-    try:
-        conn.execute(
-            "INSERT INTO seed_point_ledger (user_id, ref, delta, balance_after, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (user["id"], ref, points, new_balance, f"manual_time:{note}", now),
-        )
-    except Exception:
-        pass
+    new_balance = conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)).fetchone()[0]
+    # Ошибка журнала не должна молча оставлять баланс без записи: пусть откатит транзакцию.
+    conn.execute(
+        "INSERT INTO seed_point_ledger (user_id, ref, delta, balance_after, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (user["id"], ref, points, new_balance, f"manual_time:{note}", now),
+    )
     return points
 
 
@@ -2106,9 +2121,9 @@ def seed_add_time(discord_id: str, minutes: int, reason: str, actor_id: str, ide
     ref = f"admin-time:{idempotency_key}"
     if conn.execute("SELECT id FROM seed_point_ledger WHERE ref = ?", (ref,)).fetchone():
         return {"applied": False, "user": user, "minutes": 0, "points": 0, "week_key": week_key}
-    points = _add_time_for_user(user, minutes, note, ref, week_key, now)
-    seed_audit("seeding_time_added", actor_id, {"user_id": user["id"], "minutes": minutes, "points": points, "week_key": week_key, "reason": note})
-    conn.commit()
+    with _write_tx(conn):
+        points = _add_time_for_user(user, minutes, note, ref, week_key, now)
+        seed_audit("seeding_time_added", actor_id, {"user_id": user["id"], "minutes": minutes, "points": points, "week_key": week_key, "reason": note})
     return {"applied": True, "user": user, "minutes": minutes, "points": points, "week_key": week_key}
 
 
@@ -2126,15 +2141,18 @@ def seed_add_time_all(minutes: int, reason: str, actor_id: str, idempotency_key:
         if prev.get("kind") != "time":
             raise SeedDomainError("duplicate_command", "ID команды уже использован.")
         return {**prev, "applied": False}
-    users = seed_list_users()
     week_key = seed_week_key(now)
-    total_points = 0
-    for user in users:
-        total_points += _add_time_for_user(user, minutes, note, f"admin-bulk-time:{idempotency_key}:{user['id']}", week_key, now)
-    result = {"kind": "time", "count": len(users), "minutes": minutes, "total_points": total_points, "week_key": week_key}
-    seed_audit("seeding_time_added_all", actor_id, {**result, "reason": note})
-    seed_set_state(marker, result)
-    conn.commit()
+    with _write_tx(conn):
+        users = seed_list_users()
+        total_points = 0
+        for user in users:
+            total_points += _add_time_for_user(user, minutes, note, f"admin-bulk-time:{idempotency_key}:{user['id']}", week_key, now)
+        result = {"kind": "time", "count": len(users), "minutes": minutes, "total_points": total_points, "week_key": week_key}
+        seed_audit("seeding_time_added_all", actor_id, {**result, "reason": note})
+        conn.execute(
+            "INSERT INTO seed_system_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (marker, _json.dumps(result)),
+        )
     return {**result, "applied": True}
 
 

@@ -26,7 +26,7 @@ from database import (
     get_donation_meta, set_donation_meta,
     save_donation_order, get_donation_order,
     save_donation_cart, get_donation_cart, delete_donation_cart,
-    get_donor_total, set_donor_total, list_donors, get_all_donor_ids,
+    get_donor_total, set_donor_total, add_donor_total, list_donors, get_all_donor_ids,
     save_donation_payment, get_donation_payment, mark_payment_field, list_pending_payments,
     save_donation_review, delete_donation_review, list_donation_reviews,
     save_donation_vip, list_active_vip,
@@ -359,10 +359,9 @@ class DonationCog(commands.Cog):
             return {"status": "review"}
         delete_donation_review(op_id)
         buyer_id = order["buyerId"]
-        total = get_donor_total(int(buyer_id))
-        before = tier_for(total)
-        total += event["grossKopecks"]
-        set_donor_total(int(buyer_id), total, order.get("publicThanks", True))
+        # Прибавляем атомарно: параллельные платежи не теряют суммы друг друга.
+        total = add_donor_total(int(buyer_id), event["grossKopecks"], order.get("publicThanks", True))
+        before = tier_for(total - event["grossKopecks"])
         after = tier_for(total)
         payment = {
             "operationId": op_id, "orderId": order["id"], "buyerId": buyer_id,
@@ -877,11 +876,10 @@ class DonationCog(commands.Cog):
         order["source"] = "manual"
         save_donation_order(order)
         now_ms = int(time.time() * 1000)
-        total_before = get_donor_total(user_id)
-        total_after = total_before + amount
+        total_after = add_donor_total(user_id, amount, True)
+        total_before = total_after - amount
         before_tier = tier_for(total_before)
         after_tier = tier_for(total_after)
-        set_donor_total(user_id, total_after, True)
         payment = {
             "operationId": op_id, "orderId": order["id"], "buyerId": user_id,
             "amount": amount, "kind": "donation", "productId": None,

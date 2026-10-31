@@ -44,8 +44,14 @@ async def create_ticket(title, description, priority, player_steam_id, created_b
     return await get_ticket(ticket_id)
 
 
-async def list_tickets(limit=500):
+async def list_tickets(limit=500, involving=None):
+    """Тикеты; involving — SteamID, фильтр по игроку/создателю/исполнителю прямо в SQL."""
     limit = max(1, min(int(limit or 500), 1000))
+    where = ""
+    where_params = ()
+    if involving:
+        where = "WHERE (t.player_steam_id = ? OR t.created_by = ? OR t.assigned_to = ?) "
+        where_params = (involving, involving, involving)
     async with _conn() as db:
         cur = await db.execute(
             "SELECT t.id, t.title, t.description, t.status, t.priority, t.player_steam_id, "
@@ -56,6 +62,7 @@ async def list_tickets(limit=500):
             "LEFT JOIN users assignee ON assignee.steam_id = t.assigned_to "
             "LEFT JOIN users creator ON creator.steam_id = t.created_by "
             "LEFT JOIN ticket_comments c ON c.ticket_id = t.id "
+            + where +
             "GROUP BY t.id, t.title, t.description, t.status, t.priority, "
             "t.player_steam_id, t.assigned_to, assignee.persona, t.created_by, "
             "creator.persona, t.created_utc, t.updated_utc, t.closed_utc "
@@ -63,7 +70,7 @@ async def list_tickets(limit=500):
             "WHEN 'resolved' THEN 2 ELSE 3 END, "
             "CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 "
             "WHEN 'normal' THEN 2 ELSE 3 END, t.updated_utc DESC LIMIT ?",
-            (limit,),
+            (*where_params, limit),
         )
         rows = await cur.fetchall()
     return [_ticket_row(row) for row in rows]
