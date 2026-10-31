@@ -68,7 +68,7 @@ from seeding_rcon import RconError, WardogsRconClient
 log = logging.getLogger("seeding")
 
 MSK = timezone(timedelta(hours=3))
-STEAM_ID_RE = re.compile(r"^7656119\d{10}$")
+STEAM_ID_RE = re.compile(r"^7656119[0-9]{10}\Z")
 SNOWFLAKE_RE = re.compile(r"^\d{17,20}$")
 CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 CODE_RE = re.compile(r"^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$")

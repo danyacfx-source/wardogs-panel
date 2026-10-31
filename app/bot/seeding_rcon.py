@@ -12,7 +12,7 @@ from typing import Any
 
 import aiohttp
 
-STEAM_ID_RE = re.compile(r"^7656119\d{10}$")
+STEAM_ID_RE = re.compile(r"^7656119[0-9]{10}\Z")
 
 _ALLOWED_ROUTE_RE = re.compile(
     r"^/v1/(?:capabilities|status|players|reserved-slots|config)$"
