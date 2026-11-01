@@ -63,8 +63,8 @@ def _linked_steam_id(discord_id: int) -> str:
         row = conn.execute(
             "SELECT user_id FROM bindings WHERE discord_id = ?", (str(discord_id),)
         ).fetchone()
-        if row and row[0]:
-            return str(row[0])
+        if row and row["user_id"]:
+            return str(row["user_id"])
     except Exception:
         log.exception("SW: ошибка чтения bindings панели")
     return ""
@@ -125,7 +125,8 @@ async def _execute_swap(sid: str, side: str, target_steam_id: str, actor_discord
     cooldown_map = status_map or "__unknown__"
     if not is_vip:
         prev = SW_COOLDOWN.get((sid, target_steam_id))
-        if prev == cooldown_map:
+        # Карта неизвестна, а свап уже был: блокируем, чтобы сбой чтения карты не обходил кулдаун.
+        if prev == cooldown_map or (cooldown_map == "__unknown__" and prev is not None):
             return False, "Уже был свап на этой карте — 1 раз за игру (VIP — без кулдауна)"
 
     def count(name):

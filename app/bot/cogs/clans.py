@@ -1144,6 +1144,26 @@ class ClansCog(commands.Cog):
         await interaction.followup.send(f"{applicant.mention} принят в клан как рекрут.")
         asyncio.get_event_loop().call_later(15, lambda: asyncio.ensure_future(self._delete_channel(interaction.guild, ticket_id)))
 
+    async def _demote_former_leader(self, guild, clan, new_leader_id) -> None:
+        """При передаче лидерства снимает роль лидера и leaderId у прежнего лидера,
+        иначе он сохраняет права руководства и защиту при роспуске."""
+        old_id = clan.get("leaderId")
+        if not old_id or int(old_id) == int(new_leader_id):
+            return
+        leader_rid = clan["roleIds"].get("leader")
+        member_rid = clan["roleIds"].get("member")
+        try:
+            old = guild.get_member(int(old_id)) or await guild.fetch_member(int(old_id))
+        except Exception:
+            old = None
+        if old and leader_rid:
+            try:
+                await old.remove_roles(discord.Object(id=leader_rid), reason="Clan leadership transferred")
+                if member_rid:
+                    await old.add_roles(discord.Object(id=member_rid), reason="Clan leadership transferred")
+            except Exception:
+                log.warning("не удалось снять роль лидера у %s клана %s", old_id, clan.get("id"), exc_info=True)
+
     def _can_change_role_of(self, actor, target, clan, role_key) -> bool:
         """Руководитель меняет роли только тем, кто ниже него по рангу, и не трогает лидера."""
         if clan.get("leaderId") == target.id:
@@ -1501,6 +1521,7 @@ class ClansCog(commands.Cog):
             if target_role_id:
                 await member.add_roles(discord.Object(id=target_role_id), reason=f"Clan role assigned in HQ by {interaction.user}")
             if role_key == "leader":
+                await self._demote_former_leader(interaction.guild, clan, member.id)
                 clan["leaderId"] = member.id
                 clan["leaderName"] = member.display_name
             await self._update_clan_artifacts(interaction.guild, clan)
@@ -1704,6 +1725,9 @@ class ClansCog(commands.Cog):
             if member.id == clan.get("leaderId") and not self._is_admin(interaction.user):
                 await interaction.response.send_message("Лидера нельзя исключить. Сначала передайте руководство через администрацию.", ephemeral=True)
                 return
+            if not self._is_admin(interaction.user) and not self._can_change_role_of(interaction.user, member, clan, "member"):
+                await interaction.response.send_message("Нельзя исключить этого участника: он выше вас по рангу.", ephemeral=True)
+                return
             role_ids = [discord.Object(id=rid) for rid in clan["roleIds"].values() if rid]
             if role_ids:
                 await member.remove_roles(*role_ids, reason=f"Removed by {interaction.user}")
@@ -1729,6 +1753,7 @@ class ClansCog(commands.Cog):
             if target_rid:
                 await member.add_roles(discord.Object(id=target_rid), reason=f"Clan role assigned by {interaction.user}")
             if role_key == "leader":
+                await self._demote_former_leader(interaction.guild, clan, member.id)
                 clan["leaderId"] = member.id
                 clan["leaderName"] = member.display_name
             await self._update_clan_artifacts(interaction.guild, clan)

@@ -19,6 +19,17 @@ _PANEL_DB = Path(__file__).resolve().parent.parent.parent / "site.db"
 _panel_local = threading.local()
 
 
+def _scalar(cur_or_row):
+    """Первое значение строки. SQLite отдаёт sqlite3.Row, PostgreSQL — dict (dict_row):
+    индекс [0] на dict даёт KeyError, поэтому берём значение по позиции явно."""
+    row = cur_or_row.fetchone() if hasattr(cur_or_row, "fetchone") else cur_or_row
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        return next(iter(row.values()))
+    return row[0]
+
+
 def get_panel_conn():
     if db_backend.panel_using_pg():
         return db_backend.get_panel_conn()
@@ -1337,7 +1348,7 @@ def add_donor_total(user_id, amount, public=True):
     )
     row = conn.execute("SELECT total FROM donations_donors WHERE user_id = ?", (user_id,)).fetchone()
     conn.commit()
-    return int(row[0]) if row else int(amount)
+    return int(_scalar(row)) if row else int(amount)
 
 
 def set_donor_total(user_id, total, public=True):
@@ -1657,9 +1668,9 @@ def seed_verify_link_challenge(
                 "UPDATE seed_link_challenges SET attempts = attempts + 1 WHERE discord_id = ?",
                 (discord_id,),
             )
-            attempts = int(conn.execute(
+            attempts = int(_scalar(conn.execute(
                 "SELECT attempts FROM seed_link_challenges WHERE discord_id = ?", (discord_id,)
-            ).fetchone()[0])
+            )))
             if attempts >= max_attempts:
                 conn.execute("DELETE FROM seed_link_challenges WHERE discord_id = ?", (discord_id,))
                 seed_audit("link_challenge_locked", discord_id, {})
@@ -1910,7 +1921,7 @@ def seed_apply_seeding_tick(eligible: list[dict], now_ms: int, week_key: str, gr
             "UPDATE seed_users SET total_seconds = ?, lifetime_points = ?, balance = balance + ?, updated_at = ? WHERE id = ?",
             (new_total_seconds, new_lifetime, points, now_ms, user["id"]),
         )
-        new_balance = conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)).fetchone()[0]
+        new_balance = _scalar(conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)))
         wr = conn.execute(
             "SELECT * FROM seed_weekly_stats WHERE user_id = ? AND week_key = ?",
             (user["id"], week_key),
@@ -2027,7 +2038,7 @@ def seed_adjust_points(discord_id: str, delta: int, reason: str, actor_id: str, 
         )
         if cur.rowcount != 1:
             raise SeedDomainError("negative_balance", "Баланс не может стать отрицательным.")
-        new_balance = conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)).fetchone()[0]
+        new_balance = _scalar(conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)))
         conn.execute(
             "INSERT INTO seed_point_ledger (user_id, ref, delta, balance_after, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
             (user["id"], ref, delta, new_balance, f"admin:{reason[:100]}", now),
@@ -2054,12 +2065,12 @@ def seed_grant_points_all(amount: int, reason: str, actor_id: str, idempotency_k
     with _write_tx(conn):
         users = conn.execute("SELECT id FROM seed_users WHERE linked = 1").fetchall()
         for row in users:
-            user_id = row[0]
+            user_id = _scalar(row)
             conn.execute(
                 "UPDATE seed_users SET balance = balance + ?, updated_at = ? WHERE id = ?",
                 (amount, now, user_id),
             )
-            new_balance = conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user_id,)).fetchone()[0]
+            new_balance = _scalar(conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user_id,)))
             conn.execute(
                 "INSERT INTO seed_point_ledger (user_id, ref, delta, balance_after, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
                 (user_id, f"admin-bulk-points:{idempotency_key}:{user_id}", amount, new_balance, f"admin_all:{note}", now),
@@ -2097,7 +2108,7 @@ def _add_time_for_user(user: dict, minutes: int, note: str, ref: str, week_key: 
         "UPDATE seed_users SET total_seconds = total_seconds + ?, lifetime_points = ?, balance = balance + ?, updated_at = ? WHERE id = ?",
         (seconds, new_lifetime, points, now, user["id"]),
     )
-    new_balance = conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)).fetchone()[0]
+    new_balance = _scalar(conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)))
     # Ошибка журнала не должна молча оставлять баланс без записи: пусть откатит транзакцию.
     conn.execute(
         "INSERT INTO seed_point_ledger (user_id, ref, delta, balance_after, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -2203,9 +2214,9 @@ def seed_purchase_vip(discord_id: str, sku: str, cost: int, duration_seconds: in
             (cost, now, user["id"], cost),
         )
         if cur.rowcount != 1:
-            available = conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)).fetchone()[0]
+            available = _scalar(conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)))
             raise SeedDomainError("insufficient_points", f"Недостаточно баллов: нужно {cost}, доступно {available}.")
-        new_balance = conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)).fetchone()[0]
+        new_balance = _scalar(conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)))
         order_id = _uuid.uuid4().hex
         conn.execute(
             "INSERT INTO seed_point_ledger (user_id, ref, delta, balance_after, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
