@@ -1233,11 +1233,17 @@ class SeedingCog(commands.Cog):
             state = await self._weekly_rotate(state, target_week, now)
 
         await self._weekly_reconcile_winners(state)
+        # Победители сохраняют собственную копию состояния. Перечитываем её перед очисткой,
+        # иначе очистка запишет устаревший state и откатит владение слотами победителей.
+        state = seed_get_state("weekly_super_seeders_v1", state)
         await self._weekly_reconcile_cleanup(state)
 
     async def _weekly_rotate(self, previous: dict, target_week: str, now: int) -> dict:
         rows = seed_get_leaderboard(target_week)[:3]
         prior_by_user = {w.get("userId"): w for w in previous.get("winners", [])}
+        # Переизбранный игрок, чья запись ждала очистки, сохраняет владение слотом.
+        for e in previous.get("cleanup", []):
+            prior_by_user.setdefault(e.get("userId"), e)
         selected = {r["id"] for r in rows}
         cleanup = [e for e in previous.get("cleanup", []) if e.get("userId") not in selected]
         for old in previous.get("winners", []):
