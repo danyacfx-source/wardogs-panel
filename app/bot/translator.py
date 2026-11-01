@@ -276,8 +276,8 @@ def _gemini_call_model(model: str, data: bytes, headers: dict, attempts: int = 3
             return None
         try:
             parts = body["candidates"][0]["content"]["parts"]
-            out = "".join(p.get("text", "") for p in parts).strip()
-        except (KeyError, IndexError, TypeError):
+            out = "".join(p.get("text", "") for p in parts if isinstance(p, dict)).strip()
+        except (KeyError, IndexError, TypeError, AttributeError):
             log.warning("Gemini[%s]: неожиданный ответ: %s", model, json.dumps(body, ensure_ascii=False)[:250])
             return None
         if out and not _is_error(out):
@@ -405,7 +405,9 @@ async def async_translate_text(text: str, target_lang: str = "ru") -> str | None
                 asyncio.to_thread(_gemini_translate_sync, text, target_lang),
                 70,
             )
-        except asyncio.TimeoutError:
+        except Exception as exc:
+            # Любой сбой Gemini (таймаут, неожиданный ответ) — переходим к фолбэку, а не наверх.
+            log.warning("Gemini: сбой перевода (%s), фолбэк", type(exc).__name__)
             out = None
         if out:
             return out

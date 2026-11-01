@@ -51,14 +51,16 @@ async def check_servers(pool):
                 try:
                     pl = await srv.api.players()
                 except RCONError:
-                    pl = {}
-                player_list = (pl or {}).get("players") or []
-                await db.record_monitoring(
-                    srv.id,
-                    status_players.get("current", len(player_list)),
-                    status_players.get("max", 0),
-                    player_list,
-                )
+                    # Список не получен: не пишем пустой срез в историю, иначе появятся ложные нули.
+                    pl = None
+                player_list = ((pl or {}).get("players") or []) if pl is not None else None
+                if player_list is not None:
+                    await db.record_monitoring(
+                        srv.id,
+                        status_players.get("current", len(player_list)),
+                        status_players.get("max", 0),
+                        player_list,
+                    )
             except Exception:
                 log.exception("Не удалось записать срез мониторинга для %s", srv.id)
         return {"id": srv.id, "ok": online, "detail": detail if not online else None}

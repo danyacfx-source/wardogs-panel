@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timezone as dt_timezone
 
 import aiohttp
@@ -62,15 +63,19 @@ async def _gql(query: str, variables: dict | None = None) -> dict:
         async with session.post(TWITCH_GQL_URL, json=payload, headers=headers) as resp:
             if resp.status >= 400:
                 raise TwitchError(f"HTTP {resp.status}")
-            return await resp.json(content_type=None)
+            body = await resp.json(content_type=None)
     except TwitchError:
         raise
     except Exception as e:
         raise TwitchError(str(e)) from e
+    # GraphQL отвечает HTTP 200 и с ошибкой: data = null, поле errors.
+    if not isinstance(body, dict) or body.get("errors") or not isinstance(body.get("data"), dict):
+        raise TwitchError("некорректный ответ Twitch")
+    return body
 
 
 _QUERY = (
-    "query { user(login: \"__LOGIN__\") { id login displayName profileImageURL "
+    "query($login: String!) { user(login: $login) { id login displayName profileImageURL "
     "broadcastSettings { title } "
     "stream { id type viewersCount game { displayName } "
     "previewImageURL(width: 640, height: 360) title createdAt } } }"
@@ -78,13 +83,21 @@ _QUERY = (
 
 
 async def fetch_stream(login: str) -> TwitchStream:
-    query = _QUERY.replace("__LOGIN__", login)
-    data = await _gql(query)
+    login = _check_login(login)
+    data = await _gql(_QUERY, variables={"login": _check_login(login)})
     return TwitchStream(data)
 
 
-_VIEWERS_QUERY = "query { user(login: \"__LOGIN__\") { stream { viewersCount } } }"
-_ID_QUERY = "query { user(login: \"__LOGIN__\") { id } }"
+_VIEWERS_QUERY = "query($login: String!) { user(login: $login) { stream { viewersCount } } }"
+_ID_QUERY = "query($login: String!) { user(login: $login) { id } }"
+_LOGIN_RE = re.compile(r"^[A-Za-z0-9_]{1,25}$")
+
+
+def _check_login(login: str) -> str:
+    login = str(login or "").strip().lower()
+    if not _LOGIN_RE.fullmatch(login):
+        raise TwitchError("некорректный логин Twitch")
+    return login
 _SCHEDULE_QUERY = (
     "query($id: ID!) { channel(id: $id) { schedule { nextSegment { startAt } } } }"
 )
@@ -100,7 +113,7 @@ def _parse_iso(value: str):
 
 
 async def fetch_viewer_count(login: str) -> int | None:
-    data = await _gql(_VIEWERS_QUERY.replace("__LOGIN__", login))
+    data = await _gql(_VIEWERS_QUERY, variables={"login": _check_login(login)})
     stream = (data.get("data", {}).get("user") or {}).get("stream")
     if not stream:
         return None
@@ -108,7 +121,7 @@ async def fetch_viewer_count(login: str) -> int | None:
 
 
 async def fetch_next_start(login: str) -> datetime | None:
-    data = await _gql(_ID_QUERY.replace("__LOGIN__", login))
+    data = await _gql(_ID_QUERY, variables={"login": _check_login(login)})
     channel_id = (data.get("data", {}).get("user") or {}).get("id")
     if not channel_id:
         return None
