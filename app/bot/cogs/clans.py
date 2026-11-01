@@ -799,17 +799,48 @@ class ClansCog(commands.Cog):
                     pass
             await interaction.followup.send(f"Клан не создан: Discord отклонил создание ролей или их иконку. Созданные на этом шаге роли удалены. {clean(str(e), 220)}")
             return
-        category_overwrites = self._clan_category_overwrites(guild, roles)
-        category = await guild.create_category(f"[{app['tag']}] {app['name']}"[:100], overwrites=category_overwrites, reason=f"Approved clan {app['name']}")
-        chat = await guild.create_text_channel("💬・общий-чат", category=category, topic="Общий чат всех участников клана.")
-        hq = await guild.create_text_channel(
-            "⚔️・штаб-клана", category=category,
-            topic="Закрытое управление кланом, участниками и набором.",
-            overwrites=self._clan_hq_overwrites(guild, roles),
-        )
-        voice = await guild.create_voice_channel("🔊・Общий штаб", category=category)
-        creator = await guild.create_voice_channel("➕・Создать комнату", category=category, user_limit=1)
-        await member.add_roles(discord.Object(id=roles["leader"]), reason=f"Clan {app['name']} approved")
+        created_objects: list = []
+        leader_role_added = False
+        category = None
+        try:
+            category_overwrites = self._clan_category_overwrites(guild, roles)
+            category = await guild.create_category(f"[{app['tag']}] {app['name']}"[:100], overwrites=category_overwrites, reason=f"Approved clan {app['name']}")
+            created_objects.append(category)
+            chat = await guild.create_text_channel("💬・общий-чат", category=category, topic="Общий чат всех участников клана.")
+            created_objects.append(chat)
+            hq = await guild.create_text_channel(
+                "⚔️・штаб-клана", category=category,
+                topic="Закрытое управление кланом, участниками и набором.",
+                overwrites=self._clan_hq_overwrites(guild, roles),
+            )
+            created_objects.append(hq)
+            voice = await guild.create_voice_channel("🔊・Общий штаб", category=category)
+            created_objects.append(voice)
+            creator = await guild.create_voice_channel("➕・Создать комнату", category=category, user_limit=1)
+            created_objects.append(creator)
+            await member.add_roles(discord.Object(id=roles["leader"]), reason=f"Clan {app['name']} approved")
+            leader_role_added = True
+        except Exception as e:
+            # Откат: удаляем каналы/категорию, роль лидера и все роли клана, созданные на этом шаге.
+            for obj in reversed(created_objects):
+                try:
+                    await obj.delete(reason="Rollback after failed clan creation")
+                except Exception:
+                    pass
+            if leader_role_added:
+                try:
+                    await member.remove_roles(discord.Object(id=roles["leader"]), reason="Rollback after failed clan creation")
+                except Exception:
+                    pass
+            for rid in roles.values():
+                try:
+                    r = guild.get_role(rid)
+                    if r:
+                        await r.delete(reason="Rollback after failed clan creation")
+                except Exception:
+                    pass
+            await interaction.followup.send(f"Клан не создан: Discord отклонил создание каналов или выдачу роли. Созданное на этом шаге откатано. {clean(str(e), 220)}")
+            return
         now = iso_now()
         clan = {
             "id": str(category.id),
@@ -826,10 +857,31 @@ class ClansCog(commands.Cog):
             "recruitmentStatus": "closed", "recruitmentThreadId": None, "recruitmentUrl": None, "recruitment": None,
             "listMessageId": None, "createdAt": now, "updatedAt": now,
         }
-        await self.store.update(lambda s: (
-            s["clans"].__setitem__(clan["id"], clan),
-            s["applications"][ticket_id].__setitem__("status", "approved"),
-        ))
+        try:
+            await self.store.update(lambda s: (
+                s["clans"].__setitem__(clan["id"], clan),
+                s["applications"][ticket_id].__setitem__("status", "approved"),
+            ))
+        except Exception as e:
+            # Запись не зафиксирована: откатываем созданные Discord-объекты.
+            for obj in reversed(created_objects):
+                try:
+                    await obj.delete(reason="Rollback after failed clan save")
+                except Exception:
+                    pass
+            try:
+                await member.remove_roles(discord.Object(id=roles["leader"]), reason="Rollback after failed clan save")
+            except Exception:
+                pass
+            for rid in roles.values():
+                try:
+                    r = guild.get_role(rid)
+                    if r:
+                        await r.delete(reason="Rollback after failed clan save")
+                except Exception:
+                    pass
+            await interaction.followup.send(f"Клан не сохранён в базе, Discord-объекты откатаны. {clean(str(e), 220)}")
+            return
         e, views = self._hq_panel_full(clan)
         panel = await hq.send(embed=e, view=views[0], allowed_mentions=discord.AllowedMentions.none())
         clan["controlMessageId"] = str(panel.id)
