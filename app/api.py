@@ -3974,9 +3974,10 @@ async def server_player_patch(sid: str, steam_id: str, request: Request):
     return await _server_action(sid, request, "move_faction", action, steam_id)
 
 
-def _swap_allowed(diff: int, has_vip: bool) -> bool:
-    """Штатный баланс: перевес до +2 всегда, до +4 — только с активным VIP-слотом."""
-    return diff <= (4 if has_vip else 2)
+def _swap_allowed(after_diff: int, has_vip: bool) -> bool:
+    """Штатный баланс: перевес после свапа до +2. У VIP-игроков ограничений нет
+    (свап без лимита перевеса и без кулдауна), см. bot/cogs/swap.py."""
+    return has_vip or after_diff <= 2
 
 
 async def _has_active_vip_slot(sid, steam_id):
@@ -4012,17 +4013,20 @@ async def swap_player(srv, sid, steam_id, faction):
         game_key = str((status or {}).get("map") or "")
     except Exception:
         game_key = ""
-    if game_key:
+    is_vip = await _has_active_vip_slot_anywhere(steam_id)
+    if game_key and not is_vip:
         prev = _sw_cooldown.get((sid, steam_id))
         if prev == game_key:
             return False, "cooldown", "уже был свап на этой карте — 1 раз за игру"
     def count(name):
         return sum(1 for p in players if str(p.get("faction") or "").lower() == name.lower())
     diff = abs(count(source) - count(faction))
-    if not _swap_allowed(diff, await _has_active_vip_slot(sid, steam_id)):
-        return False, "balance", f"перевес {diff} больше допустимого (до +2, с VIP-слотом до +4)"
+    # Лимит — по результату свапа: переход в более многочисленную сторону не даёт перевес больше +2.
+    after_diff = abs((count(source) - 1) - (count(faction) + 1))
+    if not _swap_allowed(after_diff, is_vip):
+        return False, "balance", f"перевес после свапа {after_diff} больше допустимого (до +2; VIP — без лимита)"
     await srv.api.request("PATCH", f"/v1/players/{steam_id}", json_body={"faction": faction})
-    if game_key:
+    if game_key and not is_vip:
         _sw_cooldown[(sid, steam_id)] = game_key
         # Память ограничена: самые старые записи вытесняются (dict хранит порядок вставки).
         while len(_sw_cooldown) > 20000:
