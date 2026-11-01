@@ -134,9 +134,13 @@ class _ConfiguredConnection:
 
 
 class _PGCursor:
-    def __init__(self, rows=()):
+    def __init__(self, rows=(), rowcount=0):
         self._rows = list(rows)
         self._position = 0
+        # Expose rowcount so callers can do `cur.rowcount > 0` just like aiosqlite.
+        # For SELECT results, rowcount equals the number of rows returned.
+        # For mutating statements, the caller passes the parsed status string.
+        self.rowcount = rowcount if rowcount else len(self._rows)
 
     async def fetchone(self):
         if self._position >= len(self._rows):
@@ -149,6 +153,19 @@ class _PGCursor:
         rows = self._rows[self._position :]
         self._position = len(self._rows)
         return rows
+
+
+def _pg_rowcount(status: str) -> int:
+    """Parse the asyncpg command-status string (e.g. 'UPDATE 3') into an int."""
+    if not status:
+        return 0
+    parts = status.split()
+    if parts:
+        try:
+            return int(parts[-1])
+        except (ValueError, IndexError):
+            pass
+    return 0
 
 
 def _postgres_sql(sql):
@@ -185,8 +202,9 @@ class _PostgresDatabase:
         keyword = translated.lstrip().split(None, 1)[0].upper() if translated.strip() else ""
         if keyword in {"SELECT", "WITH", "EXPLAIN"}:
             return _PGCursor(await self.connection.fetch(translated, *(params or ())))
-        await self.connection.execute(translated, *(params or ()))
-        return _PGCursor()
+        # asyncpg.execute returns a status string like "UPDATE 3" or "INSERT 0 1"
+        status = await self.connection.execute(translated, *(params or ()))
+        return _PGCursor(rowcount=_pg_rowcount(status or ""))
 
     async def executescript(self, script):
         await self.connection.execute(script)
