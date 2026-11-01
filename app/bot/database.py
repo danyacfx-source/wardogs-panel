@@ -1282,6 +1282,7 @@ def set_donation_meta(key, value):
         "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
         (key, str(value)),
     )
+    conn.commit()
 
 
 def save_donation_order(order):
@@ -1295,6 +1296,7 @@ def save_donation_order(order):
          1 if order.get("publicThanks", True) else 0, order.get("source", "bot"),
          order["createdAt"], order["expiresAt"]),
     )
+    conn.commit()
 
 
 def get_donation_order(order_id):
@@ -1303,7 +1305,7 @@ def get_donation_order(order_id):
     if not row:
         return None
     d = dict(row)
-    d["recipients"] = __import__("json").dumps and __import__("json").loads(d.get("recipients") or "[]")
+    d["recipients"] = __import__("json").loads(d.get("recipients") or "[]")
     d["publicThanks"] = bool(d.pop("public_thanks", 1))
     d["buyerId"] = d.pop("buyer_id")
     d["amountKopecks"] = d.pop("amount_kopecks")
@@ -1337,7 +1339,9 @@ def get_donation_cart(cart_id):
 
 
 def delete_donation_cart(cart_id):
-    get_conn().execute("DELETE FROM donations_carts WHERE id=?", (cart_id,))
+    conn = get_conn()
+    conn.execute("DELETE FROM donations_carts WHERE id=?", (cart_id,))
+    conn.commit()
 
 
 def get_donor_total(user_id):
@@ -1366,6 +1370,7 @@ def set_donor_total(user_id, total, public=True):
         "ON CONFLICT(user_id) DO UPDATE SET total=excluded.total, public=excluded.public",
         (user_id, total, 1 if public else 0),
     )
+    conn.commit()
 
 
 def list_donors():
@@ -1400,6 +1405,7 @@ def get_donation_payment(op_id):
 def mark_payment_field(op_id, field):
     conn = get_conn()
     conn.execute(f"UPDATE donations_payments SET {field}=1 WHERE operation_id=?", (op_id,))
+    conn.commit()
 
 
 def list_pending_payments():
@@ -1461,7 +1467,9 @@ def get_donation_adjustment(adj_id):
 
 
 def mark_adjustment_done(adj_id):
-    get_conn().execute("UPDATE donations_adjustments SET role_done=1 WHERE id=?", (adj_id,))
+    conn = get_conn()
+    conn.execute("UPDATE donations_adjustments SET role_done=1 WHERE id=?", (adj_id,))
+    conn.commit()
 
 
 def list_pending_adjustments():
