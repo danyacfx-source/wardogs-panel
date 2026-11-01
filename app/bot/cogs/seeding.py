@@ -1066,17 +1066,19 @@ class SeedingCog(commands.Cog):
             seed_set_state(state_key, state)
 
     def _publish_seed_vip(self, user_id: str, now: int):
-        """Пишет в панельную базу признак сид-членства (совпадает с определением роли бота).
+        """Пишет в панельную базу признак любого VIP: членство в сиде или активный донат.
 
-        pending_add считается активным, как и для роли. Для active срок берётся из членства.
+        Панель считает такого игрока VIP при свапе, как и бот для роли.
+        Истёкший донат или членство перестают попадать в проход сверки, и строка
+        истекает сама, потому что active_until продлевается только при активном VIP.
         Ошибка записи не должна ломать сверку: только лог.
         """
         try:
             identity = seed_get_vip_identity_by_id(user_id)
             if not identity or not identity.get("linked"):
                 return
-            membership = seed_get_vip_membership(user_id)
             active_until = 0.0
+            membership = seed_get_vip_membership(user_id)
             if membership:
                 if membership["state"] == "pending_add":
                     active_until = (now / 1000.0) + 3600.0
@@ -1084,6 +1086,8 @@ class SeedingCog(commands.Cog):
                     active_until = float(membership["active_until"])
                     if active_until > 1e11:  # срок хранится в миллисекундах
                         active_until = active_until / 1000.0
+            if self.donations.active(identity["discord_id"], now):
+                active_until = max(active_until, (now / 1000.0) + 3600.0)
             seed_publish_vip_active(identity["steam_id"], active_until)
         except Exception as e:
             log.warning("publish seed vip failed user=%s: %s", user_id, e)
