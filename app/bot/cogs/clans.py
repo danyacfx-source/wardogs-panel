@@ -853,6 +853,9 @@ class ClansCog(commands.Cog):
             if clan.get("tag", "").lower() == app["tag"].lower():
                 await interaction.followup.send("Клан с таким тегом уже существует.")
                 return
+            if clan.get("name", "").lower() == app["name"].lower():
+                await interaction.followup.send("Клан с таким названием уже существует.")
+                return
         if "ROLE_ICONS" not in [str(f) for f in guild.features]:
             await interaction.followup.send("Discord не разрешает иконки ролей на этом сервере: отсутствует функция ROLE_ICONS. Клан не создан, роли не создавались.")
             return

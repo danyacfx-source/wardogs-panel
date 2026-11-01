@@ -135,6 +135,32 @@ def append_event(event: dict) -> None:
             pass
 
 
+def append_event_if_new(event: dict, operation_id: str) -> bool:
+    """Атомарная проверка + запись: возвращает True если событие было добавлено,
+    False если operation_id уже присутствует в журнале.
+
+    Под одним lock'ом читает и пишет — защищает от TOCTOU при параллельных
+    вебхуках с одним operation_id.
+    """
+    line = json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n"
+    with _LOCK:
+        path = _events_path()
+        if path.exists():
+            for raw in path.read_text(encoding="utf-8").splitlines():
+                try:
+                    if json.loads(raw).get("operationId") == operation_id:
+                        return False
+                except ValueError:
+                    continue
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(line)
+        try:
+            path.chmod(0o600)
+        except OSError:
+            pass
+    return True
+
+
 def _read_lines() -> list:
     with _LOCK:
         path = _events_path()
@@ -597,7 +623,9 @@ async def yoomoney_webhook(request: Request):
     # Сумму и время сайт не отбрасывает: несовпадения разбирает бот
     # (paymentProblem -> /donation-admin review), здесь важна подлинность
     # уведомления и сохранённый подписанный заказ.
-    append_event(
+    # append_event_if_new — атомарная проверка+запись, защита от TOCTOU при
+    # параллельных вебхуках с одним operation_id.
+    added = append_event_if_new(
         {
             "orderId": order_id,
             "operationId": operation_id,
@@ -605,8 +633,12 @@ async def yoomoney_webhook(request: Request):
             "grossKopecks": kopecks,
             "timestamp": timestamp,
             "orderToken": stored.get("token") or "",
-        }
+        },
+        operation_id,
     )
+    if not added:
+        log.info("Webhook ЮMoney: операция %s уже в журнале (race)", operation_id)
+        return PlainTextResponse("OK")
     log.info("Webhook ЮMoney: операция %s на %s коп. записана (заказ %s)", operation_id, kopecks, order_id)
     return PlainTextResponse("OK")
 
