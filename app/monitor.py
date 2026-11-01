@@ -20,7 +20,9 @@ async def _notify(text):
         return
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=8)) as session:
-            async with session.post(config.ALERT_WEBHOOK_URL, json={"content": text}) as response:
+            # Имя сервера из панели не должно пинговать всех: упоминания отключены явно.
+            payload = {"content": text, "allowed_mentions": {"parse": []}}
+            async with session.post(config.ALERT_WEBHOOK_URL, json=payload) as response:
                 if response.status >= 400:
                     log.warning("Webhook уведомлений ответил HTTP %s", response.status)
     except Exception:
@@ -30,6 +32,14 @@ async def _notify(text):
 async def check_servers(pool):
     """Возвращает состояния и уведомляет только о переходах online/offline."""
     async def check_one(srv):
+        try:
+            return await _check_one_safe(srv)
+        except Exception:
+            # Сбой одного сервера (в том числе в БД) не должен терять результаты остальных.
+            log.exception("Проверка сервера %s завершилась сбоем", srv.id)
+            return {"id": srv.id, "ok": False, "detail": "check_failed"}
+
+    async def _check_one_safe(srv):
         previous = await db.get_server_health(srv.id)
         try:
             await srv.api.health()

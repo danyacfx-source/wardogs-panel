@@ -284,9 +284,16 @@ class BackupManager:
                 raise RuntimeError("Encrypted backup exceeds the 8 MB safety limit")
             BACKUP_DIR.mkdir(parents=True, exist_ok=True)
             filename = f"wardogs-clans-{safe_timestamp()}.wdbak"
-            (BACKUP_DIR / filename).write_bytes(contents)
+            # Локальный файл пишем во временное имя и переименовываем только после
+            # успешной проверки: обрыв не оставит повреждённую копию, принятую за валидную.
+            local_path = BACKUP_DIR / filename
+            tmp_path = local_path.with_name(filename + ".part")
+            tmp_path.write_bytes(contents)
+            tmp_path.replace(local_path)
             channel = await self._resolve_channel(guild)
             if not channel:
+                # Нет канала: копия остаётся локально, но не сверх лимита хранения.
+                await self._prune_local()
                 raise RuntimeError("Private backup channel is missing; run /clan-setup")
             import gzip as _gz
             plain_check = _gz.decompress(self._decrypt(envelope))
@@ -375,7 +382,8 @@ class BackupManager:
             [f.name for f in BACKUP_DIR.iterdir() if f.name.startswith("wardogs-clans-") and f.name.endswith(".wdbak")],
             reverse=True,
         )
-        for name in files[CLAN_BACKUP_RETENTION:]:
+        keep = max(1, CLAN_BACKUP_RETENTION)  # 0 или отрицательные значения не удаляют свежую копию
+        for name in files[keep:]:
             try:
                 (BACKUP_DIR / name).unlink()
             except Exception:

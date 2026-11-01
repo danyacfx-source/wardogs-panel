@@ -121,7 +121,7 @@ class GiveawayCog(commands.Cog):
             try:
                 await self._check_giveaways()
             except Exception:
-                pass
+                log.exception("Ошибка цикла проверки розыгрышей")
             await asyncio.sleep(15)
 
     async def _finish(self, g: dict):
@@ -156,7 +156,12 @@ class GiveawayCog(commands.Cog):
         else:
             embed.description = "😔 В розыгрыше никто не участвовал. Победитель не выбран."
 
-        await channel.send(embed=embed)
+        try:
+            await channel.send(embed=embed)
+        except Exception:
+            # Флаг уже взят: без повтора объявление пропадёт, поэтому фиксируем ошибку явно.
+            log.exception("Розыгрыш %s: не удалось отправить итог, победители: %s", g["id"], winners)
+            return
         for w in winners:
             try:
                 user = await self.bot.fetch_user(w)
