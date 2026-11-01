@@ -56,7 +56,6 @@ from .clans import (
 
 from .vip import (
     queue_vip_removal,
-    set_seed_vip_active,
     has_seed_vip_active,
     save_vip_slot,
     list_vip_slots,
