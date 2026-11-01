@@ -64,6 +64,9 @@ def modal_values(interaction: discord.Interaction) -> dict[str, str]:
     return values
 
 
+# Заявки, по которым сейчас создаётся клан (защита от двойного одобрения).
+_clan_create_inflight: set = set()
+
 class ClansCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -721,6 +724,29 @@ class ClansCog(commands.Cog):
         app = self.store.state["applications"].get(ticket_id)
         if not app or app.get("status") != "pending":
             await interaction.response.send_message("Заявка уже обработана или не найдена.", ephemeral=True)
+            return
+        # Одна заявка — одно создание: второй администратор, нажавший ту же кнопку,
+        # не создаст второй клан с тем же тегом.
+        if ticket_id in _clan_create_inflight:
+            await interaction.response.send_message("Заявка уже подтверждается другим администратором.", ephemeral=True)
+            return
+        _clan_create_inflight.add(ticket_id)
+        try:
+            await self._create_clan_locked(interaction, ticket_id, app)
+        except Exception:
+            # Не оставляем администратора с зависшим ответом: сообщаем об ошибке.
+            log.exception("Создание клана по заявке %s завершилось сбоем", ticket_id)
+            msg = "❌ Не удалось создать клан. Часть ролей или каналов могла остаться — проверьте сервер вручную."
+            if interaction.response.is_done():
+                await interaction.followup.send(msg, ephemeral=True)
+            else:
+                await interaction.response.send_message(msg, ephemeral=True)
+        finally:
+            _clan_create_inflight.discard(ticket_id)
+
+    async def _create_clan_locked(self, interaction: discord.Interaction, ticket_id: str, app: dict):
+        if app.get("status") != "pending":
+            await interaction.response.send_message("Заявка уже обработана.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True)
         guild = interaction.guild
