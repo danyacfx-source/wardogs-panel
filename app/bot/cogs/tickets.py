@@ -330,7 +330,7 @@ class TicketCloseView(discord.ui.View):
     @discord.ui.button(label="Закрыть тикет", style=discord.ButtonStyle.red, custom_id="tk2_close", emoji="🔒")
     async def close_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message(
-            "Вы уверены?", view=TicketCloseConfirmView()
+            "Вы уверены?", view=TicketCloseConfirmView(), ephemeral=True
         )
 
 
@@ -340,7 +340,7 @@ class TicketCloseConfirmView(discord.ui.View):
 
     @discord.ui.button(label="Да", style=discord.ButtonStyle.green, emoji="✅")
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         async with _channel_locks[channel.id]:
             conn = get_conn()
@@ -402,8 +402,18 @@ class TicketClosedView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
+    def _is_staff(self, interaction: discord.Interaction) -> bool:
+        """True если пользователь имеет одну из ролей персонала или manage_channels."""
+        member = interaction.user
+        if member.guild_permissions.manage_channels:
+            return True
+        member_role_ids = {r.id for r in getattr(member, "roles", [])}
+        return bool(member_role_ids & set(config.TICKET_STAFF_ROLES))
+
     @discord.ui.button(label="Удалить канал", style=discord.ButtonStyle.danger, custom_id="tk2_delete", emoji="🗑️")
     async def delete_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self._is_staff(interaction):
+            return await interaction.response.send_message("❌ Нет прав.", ephemeral=True)
         await interaction.response.defer()
         channel = interaction.channel
         async with _channel_locks[channel.id]:
@@ -424,6 +434,8 @@ class TicketClosedView(discord.ui.View):
 
     @discord.ui.button(label="Сохранить транскрипт", style=discord.ButtonStyle.blurple, custom_id="tk2_transcript", emoji="📄")
     async def save_transcript(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self._is_staff(interaction):
+            return await interaction.response.send_message("❌ Нет прав.", ephemeral=True)
         await interaction.response.defer()
         transcript = await _build_transcript(interaction.channel)
         file = discord.File(

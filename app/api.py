@@ -604,7 +604,10 @@ async def _current_user(request: Request):
     steam_id = await db.get_session(token)
     if not steam_id:
         return None
-    await db.touch_user(steam_id)
+    try:
+        await db.touch_user(steam_id)
+    except Exception:
+        log.warning("touch_user failed for %s", steam_id, exc_info=True)
     return {"steam_id": steam_id}
 
 
@@ -770,14 +773,21 @@ async def seed_vip_purchase(request: Request):
             created.append({"server": srv.id, "ok": ok, "error": error or None})
     except Exception as exc:
         slot_error = exc
-    if slot_error is not None and not created:
-        # Ни один слот не был создан — возвращаем баллы и сообщаем об ошибке
-        refunded = seed_store.refund_vip(discord_id, ledger_ref, entry["cost"])
-        log.error(
-            "seed_vip_purchase: ошибка создания слотов для %s sku=%s ref=%s refunded=%s: %s",
-            steam_id, sku, ledger_ref, refunded, slot_error,
-        )
-        raise HTTPException(status_code=500, detail="Ошибка создания VIP-слотов; баллы возвращены")
+    if slot_error is not None:
+        if not created:
+            # Ни один слот не был создан — возвращаем баллы и сообщаем об ошибке
+            refunded = seed_store.refund_vip(discord_id, ledger_ref, entry["cost"])
+            log.error(
+                "seed_vip_purchase: ошибка создания слотов для %s sku=%s ref=%s refunded=%s: %s",
+                steam_id, sku, ledger_ref, refunded, slot_error,
+            )
+            raise HTTPException(status_code=500, detail="Ошибка создания VIP-слотов; баллы возвращены")
+        else:
+            # Часть слотов создана — сообщаем, но не возвращаем баллы
+            log.error(
+                "seed_vip_purchase: частичная ошибка создания слотов для %s sku=%s ref=%s created=%s: %s",
+                steam_id, sku, ledger_ref, len(created), slot_error,
+            )
     await db.log_site_audit(steam_id, None, "vip.save", f"{steam_id}:seed:{sku}")
     disclog.emit("vip.save", actor=steam_id, steam_id=steam_id,
                  detail=f"VIP за баллы сидинга ({sku}), баланс: {result['balance']}")
