@@ -1110,11 +1110,15 @@ class SeedingCog(commands.Cog):
         # cleanup paid claim if no longer paid
         if claim and claim.get("owner") == "bot" and not paid:
             if not member or member["state"] == "inactive":
-                try:
-                    await self.rcon.set_reserved(steam_id, False)
-                except Exception as e:
-                    log.warning("paid slot cleanup failed %s: %s", steam_id, e)
-                del claims[steam_id]
+                # Защищённый игрок: слот поставил администратор, бот его не снимает.
+                if protected:
+                    claims.pop(steam_id, None)
+                else:
+                    try:
+                        await self.rcon.set_reserved(steam_id, False)
+                    except Exception as e:
+                        log.warning("paid slot cleanup failed %s: %s", steam_id, e)
+                    del claims[steam_id]
 
         if not member:
             return

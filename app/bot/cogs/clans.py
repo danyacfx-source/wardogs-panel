@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import hashlib
 import json
 import logging
 import re
@@ -1064,6 +1066,14 @@ class ClansCog(commands.Cog):
         await interaction.followup.send(f"{applicant.mention} принят в клан как рекрут.")
         asyncio.get_event_loop().call_later(15, lambda: asyncio.ensure_future(self._delete_channel(interaction.guild, ticket_id)))
 
+    def _can_change_role_of(self, actor, target, clan, role_key) -> bool:
+        """Руководитель меняет роли только тем, кто ниже него по рангу, и не трогает лидера."""
+        if clan.get("leaderId") == target.id:
+            return False
+        if role_key == "leader":
+            return False
+        return self._clan_rank(actor, clan) > self._clan_rank(target, clan)
+
     async def _handle_management_button(self, interaction: discord.Interaction, action: str, clan_id_str: str):
         clan = self.store.state["clans"].get(clan_id_str)
         if not clan or str(interaction.channel_id) != clan["channelIds"].get("hq") or self._clan_rank(interaction.user, clan) < 3:
@@ -1155,6 +1165,9 @@ class ClansCog(commands.Cog):
         elif action == "remove":
             if member.id == clan.get("leaderId") and not self._is_admin(interaction.user):
                 await interaction.response.send_message("Лидера нельзя исключить без участия администрации.", ephemeral=True)
+                return
+            if not self._is_admin(interaction.user) and self._clan_rank(member, clan) >= self._clan_rank(interaction.user, clan):
+                await interaction.response.send_message("Нельзя исключить участника с рангом не ниже вашего.", ephemeral=True)
                 return
             role_ids = [discord.Object(id=rid) for rid in clan["roleIds"].values() if rid]
             if role_ids:
@@ -1400,6 +1413,9 @@ class ClansCog(commands.Cog):
             if role_key == "leader" and not self._is_admin(interaction.user):
                 await interaction.response.edit_message(content="Передать роль лидера может только администрация.", view=None)
                 return
+            if not self._is_admin(interaction.user) and not self._can_change_role_of(interaction.user, member, clan, role_key):
+                await interaction.response.edit_message(content="Нельзя менять роль этому участнику: он выше вас по рангу или является лидером.", view=None)
+                return
             role_ids = [discord.Object(id=rid) for rid in clan["roleIds"].values() if rid]
             if role_ids:
                 await member.remove_roles(*role_ids)
@@ -1621,6 +1637,9 @@ class ClansCog(commands.Cog):
                 return
             if role_key == "leader" and not self._is_admin(interaction.user):
                 await interaction.response.send_message("Передачу роли лидера выполняет только администрация.", ephemeral=True)
+                return
+            if not self._is_admin(interaction.user) and not self._can_change_role_of(interaction.user, member, clan, role_key):
+                await interaction.response.send_message("Нельзя менять роль этому участнику: он выше вас по рангу или является лидером.", ephemeral=True)
                 return
             if target_clan and target_clan["id"] != clan["id"]:
                 await interaction.response.send_message("Участник состоит в другом клане.", ephemeral=True)
