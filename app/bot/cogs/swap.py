@@ -22,7 +22,7 @@ from seeding_rcon import WardogsRconClient, RconError
 log = logging.getLogger("swap")
 
 FALLBACK_FACTIONS = list(config.FACTION_MARKS)
-SW_COOLDOWN: dict[tuple[str, str], str] = {}
+from app.swap_cooldown import SW_COOLDOWN, remember as _sw_remember
 CARD_REFRESH_SECONDS = 60
 LINK_HINT = "Привяжите Steam: `/steam link` → получите код в игре → `/steam verify`."
 
@@ -148,7 +148,7 @@ async def _execute_swap(sid: str, side: str, target_steam_id: str, actor_discord
     cooldown_key = (sid, target_steam_id)
     reserved = False
     if not is_vip:
-        SW_COOLDOWN[cooldown_key] = cooldown_map
+        _sw_remember(cooldown_key, cooldown_map)
         reserved = True
     try:
         await client2.set_faction(target_steam_id, side)

@@ -3175,7 +3175,7 @@ async def process_remote_ops():
     for op in ops:
         srv = _get_server(op["server_id"])
         if not srv:
-            await db.delete_remote_op(op["id"])
+            await db.delete_remote_op(op["id"], op["updated_utc"])
             continue
         steam_id = op["steam_id"]
         payload = op["payload"] or {}
@@ -3202,16 +3202,16 @@ async def process_remote_ops():
                         raise
             else:
                 log.warning("Неизвестный тип операции очереди: %s", op["kind"])
-            await db.delete_remote_op(op["id"])
+            await db.delete_remote_op(op["id"], op["updated_utc"])
             await _invalidate(op["server_id"])
             log.info("Очередь: %s %s на %s выполнено", op["kind"], steam_id, op["server_id"])
         except RCONError as e:
             attempts = op["attempts"] + 1
-            await db.reschedule_remote_op(op["id"], attempts, e.message, min(3600, 30 * 2 ** min(attempts, 7)))
+            await db.reschedule_remote_op(op["id"], attempts, e.message, min(3600, 30 * 2 ** min(attempts, 7)), op["updated_utc"])
             log.warning("Очередь: %s %s на %s — повтор позже: %s", op["kind"], steam_id, op["server_id"], e.message)
         except Exception as e:
             attempts = op["attempts"] + 1
-            await db.reschedule_remote_op(op["id"], attempts, str(e), min(3600, 30 * 2 ** min(attempts, 7)))
+            await db.reschedule_remote_op(op["id"], attempts, str(e), min(3600, 30 * 2 ** min(attempts, 7)), op["updated_utc"])
             log.exception("Очередь: сбой %s %s на %s", op["kind"], steam_id, op["server_id"])
 
 
@@ -4010,7 +4010,7 @@ async def _has_active_vip_slot(sid, steam_id):
 # значение — map, на которой был сделан свап. Смена карты = новая игра.
 _swap_locks = defaultdict(asyncio.Lock)
 _ticket_locks = defaultdict(asyncio.Lock)
-_sw_cooldown: dict[tuple[str, str], str] = {}
+from .swap_cooldown import SW_COOLDOWN as _sw_cooldown, remember as _sw_remember
 
 
 async def swap_player(srv, sid, steam_id, faction):
@@ -4047,10 +4047,7 @@ async def swap_player(srv, sid, steam_id, faction):
         return False, "balance", f"перевес {diff} больше допустимого (до +2; VIP — без лимита)"
     await srv.api.request("PATCH", f"/v1/players/{steam_id}", json_body={"faction": faction})
     if not is_vip:
-        _sw_cooldown[(sid, steam_id)] = game_key
-        # Память ограничена: самые старые записи вытесняются (dict хранит порядок вставки).
-        while len(_sw_cooldown) > 20000:
-            _sw_cooldown.pop(next(iter(_sw_cooldown)), None)
+        _sw_remember((sid, steam_id), game_key)
     return True, "swapped", f"{steam_id} переведён в «{faction}» (перевес был {diff})"
 
 

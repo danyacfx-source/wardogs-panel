@@ -212,9 +212,7 @@ async def security_middleware(request: Request, call_next):
             response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         if request.url.path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-store")
-        if request.url.path == "/api/session" and not request.cookies.get(
-            api.CSRF_COOKIE
-        ) and not request.cookies.get("wds_csrf"):
+        if request.url.path == "/api/session" and not request.cookies.get(api.CSRF_COOKIE):
             response.set_cookie(
                 api.CSRF_COOKIE,
                 secrets.token_urlsafe(24),
@@ -290,22 +288,30 @@ async def security_middleware(request: Request, call_next):
             chunks.append(chunk)
         request._body = b"".join(chunks)
 
-    protected = request.url.path.startswith("/api/") and request.method in {"POST", "PUT", "PATCH", "DELETE"}
-    exempt = {"/api/auth/dev", "/api/auth/steam/callback", "/api/auth/discord/callback"}
-    if protected and request.url.path not in exempt and request.cookies.get(api.SESSION_COOKIE):
+    path = request.url.path
+    protected = path.startswith("/api/") and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+    # Routes that authenticate without browser cookies (bearer/HMAC tokens, game servers, bots)
+    # or that are intentionally anonymous. They skip Origin and CSRF checks.
+    token_exempt = {
+        "/api/auth/dev", "/api/auth/steam/callback", "/api/auth/discord/callback",
+        "/api/public/clan-sync",
+        "/api/bot/v1/heartbeat", "/api/bot/v1/events",
+    }
+    is_killfeed_ingest = re.fullmatch(r"/api/killfeed/[^/]+", path) is not None
+    if protected and path not in token_exempt and not is_killfeed_ingest:
+        from fastapi.responses import JSONResponse
         fetch_site = (request.headers.get("sec-fetch-site") or "").lower()
         if fetch_site == "cross-site":
-            from fastapi.responses import JSONResponse
             return finish(JSONResponse({"error": {"code": "origin", "message": "Недопустимый источник запроса"}}, status_code=403))
         origin = request.headers.get("origin")
         if origin and origin.rstrip("/") != config.PUBLIC_URL:
-            from fastapi.responses import JSONResponse
             return finish(JSONResponse({"error": {"code": "origin", "message": "Недопустимый источник запроса"}}, status_code=403))
-        csrf_cookie = request.cookies.get(api.CSRF_COOKIE) or request.cookies.get("wds_csrf") or ""
-        csrf_header = request.headers.get("X-CSRF-Token") or ""
-        if not csrf_cookie or not secrets.compare_digest(csrf_cookie, csrf_header):
-            from fastapi.responses import JSONResponse
-            return finish(JSONResponse({"error": {"code": "csrf", "message": "Обновите страницу и повторите действие"}}, status_code=403))
+        # Double-submit CSRF applies only when the request carries the ambient session cookie.
+        if request.cookies.get(api.SESSION_COOKIE):
+            csrf_cookie = request.cookies.get(api.CSRF_COOKIE) or ""
+            csrf_header = request.headers.get("X-CSRF-Token") or ""
+            if not csrf_cookie or not secrets.compare_digest(csrf_cookie, csrf_header):
+                return finish(JSONResponse({"error": {"code": "csrf", "message": "Обновите страницу и повторите действие"}}, status_code=403))
     response = await call_next(request)
     return finish(response)
 
