@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import copy
 import hashlib
 import json
 import logging
@@ -62,6 +63,12 @@ def modal_values(interaction: discord.Interaction) -> dict[str, str]:
             if isinstance(item, dict) and item.get("custom_id"):
                 values[str(item["custom_id"])] = str(item.get("value") or "")
     return values
+
+
+def overwrites_differ(current: dict, desired: dict) -> bool:
+    def norm(ows):
+        return {target.id: ow.pair() for target, ow in ows.items()}
+    return norm(current) != norm(desired)
 
 
 # Заявки, по которым сейчас создаётся клан (защита от двойного одобрения).
@@ -127,14 +134,25 @@ class ClansCog(commands.Cog):
                     await asyncio.sleep(delay)
 
     async def _ensure_channel(self, guild: discord.Guild, stored_id, **kwargs):
-        if stored_id:
-            try:
-                existing = await guild.fetch_channel(int(stored_id))
-                if existing:
-                    return existing
-            except Exception:
-                pass
-        return None
+        if not stored_id:
+            return None
+        try:
+            existing = await guild.fetch_channel(int(stored_id))
+        except Exception:
+            existing = None
+        if not existing:
+            return None
+        # Существующий канал приводим к настройкам: права и категория должны совпадать.
+        edit_kwargs = {}
+        overwrites = kwargs.get("overwrites")
+        if overwrites is not None and overwrites_differ(existing.overwrites, overwrites):
+            edit_kwargs["overwrites"] = overwrites
+        category = kwargs.get("category")
+        if category is not None and getattr(existing, "category_id", None) != category.id:
+            edit_kwargs["category"] = category
+        if edit_kwargs:
+            await existing.edit(reason="WARDOGS clan setup", **edit_kwargs)
+        return existing
 
     async def cog_unload(self):
         self.backup_manager.stop()
@@ -142,6 +160,22 @@ class ClansCog(commands.Cog):
             await self._session.close()
         for t in self._refresh_tasks.values():
             t.cancel()
+
+    async def _send_ephemeral(self, interaction: discord.Interaction, text: str):
+        """Отвечает эфемерно: followup, если ответ уже был отправлен (например, после defer)."""
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(text, ephemeral=True)
+            else:
+                await interaction.response.send_message(text, ephemeral=True)
+        except Exception:
+            log.warning("Не удалось отправить ответ на действие клана", exc_info=True)
+
+    async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        # Ошибка уже после defer или ответа: администратор получает сообщение, а не «приложение не отвечает».
+        log.error("Ошибка команды клана: %s", error, exc_info=error)
+        original = getattr(error, "original", error)
+        await self._send_ephemeral(interaction, f"Команда не выполнена: {clean(str(original), 200)}. Возможно, часть действий уже выполнена, проверьте состояние клана.")
 
     def _can_run(self, user_id: int, key: str, ms: int = 4000) -> bool:
         rid = f"{user_id}:{key}"
@@ -311,7 +345,18 @@ class ClansCog(commands.Cog):
         ))
         return view
 
+    async def _persist_clan(self, clan: dict):
+        """Записывает клан, только если он ещё в хранилище: распущенный клан не возвращаем."""
+        def _save(s):
+            if clan["id"] in s["clans"]:
+                s["clans"][clan["id"]] = clan
+        await self.store.update(_save)
+
     async def _update_clan_artifacts(self, guild: discord.Guild, clan: dict, sync: bool = True):
+        if clan.get("id") not in self.store.state["clans"]:
+            # Клан распущен: карточки заново не создаём и клан в хранилище не возвращаем.
+            log.info("Обновление карточек пропущено: клан %s уже не в хранилище", clan.get("id"))
+            return
         clan["serverMembers"] = await self._member_count(guild, clan)
         clan["updatedAt"] = iso_now()
         setup = self.store.state["setup"]
@@ -342,7 +387,7 @@ class ClansCog(commands.Cog):
                         await starter.edit(embed=self._recruitment_embed(clan), view=self._recruitment_application_row(clan))
                 except Exception:
                     pass
-        await self.store.update(lambda s: s["clans"].__setitem__(clan["id"], clan))
+        await self._persist_clan(clan)
         if sync:
             try:
                 await sync_site(list(self.store.state["clans"].values()))
@@ -708,14 +753,53 @@ class ClansCog(commands.Cog):
         view.add_item(discord.ui.Button(custom_id=f"clan:approve:{ticket.id}", label="Одобрить", emoji="✅", style=discord.ButtonStyle.success))
         view.add_item(discord.ui.Button(custom_id=f"clan:reject:{ticket.id}", label="Отклонить", emoji="✖️", style=discord.ButtonStyle.danger))
         admin_role = guild.get_role(int(admin_role_id))
-        await ticket.send(
-            content=f"<@&{admin_role_id}>" if admin_role else "",
-            embed=self._application_embed(app, interaction.user),
-            view=view,
-            allowed_mentions=discord.AllowedMentions(roles=[int(admin_role_id)] if admin_role else []),
-        )
+        try:
+            await ticket.send(
+                content=f"<@&{admin_role_id}>" if admin_role else "",
+                embed=self._application_embed(app, interaction.user),
+                view=view,
+                allowed_mentions=discord.AllowedMentions(roles=[int(admin_role_id)] if admin_role else []),
+            )
+        except Exception as e:
+            # Администрация не получила заявку: снимаем запись, чтобы заявитель мог подать её заново.
+            log.exception("Не удалось отправить заявку в тикет %s", ticket.id)
+            await self.store.update(lambda s: s["applications"].pop(str(ticket.id), None))
+            try:
+                await ticket.delete(reason="Clan application was not delivered")
+            except Exception:
+                log.warning("Не удалось удалить тикет %s после сбоя отправки", ticket.id)
+            await interaction.followup.send(f"Заявка не отправлена администрации: {clean(str(e), 200)}. Подайте заявку заново.", ephemeral=True)
+            return
         await interaction.followup.send(f"Заявка создана: {ticket.mention}. Ожидайте решения администрации.")
         await self._audit(guild, "Новая заявка на клан", f"{app['name']} [{app['tag']}] · заявитель <@{app['applicantId']}>", COLORS["red"])
+
+    async def _rollback_clan_objects(self, guild, member, roles: dict, created_objects: list, leader_granted: bool, reason: str) -> list:
+        """Откатывает Discord-объекты шага. Возвращает описания тех, что удалить не удалось."""
+        failed: list = []
+        for obj in reversed(created_objects):
+            try:
+                await obj.delete(reason=reason)
+            except Exception as e:
+                failed.append(f"канал «{getattr(obj, 'name', obj.id)}» ({clean(str(e), 80)})")
+        if leader_granted and roles.get("leader"):
+            try:
+                await member.remove_roles(discord.Object(id=roles["leader"]), reason=reason)
+            except Exception as e:
+                failed.append(f"роль лидера у <@{member.id}> ({clean(str(e), 80)})")
+        for key, rid in roles.items():
+            try:
+                r = guild.get_role(rid)
+                if r:
+                    await r.delete(reason=reason)
+            except Exception as e:
+                failed.append(f"роль «{ROLE_LABELS.get(key, key)}» {rid} ({clean(str(e), 80)})")
+        return failed
+
+    @staticmethod
+    def _rollback_note(failed: list) -> str:
+        if not failed:
+            return " Созданное на этом шаге откатано."
+        return " Откат выполнен не полностью, удалите вручную: " + "; ".join(failed[:8]) + "."
 
     async def _create_clan(self, interaction: discord.Interaction, ticket_id: str):
         if not isinstance(interaction.user, discord.Member) or not self._is_admin(interaction.user):
@@ -736,7 +820,11 @@ class ClansCog(commands.Cog):
         except Exception:
             # Не оставляем администратора с зависшим ответом: сообщаем об ошибке.
             log.exception("Создание клана по заявке %s завершилось сбоем", ticket_id)
-            msg = "❌ Не удалось создать клан. Часть ролей или каналов могла остаться — проверьте сервер вручную."
+            committed = (self.store.state["applications"].get(ticket_id) or {}).get("status") == "approved"
+            if committed:
+                msg = "⚠️ Клан создан и сохранён, но при завершении возникла ошибка. Проверьте карточки и штаб клана вручную."
+            else:
+                msg = "❌ Не удалось создать клан. Часть ролей или каналов могла остаться — проверьте сервер вручную."
             if interaction.response.is_done():
                 await interaction.followup.send(msg, ephemeral=True)
             else:
@@ -756,6 +844,10 @@ class ClansCog(commands.Cog):
             member = None
         if not member:
             await interaction.followup.send("Заявитель вышел с сервера. Одобрение отменено.")
+            return
+        applicant_clan = self.store.find_clan_by_member_ids({r.id for r in member.roles}) or self.store.find_clan_by_leader(member.id)
+        if applicant_clan:
+            await interaction.followup.send(f"Заявитель уже состоит в клане «{applicant_clan.get('name')}» [{applicant_clan.get('tag')}]. Одобрение отменено, клан не создан.")
             return
         for clan in self.store.state["clans"].values():
             if clan.get("tag", "").lower() == app["tag"].lower():
@@ -790,14 +882,8 @@ class ClansCog(commands.Cog):
                 roles[key] = role.id
             await self._position_clan_roles(guild, roles)
         except Exception as e:
-            for rid in roles.values():
-                try:
-                    r = guild.get_role(rid)
-                    if r:
-                        await r.delete(reason="Rollback after failed clan role creation")
-                except Exception:
-                    pass
-            await interaction.followup.send(f"Клан не создан: Discord отклонил создание ролей или их иконку. Созданные на этом шаге роли удалены. {clean(str(e), 220)}")
+            failed = await self._rollback_clan_objects(guild, member, roles, [], False, "Rollback after failed clan role creation")
+            await interaction.followup.send(f"Клан не создан: Discord отклонил создание ролей или их иконку.{self._rollback_note(failed)} {clean(str(e), 220)}")
             return
         created_objects: list = []
         leader_role_added = False
@@ -822,24 +908,8 @@ class ClansCog(commands.Cog):
             leader_role_added = True
         except Exception as e:
             # Откат: удаляем каналы/категорию, роль лидера и все роли клана, созданные на этом шаге.
-            for obj in reversed(created_objects):
-                try:
-                    await obj.delete(reason="Rollback after failed clan creation")
-                except Exception:
-                    pass
-            if leader_role_added:
-                try:
-                    await member.remove_roles(discord.Object(id=roles["leader"]), reason="Rollback after failed clan creation")
-                except Exception:
-                    pass
-            for rid in roles.values():
-                try:
-                    r = guild.get_role(rid)
-                    if r:
-                        await r.delete(reason="Rollback after failed clan creation")
-                except Exception:
-                    pass
-            await interaction.followup.send(f"Клан не создан: Discord отклонил создание каналов или выдачу роли. Созданное на этом шаге откатано. {clean(str(e), 220)}")
+            failed = await self._rollback_clan_objects(guild, member, roles, created_objects, leader_role_added, "Rollback after failed clan creation")
+            await interaction.followup.send(f"Клан не создан: Discord отклонил создание каналов или выдачу роли.{self._rollback_note(failed)} {clean(str(e), 220)}")
             return
         now = iso_now()
         clan = {
@@ -864,43 +934,61 @@ class ClansCog(commands.Cog):
             ))
         except Exception as e:
             # Запись не зафиксирована: откатываем созданные Discord-объекты.
-            for obj in reversed(created_objects):
-                try:
-                    await obj.delete(reason="Rollback after failed clan save")
-                except Exception:
-                    pass
-            try:
-                await member.remove_roles(discord.Object(id=roles["leader"]), reason="Rollback after failed clan save")
-            except Exception:
-                pass
-            for rid in roles.values():
-                try:
-                    r = guild.get_role(rid)
-                    if r:
-                        await r.delete(reason="Rollback after failed clan save")
-                except Exception:
-                    pass
-            await interaction.followup.send(f"Клан не сохранён в базе, Discord-объекты откатаны. {clean(str(e), 220)}")
+            failed = await self._rollback_clan_objects(guild, member, roles, created_objects, True, "Rollback after failed clan save")
+            await interaction.followup.send(f"Клан не сохранён в базе.{self._rollback_note(failed)} {clean(str(e), 220)}")
             return
-        e, views = self._hq_panel_full(clan)
-        panel = await hq.send(embed=e, view=views[0], allowed_mentions=discord.AllowedMentions.none())
-        clan["controlMessageId"] = str(panel.id)
-        await self.store.update(lambda s: s["clans"].__setitem__(clan["id"], clan))
-        await self._update_clan_artifacts(guild, clan)
-        await self._audit(guild, "Клан зарегистрирован", f"{clan['name']} [{clan['tag']}] · лидер <@{clan['leaderId']}> · одобрил <@{interaction.user.id}>", COLORS["green"])
+        # Клан уже записан в хранилище: это точка фиксации. Назад не откатываем, каждый
+        # последующий шаг выполняем отдельно и сообщаем администратору о сбоях.
+        warnings: list = []
+        try:
+            e, views = self._hq_panel_full(clan)
+            panel = await hq.send(embed=e, view=views[0], allowed_mentions=discord.AllowedMentions.none())
+            clan["controlMessageId"] = str(panel.id)
+            await self._persist_clan(clan)
+        except Exception as ex:
+            log.exception("Панель штаба клана %s не опубликована", clan["id"])
+            warnings.append(f"панель штаба не опубликована ({clean(str(ex), 120)}), используйте «Обновить» в штабе")
+        list_ok = True
+        try:
+            await self._update_clan_artifacts(guild, clan)
+        except Exception as ex:
+            list_ok = False
+            log.exception("Карточки клана %s не обновлены", clan["id"])
+            warnings.append(f"карточка в списке и сайт не обновлены ({clean(str(ex), 120)}), используйте /clan sync")
+        try:
+            await self._audit(guild, "Клан зарегистрирован", f"{clan['name']} [{clan['tag']}] · лидер <@{clan['leaderId']}> · одобрил <@{interaction.user.id}>", COLORS["green"])
+        except Exception as ex:
+            log.exception("Запись о создании клана %s не попала в журнал", clan["id"])
+            warnings.append(f"запись в журнал не создана ({clean(str(ex), 120)})")
         try:
             await member.send(f"Ваш клан «{clan['name']}» одобрен в WARDOGS RU. Закрытый штаб создан на сервере.")
         except Exception:
             pass
-        await interaction.followup.send(f"Клан «{clan['name']}» создан. Лидеру выдана роль, карточка добавлена в список.")
+        message = f"Клан «{clan['name']}» создан. Лидеру выдана роль."
+        if list_ok:
+            message += " Карточка добавлена в список."
+        if warnings:
+            message += "\n⚠️ Клан сохранён, но есть предупреждения: " + "; ".join(warnings) + "."
+        await interaction.followup.send(message)
         asyncio.get_event_loop().call_later(10, lambda: asyncio.ensure_future(self._delete_channel(guild, ticket_id)))
 
-    async def _delete_channel(self, guild: discord.Guild, channel_id: str):
+    async def _delete_channel(self, guild: discord.Guild, channel_id: str) -> bool:
+        """True: канала нет (удалён или его не было). False: удалить не удалось."""
         try:
             ch = await guild.fetch_channel(int(channel_id))
+        except discord.NotFound:
+            return True
+        except Exception as e:
+            log.warning("Не удалось получить канал %s для удаления: %s", channel_id, e)
+            return False
+        try:
             await ch.delete(reason="Archived clan application")
-        except Exception:
-            pass
+            return True
+        except discord.NotFound:
+            return True
+        except Exception as e:
+            log.warning("Не удалось удалить канал %s: %s", channel_id, e)
+            return False
 
     def _recruitment_modal(self, clan: dict, mode: str):
         r = clan.get("recruitment") or {}
@@ -929,56 +1017,64 @@ class ClansCog(commands.Cog):
             await interaction.response.send_message("Изображение должно быть загружено в Discord. Скопируйте ссылку на вложение с cdn.discordapp.com или media.discordapp.net.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True)
-        clan["recruitment"] = {
+        guild = interaction.guild
+        # Меняем копию: в хранилище изменения попадают только после успеха в Discord.
+        candidate = copy.deepcopy(clan)
+        candidate["recruitment"] = {
             "lookingFor": clean(values.get("looking", ""), 500),
             "requirements": clean(values.get("requirements", ""), 500),
             "schedule": clean(values.get("schedule", ""), 100),
             "contact": clean(values.get("contact", ""), 100),
             "imageUrl": image_url,
         }
-        clan["recruitmentStatus"] = "open"
-        clan["updatedAt"] = iso_now()
+        candidate["recruitmentStatus"] = "open"
+        candidate["updatedAt"] = iso_now()
         try:
-            forum = await interaction.guild.fetch_channel(int(self.store.state["setup"]["recruitmentForumId"]))
+            forum = await guild.fetch_channel(int(self.store.state["setup"]["recruitmentForumId"]))
         except Exception:
             forum = None
         if not isinstance(forum, discord.ForumChannel):
             await interaction.followup.send("Форум набора не найден. Администратору нужно повторить `/clan-setup`.")
             return
-        if not clan.get("recruitmentThreadId"):
+        if not candidate.get("recruitmentThreadId"):
             open_tag = None
             for tag in forum.available_tags:
                 if tag.name == "Набор открыт":
                     open_tag = tag
                     break
-            thread_name = f"[{clan['tag']}] {clan['name']} — набор открыт"[:100]
-            e = self._recruitment_embed(clan)
-            view = self._recruitment_application_row(clan)
+            thread_name = f"[{candidate['tag']}] {candidate['name']} — набор открыт"[:100]
+            e = self._recruitment_embed(candidate)
+            view = self._recruitment_application_row(candidate)
             thread = await forum.create_thread(
                 name=thread_name, auto_archive_duration=10080,
                 applied_tags=[open_tag] if open_tag else [],
                 content="",
                 embed=e,
                 view=view,
-                reason=f"Recruitment post for {clan['name']}",
+                reason=f"Recruitment post for {candidate['name']}",
             )
-            clan["recruitmentThreadId"] = str(thread[0].id if isinstance(thread, tuple) else thread.id)
-            clan["recruitmentUrl"] = f"https://discord.com/channels/{GUILD_ID}/{forum.id}/{clan['recruitmentThreadId']}"
+            candidate["recruitmentThreadId"] = str(thread[0].id if isinstance(thread, tuple) else thread.id)
+            candidate["recruitmentUrl"] = f"https://discord.com/channels/{GUILD_ID}/{forum.id}/{candidate['recruitmentThreadId']}"
+            # Публикация уже создана: сохраняем её id сразу, чтобы сбой дальше не породил вторую.
+            await self._persist_clan(candidate)
         else:
             try:
-                thread = await interaction.guild.fetch_channel(int(clan["recruitmentThreadId"]))
+                thread = await guild.fetch_channel(int(candidate["recruitmentThreadId"]))
             except Exception:
                 thread = None
             if not isinstance(thread, discord.Thread):
-                clan["recruitmentThreadId"] = None
-                clan["recruitmentUrl"] = None
+                stale = copy.deepcopy(clan)
+                stale["recruitmentThreadId"] = None
+                stale["recruitmentUrl"] = None
+                await self._persist_clan(stale)
                 await interaction.followup.send("Старая публикация была удалена. Нажмите «Создать набор» ещё раз.")
                 return
             await thread.edit(archived=False, locked=False)
-            await thread.edit(name=f"[{clan['tag']}] {clan['name']} — набор открыт"[:100])
-        await self._update_clan_artifacts(interaction.guild, clan)
-        await self._audit(interaction.guild, "Создана карточка набора" if mode == "create" else "Изменена карточка набора", f"{clan['name']} [{clan['tag']}] · автор <@{interaction.user.id}>", COLORS["red"])
-        await interaction.followup.send(f"Карточка набора сохранена: {clan['recruitmentUrl']}")
+            await thread.edit(name=f"[{candidate['tag']}] {candidate['name']} — набор открыт"[:100])
+        await self._persist_clan(candidate)
+        await self._update_clan_artifacts(guild, candidate)
+        await self._audit(guild, "Создана карточка набора" if mode == "create" else "Изменена карточка набора", f"{candidate['name']} [{candidate['tag']}] · автор <@{interaction.user.id}>", COLORS["red"])
+        await interaction.followup.send(f"Карточка набора сохранена: {candidate['recruitmentUrl']}")
 
     async def _toggle_recruitment(self, interaction: discord.Interaction, clan: dict):
         if not clan.get("recruitmentThreadId"):
@@ -992,8 +1088,7 @@ class ClansCog(commands.Cog):
         if not isinstance(thread, discord.Thread):
             await interaction.followup.send("Публикация не найдена.")
             return
-        clan["recruitmentStatus"] = "closed" if clan.get("recruitmentStatus") == "open" else "open"
-        is_open = clan["recruitmentStatus"] == "open"
+        is_open = clan.get("recruitmentStatus") != "open"
         tag_name = "Набор открыт" if is_open else "Набор закрыт"
         status_tag = None
         other_tags = []
@@ -1010,7 +1105,14 @@ class ClansCog(commands.Cog):
         new_tags = ([status_tag] if status_tag else []) + other_tags
         await thread.edit(applied_tags=new_tags[:5])
         await thread.edit(name=f"[{clan['tag']}] {clan['name']} — набор {'открыт' if is_open else 'закрыт'}"[:100])
-        await self._update_clan_artifacts(interaction.guild, clan)
+        # Статус в хранилище меняем только после того, как Discord принял изменения.
+        previous_status = clan.get("recruitmentStatus")
+        clan["recruitmentStatus"] = "open" if is_open else "closed"
+        try:
+            await self._update_clan_artifacts(interaction.guild, clan)
+        except Exception:
+            clan["recruitmentStatus"] = previous_status
+            raise
         await thread.edit(locked=not is_open, archived=not is_open)
         await interaction.followup.send(f"Набор {'открыт' if is_open else 'закрыт'}.")
 
@@ -1020,15 +1122,20 @@ class ClansCog(commands.Cog):
             return
         await interaction.response.defer(ephemeral=True)
         thread_id = clan["recruitmentThreadId"]
+        try:
+            thread = await interaction.guild.fetch_channel(int(thread_id))
+            await thread.delete(reason=f"Recruitment post deleted by {interaction.user}")
+        except discord.NotFound:
+            pass  # публикации уже нет: ссылку можно очистить
+        except Exception as e:
+            # Публикация осталась в Discord: ссылку не стираем, иначе её нельзя будет найти и удалить.
+            log.warning("Не удалось удалить публикацию набора %s: %s", thread_id, e)
+            await interaction.followup.send(f"Публикация набора не удалена: {clean(str(e), 200)}. Карточка сохранена, повторите попытку.", ephemeral=True)
+            return
         clan["recruitmentThreadId"] = None
         clan["recruitmentUrl"] = None
         clan["recruitment"] = None
         clan["recruitmentStatus"] = "closed"
-        try:
-            thread = await interaction.guild.fetch_channel(int(thread_id))
-            await thread.delete(reason=f"Recruitment post deleted by {interaction.user}")
-        except Exception:
-            pass
         await self._update_clan_artifacts(interaction.guild, clan)
         await interaction.followup.send("Карточка набора удалена. Теперь можно создать новую.")
 
@@ -1283,49 +1390,80 @@ class ClansCog(commands.Cog):
             await interaction.response.send_message("Тег не совпал. Клан не был распущен.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True)
+        guild = interaction.guild
         join_ticket_ids = [a["ticketId"] for a in self.store.state.get("joinApplications", {}).values() if a.get("clanId") == clan_id_str]
-        await self.store.update(lambda s: (
-            s["clans"].pop(clan_id_str, None),
-            [s["joinApplications"].pop(tid, None) for tid in join_ticket_ids],
-        ))
+        # Сначала удаляем Discord-объекты и собираем неудачи. Запись клана снимаем только когда
+        # всё удалено, иначе клан пропал бы из хранилища, а его роли и каналы остались бы на сервере.
+        failures: list = []
+        list_id = self.store.state["setup"].get("listChannelId")
+        if clan.get("listMessageId") and list_id:
+            list_ch = guild.get_channel(int(list_id))
+            if isinstance(list_ch, discord.TextChannel):
+                try:
+                    msg = await list_ch.fetch_message(int(clan["listMessageId"]))
+                    await msg.delete()
+                except discord.NotFound:
+                    pass
+                except Exception as e:
+                    failures.append(f"карточка в списке кланов ({clean(str(e), 80)})")
+        if clan.get("recruitmentThreadId"):
+            try:
+                thread = await guild.fetch_channel(int(clan["recruitmentThreadId"]))
+                await thread.delete(reason="Clan dissolved")
+            except discord.NotFound:
+                pass
+            except Exception as e:
+                failures.append(f"публикация набора ({clean(str(e), 80)})")
+        for tid in join_ticket_ids:
+            if not await self._delete_channel(guild, tid):
+                failures.append(f"заявка <#{tid}>")
+        for cid in [clan["channelIds"].get(k) for k in ["chat", "hq", "voice", "creator"]]:
+            if cid and not await self._delete_channel(guild, str(cid)):
+                failures.append(f"канал <#{cid}>")
+        for vid, voice_data in list(self.store.state.get("temporaryVoices", {}).items()):
+            if voice_data.get("clanId") != clan_id_str:
+                continue
+            if await self._delete_channel(guild, str(vid)):
+                await self.store.update(lambda s, v=vid: s["temporaryVoices"].pop(v, None))
+            else:
+                failures.append(f"временная комната <#{vid}>")
+        if not await self._delete_channel(guild, str(clan["channelIds"]["category"])):
+            failures.append("категория клана")
+        for rid in clan["roleIds"].values():
+            if not rid:
+                continue
+            try:
+                role = guild.get_role(int(rid))
+                if role:
+                    await role.delete(reason="Clan dissolved")
+            except discord.NotFound:
+                pass
+            except Exception as e:
+                failures.append(f"роль {rid} ({clean(str(e), 80)})")
+        if failures:
+            # Клан остаётся в хранилище со статусом dissolve_failed: повторный роспуск доделает остаток.
+            def _mark_failed(s):
+                c = s["clans"].get(clan_id_str)
+                if c is not None:
+                    c["status"] = "dissolve_failed"
+                    c["dissolveFailures"] = failures[:20]
+                    c["updatedAt"] = iso_now()
+            await self.store.update(_mark_failed)
+            await interaction.followup.send(
+                f"Роспуск клана «{clan['name']}» не завершён. Не удалось удалить: {'; '.join(failures[:10])}. Клан помечен как незавершённый: повторите роспуск после устранения причины.",
+                ephemeral=True,
+            )
+            return
+        def _drop(s):
+            s["clans"].pop(clan_id_str, None)
+            for tid in join_ticket_ids:
+                s["joinApplications"].pop(tid, None)
+        await self.store.update(_drop)
         try:
             await sync_site(list(self.store.state["clans"].values()))
         except Exception:
             pass
-        list_id = self.store.state["setup"].get("listChannelId")
-        if clan.get("listMessageId") and list_id:
-            try:
-                list_ch = interaction.guild.get_channel(int(list_id))
-                if isinstance(list_ch, discord.TextChannel):
-                    msg = await list_ch.fetch_message(int(clan["listMessageId"]))
-                    await msg.delete()
-            except Exception:
-                pass
-        if clan.get("recruitmentThreadId"):
-            try:
-                thread = await interaction.guild.fetch_channel(int(clan["recruitmentThreadId"]))
-                await thread.delete(reason="Clan dissolved")
-            except Exception:
-                pass
-        await self._audit(interaction.guild, "Клан распущен", f"{clan['name']} [{clan['tag']}] · инициатор <@{interaction.user.id}>", COLORS["grey"])
-        for tid in join_ticket_ids:
-            await self._delete_channel(interaction.guild, tid)
-        for cid in [clan["channelIds"].get(k) for k in ["chat", "hq", "voice", "creator"]]:
-            if cid:
-                await self._delete_channel(interaction.guild, str(cid))
-        for vid, voice_data in list(self.store.state.get("temporaryVoices", {}).items()):
-            if voice_data.get("clanId") == clan_id_str:
-                await self._delete_channel(interaction.guild, str(vid))
-                await self.store.update(lambda s, v=vid: s["temporaryVoices"].pop(v, None))
-        await self._delete_channel(interaction.guild, str(clan["channelIds"]["category"]))
-        for rid in clan["roleIds"].values():
-            if rid:
-                try:
-                    role = interaction.guild.get_role(int(rid))
-                    if role:
-                        await role.delete(reason="Clan dissolved")
-                except Exception:
-                    pass
+        await self._audit(guild, "Клан распущен", f"{clan['name']} [{clan['tag']}] · инициатор <@{interaction.user.id}>", COLORS["grey"])
         await interaction.followup.send(f"Клан «{clan['name']}» распущен. Его роли, каналы и публичные карточки удалены.")
 
     @commands.Cog.listener()
@@ -1335,11 +1473,10 @@ class ClansCog(commands.Cog):
         key = interaction.data.get("custom_id", "") if interaction.data else ""
         if not key and interaction.command:
             key = interaction.command.name
-        if not self._can_run(interaction.user.id, key, 1200):
-            if interaction.response.is_done():
-                await interaction.followup.send("Подождите пару секунд и повторите действие.", ephemeral=True)
-            else:
-                await interaction.response.send_message("Подождите пару секунд и повторите действие.", ephemeral=True)
+        # Slash-команды выполняет дерево команд: ответ отсюда дал бы InteractionResponded.
+        is_command = interaction.type == discord.InteractionType.application_command
+        if not is_command and not self._can_run(interaction.user.id, key, 1200):
+            await self._send_ephemeral(interaction, "Подождите пару секунд и повторите действие.")
             return
         try:
             if interaction.type == discord.InteractionType.component:
@@ -1354,11 +1491,7 @@ class ClansCog(commands.Cog):
                     await self._handle_string_select(interaction)
         except Exception as e:
             log.error("Interaction error: %s", e, exc_info=True)
-            try:
-                if not interaction.response.is_done():
-                    await interaction.response.send_message("Произошла ошибка при обработке действия.", ephemeral=True)
-            except Exception:
-                pass
+            await self._send_ephemeral(interaction, "Произошла ошибка при обработке действия. Проверьте состояние клана перед повтором.")
 
     async def _handle_component(self, interaction: discord.Interaction):
         custom_id = interaction.data.get("custom_id", "")
@@ -1903,7 +2036,42 @@ class ClansCog(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         source = await self.backup_manager.load_latest(interaction.guild)
         await self.store.replace(source["payload"]["state"])
-        await interaction.followup.send("Восстановление завершено. Данные клановой системы загружены из резервной копии.")
+        message = "Восстановление завершено. Данные клановой системы загружены из резервной копии."
+        try:
+            missing = await self._missing_clan_objects(interaction.guild)
+        except Exception as e:
+            log.warning("Проверка Discord-объектов после восстановления не выполнена: %s", e)
+            missing = None
+            message += f"\n⚠️ Проверка ролей и каналов не выполнена: {clean(str(e), 150)}."
+        if missing:
+            shown = missing[:8]
+            more = f" и ещё {len(missing) - 8}" if len(missing) > 8 else ""
+            message += "\n⚠️ Не найдены в Discord (записи сохранены, ничего не удалено): " + "; ".join(shown) + more + ". Проверьте кланы и при необходимости распустите их."
+        await interaction.followup.send(message)
+
+    async def _missing_clan_objects(self, guild: discord.Guild) -> list:
+        """Ищет роли, каналы и публикации сохранённых кланов, которых нет в Discord. Ничего не удаляет."""
+        role_ids = {r.id for r in await guild.fetch_roles()}
+        channel_ids = {c.id for c in await guild.fetch_channels()}
+        missing: list = []
+        for clan in self.store.state["clans"].values():
+            gone = []
+            for key, rid in (clan.get("roleIds") or {}).items():
+                if rid and int(rid) not in role_ids:
+                    gone.append(f"роль «{ROLE_LABELS.get(key, key)}» ({rid})")
+            for key, cid in (clan.get("channelIds") or {}).items():
+                if cid and int(cid) not in channel_ids:
+                    gone.append(f"канал {key} ({cid})")
+            if clan.get("recruitmentThreadId"):
+                try:
+                    await guild.fetch_channel(int(clan["recruitmentThreadId"]))
+                except discord.NotFound:
+                    gone.append("публикация набора")
+                except Exception:
+                    pass
+            if gone:
+                missing.append(f"[{clan.get('tag')}] {clan.get('name')}: " + ", ".join(gone))
+        return missing
 
 
 async def setup(bot: commands.Bot):

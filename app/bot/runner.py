@@ -215,7 +215,11 @@ async def _lease_heartbeat():
         return
     while True:
         try:
-            database.renew_lease(RUN_ID)
+            if not database.renew_lease(RUN_ID):
+                # Аренду перехватил другой экземпляр: продолжать работу нельзя (лицензия на один экземпляр).
+                log.error("Bot lease lost; closing bot")
+                await bot.close()
+                return
         except asyncio.CancelledError:
             raise
         except Exception:

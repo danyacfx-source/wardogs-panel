@@ -1081,9 +1081,9 @@ class SeedingCog(commands.Cog):
             active_until = 0.0
             membership = seed_get_vip_membership(user_id)
             if membership:
-                if membership["state"] == "pending_add":
-                    active_until = (now / 1000.0) + 3600.0
-                elif membership["state"] == "active" and (membership.get("active_until") or 0) > now:
+                # pending_add (оплачено, слот ещё не выдан) свап-исключения не даёт:
+                # иначе оплаченный, но не активированный игрок сохранял бы его бессрочно.
+                if membership["state"] == "active" and (membership.get("active_until") or 0) > now:
                     active_until = float(membership["active_until"])
                     if active_until > 1e11:  # срок хранится в миллисекундах
                         active_until = active_until / 1000.0

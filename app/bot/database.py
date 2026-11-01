@@ -3,11 +3,14 @@ import sqlite3
 import threading
 import os
 from pathlib import Path
+import logging
 
 try:
     import db_backend
 except ImportError:  # package import (app.bot.database)
     from . import db_backend
+
+_log = logging.getLogger(__name__)
 
 DB_FILE = "wardogs_v2.db"
 _local = threading.local()
@@ -884,13 +887,15 @@ def acquire_lease(run_id: str) -> bool:
     return False
 
 
-def renew_lease(run_id: str) -> None:
+def renew_lease(run_id: str) -> bool:
+    """True, если аренда продлена. False — лидерство уже потеряно (строка принадлежит другому run_id)."""
     conn = get_conn()
-    conn.execute(
+    cur = conn.execute(
         "UPDATE bot_lease SET expires_at = ? WHERE id = 1 AND run_id = ?",
         (_utcnow(), run_id),
     )
     conn.commit()
+    return cur.rowcount == 1
 
 
 def release_lease(run_id: str) -> None:
@@ -1063,13 +1068,16 @@ def migrate_giveaways_from(path: str) -> int:
     moved = 0
     for g in src.execute("SELECT * FROM giveaways WHERE done = 0").fetchall():
         d = dict(g)
-        conn.execute(
-            "INSERT OR REPLACE INTO giveaways (id, channel_id, guild_id, prize, ends_at, winners, created_by, message_id, done, finished_at) "
+        # INSERT OR IGNORE: уже существующий в v2 розыгрыш не перезаписываем (он мог быть завершён).
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO giveaways (id, channel_id, guild_id, prize, ends_at, winners, created_by, message_id, done, finished_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (d.get("id"), d.get("channel_id"), d.get("guild_id"), d.get("prize"),
              d.get("ends_at"), d.get("winners"), d.get("created_by"),
-             d.get("message_id", 0) or 0, 0, d.get("finished_at")),
+             d.get("message_id", 0) or 0, d.get("done") or 0, d.get("finished_at")),
         )
+        if not cur.rowcount:
+            continue
         for p in src.execute("SELECT user_id, joined_at FROM giveaway_participants WHERE giveaway_id = ?", (d.get("id"),)).fetchall():
             conn.execute(
                 "INSERT OR IGNORE INTO giveaway_participants (giveaway_id, user_id, joined_at) VALUES (?, ?, ?)",
@@ -1341,13 +1349,13 @@ def get_donor_total(user_id):
 def add_donor_total(user_id, amount, public=True):
     """Атомарно прибавляет сумму к накопленному донату и возвращает новый итог."""
     conn = get_conn()
-    conn.execute(
-        "INSERT INTO donations_donors(user_id,total,public) VALUES(?,?,?) "
-        "ON CONFLICT(user_id) DO UPDATE SET total = donations_donors.total + excluded.total, public=excluded.public",
-        (user_id, amount, 1 if public else 0),
-    )
-    row = conn.execute("SELECT total FROM donations_donors WHERE user_id = ?", (user_id,)).fetchone()
-    conn.commit()
+    with _write_tx(conn):
+        conn.execute(
+            "INSERT INTO donations_donors(user_id,total,public) VALUES(?,?,?) "
+            "ON CONFLICT(user_id) DO UPDATE SET total = donations_donors.total + excluded.total, public=excluded.public",
+            (user_id, amount, 1 if public else 0),
+        )
+        row = conn.execute("SELECT total FROM donations_donors WHERE user_id = ?", (user_id,)).fetchone()
     return int(_scalar(row)) if row else int(amount)
 
 
@@ -1715,13 +1723,16 @@ def seed_verify_link_challenge(
 
     if purpose == "donation":
         donor_id = _uuid.uuid4().hex
-        conn.execute(
-            "INSERT INTO seed_donor_links (id, discord_id, steam_id, display_name, created_at) VALUES (?, ?, ?, ?, ?)",
-            (donor_id, discord_id, steam_id, row["display_name"], now),
-        )
-        conn.execute("DELETE FROM seed_link_challenges WHERE discord_id = ?", (discord_id,))
-        seed_audit("donation_identity_linked", discord_id, {"id": donor_id})
-        conn.commit()
+        try:
+            with _write_tx(conn):
+                conn.execute(
+                    "INSERT INTO seed_donor_links (id, discord_id, steam_id, display_name, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (donor_id, discord_id, steam_id, row["display_name"], now),
+                )
+                conn.execute("DELETE FROM seed_link_challenges WHERE discord_id = ?", (discord_id,))
+                seed_audit("donation_identity_linked", discord_id, {"id": donor_id})
+        except sqlite3.IntegrityError as exc:
+            raise SeedDomainError("identity_taken", "Discord или Steam уже привязан к другой паре аккаунтов.") from exc
         return {
             "id": donor_id,
             "discord_id": discord_id,
@@ -1738,10 +1749,13 @@ def seed_verify_link_challenge(
 
         if archived:
             user = archived[0]
-            conn.execute(
-                "UPDATE seed_users SET discord_id = ?, steam_id = ?, display_name = ?, linked = 1, updated_at = ? WHERE id = ?",
-                (discord_id, steam_id, row["display_name"], now, user["id"]),
-            )
+            try:
+                conn.execute(
+                    "UPDATE seed_users SET discord_id = ?, steam_id = ?, display_name = ?, linked = 1, updated_at = ? WHERE id = ?",
+                    (discord_id, steam_id, row["display_name"], now, user["id"]),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise SeedDomainError("identity_taken", "Discord или Steam уже привязан. Обратитесь к администратору.") from exc
             seed_audit("identity_relinked", discord_id, {"user_id": user["id"]})
             user_id = user["id"]
             balance = user["balance"]
@@ -1749,13 +1763,17 @@ def seed_verify_link_challenge(
             lifetime_points = user["lifetime_points"]
         else:
             user_id = _uuid.uuid4().hex
-            conn.execute(
-                """
-                INSERT INTO seed_users (id, discord_id, steam_id, display_name, balance, total_seconds, lifetime_points, linked, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 0, 0, 0, 1, ?, ?)
-                """,
-                (user_id, discord_id, steam_id, row["display_name"], now, now),
-            )
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO seed_users (id, discord_id, steam_id, display_name, balance, total_seconds, lifetime_points, linked, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, 0, 0, 0, 1, ?, ?)
+                    """,
+                    (user_id, discord_id, steam_id, row["display_name"], now, now),
+                )
+            except sqlite3.IntegrityError as exc:
+                # Параллельная привязка выиграла гонку между проверкой и вставкой.
+                raise SeedDomainError("identity_taken", "Discord или Steam уже привязан. Обратитесь к администратору.") from exc
             seed_audit("identity_linked", discord_id, {"user_id": user_id})
             balance = total_seconds = lifetime_points = 0
 
@@ -1791,50 +1809,55 @@ def _hash_code(discord_id: str, code: str) -> str:
 def seed_unlink_discord(discord_id: str, actor_id: str | None = None, reason: str = "self_unlink"):
     conn = get_conn()
     now = _now_ms()
-    user = seed_get_user_by_discord(discord_id)
-    if not user:
-        raise SeedDomainError("not_linked", "Steam не привязан к вашему Discord.")
-    membership = seed_get_vip_membership(user["id"])
-    if membership and membership["state"] != "inactive":
-        raise SeedDomainError(
-            "vip_active",
-            "Нельзя отменить привязку, пока VIP активен или ожидает применения/снятия. Дождитесь завершения либо обратитесь к администратору.",
+    with _write_tx(conn):
+        user = seed_get_user_by_discord(discord_id)
+        if not user:
+            raise SeedDomainError("not_linked", "Steam не привязан к вашему Discord.")
+        membership = seed_get_vip_membership(user["id"])
+        if membership and membership["state"] != "inactive":
+            raise SeedDomainError(
+                "vip_active",
+                "Нельзя отменить привязку, пока VIP активен или ожидает применения/снятия. Дождитесь завершения либо обратитесь к администратору.",
+            )
+        feed = seed_get_state_strict("donation_feed", {"vip": {}})
+        paid = (feed.get("vip") or {}).get(discord_id) or {}
+        claims = seed_get_state_strict("paid_slot_claims", {})
+        if int(paid.get("endsAt") or 0) > now or claims.get(user["steam_id"]):
+            raise SeedDomainError(
+                "paid_vip_active",
+                "Нельзя отменить привязку, пока оплаченный VIP действует или reserved slot ожидает снятия.",
+            )
+        tombstone = _uuid.uuid4().hex
+        cur = conn.execute(
+            "UPDATE seed_users SET discord_id = ?, steam_id = ?, linked = 0, updated_at = ? WHERE id = ? AND linked = 1",
+            (f"unlinked:{user['id']}:{tombstone}", f"unlinked:{tombstone}:{user['id']}", now, user["id"]),
         )
-    feed = seed_get_state("donation_feed", {"vip": {}})
-    paid = (feed.get("vip") or {}).get(discord_id) or {}
-    claims = seed_get_state("paid_slot_claims", {})
-    if int(paid.get("endsAt") or 0) > now or claims.get(user["steam_id"]):
-        raise SeedDomainError(
-            "paid_vip_active",
-            "Нельзя отменить привязку, пока оплаченный VIP действует или reserved slot ожидает снятия.",
-        )
-    tombstone = _uuid.uuid4().hex
-    conn.execute(
-        "UPDATE seed_users SET discord_id = ?, steam_id = ?, linked = 0, updated_at = ? WHERE id = ? AND linked = 1",
-        (f"unlinked:{user['id']}:{tombstone}", f"unlinked:{tombstone}:{user['id']}", now, user["id"]),
-    )
-    conn.execute("DELETE FROM seed_active_sessions WHERE user_id = ?", (user["id"],))
-    conn.execute("DELETE FROM seed_link_challenges WHERE discord_id = ?", (discord_id,))
-    seed_audit("identity_unlinked", actor_id or discord_id, {"user_id": user["id"], "reason": reason[:100]})
-    conn.commit()
+        if cur.rowcount != 1:
+            # Параллельная отвязка уже выполнена: второй аудит-записи быть не должно.
+            raise SeedDomainError("not_linked", "Steam не привязан к вашему Discord.")
+        conn.execute("DELETE FROM seed_active_sessions WHERE user_id = ?", (user["id"],))
+        conn.execute("DELETE FROM seed_link_challenges WHERE discord_id = ?", (discord_id,))
+        seed_audit("identity_unlinked", actor_id or discord_id, {"user_id": user["id"], "reason": reason[:100]})
     return {**user, "linked": False}
 
 
 def seed_unlink_donor(discord_id: str):
     conn = get_conn()
     now = _now_ms()
-    donor = seed_get_donor_by_discord(discord_id)
-    if not donor:
-        raise SeedDomainError("not_linked", "Отдельной VIP-привязки нет. Если вы сидер, используйте /seed unlink.")
-    feed = seed_get_state("donation_feed", {"vip": {}})
-    paid = (feed.get("vip") or {}).get(discord_id) or {}
-    claims = seed_get_state("paid_slot_claims", {})
-    if int(paid.get("endsAt") or 0) > now or claims.get(donor["steam_id"]):
-        raise SeedDomainError("paid_vip_active", "Нельзя отменить привязку, пока оплаченный VIP действует или игровой слот ожидает снятия.")
-    conn.execute("DELETE FROM seed_donor_links WHERE id = ?", (donor["id"],))
-    conn.execute("DELETE FROM seed_link_challenges WHERE discord_id = ?", (discord_id,))
-    seed_audit("donation_identity_unlinked", discord_id, {"donor_id": donor["id"]})
-    conn.commit()
+    with _write_tx(conn):
+        donor = seed_get_donor_by_discord(discord_id)
+        if not donor:
+            raise SeedDomainError("not_linked", "Отдельной VIP-привязки нет. Если вы сидер, используйте /seed unlink.")
+        feed = seed_get_state_strict("donation_feed", {"vip": {}})
+        paid = (feed.get("vip") or {}).get(discord_id) or {}
+        claims = seed_get_state_strict("paid_slot_claims", {})
+        if int(paid.get("endsAt") or 0) > now or claims.get(donor["steam_id"]):
+            raise SeedDomainError("paid_vip_active", "Нельзя отменить привязку, пока оплаченный VIP действует или игровой слот ожидает снятия.")
+        cur = conn.execute("DELETE FROM seed_donor_links WHERE id = ?", (donor["id"],))
+        if cur.rowcount != 1:
+            raise SeedDomainError("not_linked", "Отдельной VIP-привязки нет. Если вы сидер, используйте /seed unlink.")
+        conn.execute("DELETE FROM seed_link_challenges WHERE discord_id = ?", (discord_id,))
+        seed_audit("donation_identity_unlinked", discord_id, {"donor_id": donor["id"]})
     return {**donor, "linked": False}
 
 
@@ -1851,102 +1874,93 @@ def seed_apply_seeding_tick(eligible: list[dict], now_ms: int, week_key: str, gr
     eligible_map = {m["discord_id"]: m for m in eligible}
     conn = get_conn()
     awards: list[dict] = []
-    users = seed_list_users()
-    for user in users:
-        member = eligible_map.get(user["discord_id"])
-        sess_row = conn.execute(
-            "SELECT * FROM seed_active_sessions WHERE user_id = ?", (user["id"],)
-        ).fetchone()
-        if not member:
-            if not sess_row:
+    # Весь тик в одной транзакции; снимок пользователей и сессий читается внутри неё.
+    with _write_tx(conn):
+        users = seed_list_users()
+        for user in users:
+            member = eligible_map.get(user["discord_id"])
+            sess_row = conn.execute(
+                "SELECT * FROM seed_active_sessions WHERE user_id = ?", (user["id"],)
+            ).fetchone()
+            if not member:
+                if not sess_row:
+                    continue
+                ineligible_since = sess_row["ineligible_since"]
+                if ineligible_since is None:
+                    conn.execute(
+                        "UPDATE seed_active_sessions SET ineligible_since = ? WHERE user_id = ?",
+                        (now_ms, user["id"]),
+                    )
+                    continue
+                if now_ms - ineligible_since > grace_seconds * 1000:
+                    conn.execute("DELETE FROM seed_active_sessions WHERE user_id = ?", (user["id"],))
                 continue
-            ineligible_since = sess_row["ineligible_since"]
-            if ineligible_since is None:
+
+            display_name = member.get("display_name") or user["display_name"]
+            display_name = str(display_name)[:80]
+            if display_name != user["display_name"]:
                 conn.execute(
-                    "UPDATE seed_active_sessions SET ineligible_since = ? WHERE user_id = ?",
-                    (now_ms, user["id"]),
+                    "UPDATE seed_users SET display_name = ?, updated_at = ? WHERE id = ?",
+                    (display_name, now_ms, user["id"]),
                 )
-                conn.commit()
+                user["display_name"] = display_name
+
+            if not sess_row:
+                conn.execute(
+                    "INSERT INTO seed_active_sessions (user_id, continuous_seconds, last_eligible_at, ineligible_since) VALUES (?, 0, ?, NULL)",
+                    (user["id"], now_ms),
+                )
                 continue
-            if now_ms - ineligible_since > grace_seconds * 1000:
-                conn.execute("DELETE FROM seed_active_sessions WHERE user_id = ?", (user["id"],))
-                conn.commit()
-            continue
 
-        display_name = member.get("display_name") or user["display_name"]
-        display_name = str(display_name)[:80]
-        if display_name != user["display_name"]:
-            conn.execute(
-                "UPDATE seed_users SET display_name = ?, updated_at = ? WHERE id = ?",
-                (display_name, now_ms, user["id"]),
-            )
-            user["display_name"] = display_name
+            continuous = int(sess_row["continuous_seconds"])
+            if sess_row["ineligible_since"] is not None:
+                if now_ms - sess_row["ineligible_since"] > grace_seconds * 1000:
+                    continuous = 0
+                conn.execute(
+                    "UPDATE seed_active_sessions SET continuous_seconds = ?, last_eligible_at = ?, ineligible_since = NULL WHERE user_id = ?",
+                    (continuous, now_ms, user["id"]),
+                )
+                continue
 
-        if not sess_row:
+            raw_delta = int((now_ms - int(sess_row["last_eligible_at"])) / 1000)
+            delta = max(0, min(raw_delta, max_delta_seconds))
+            if not delta:
+                continue
+            before = continuous
+            after = before + delta
+            points = _incremental_points(before, after)
             conn.execute(
-                "INSERT INTO seed_active_sessions (user_id, continuous_seconds, last_eligible_at, ineligible_since) VALUES (?, 0, ?, NULL)",
-                (user["id"], now_ms),
+                "UPDATE seed_active_sessions SET continuous_seconds = ?, last_eligible_at = ? WHERE user_id = ?",
+                (after, now_ms, user["id"]),
             )
-            conn.commit()
-            continue
-
-        continuous = int(sess_row["continuous_seconds"])
-        if sess_row["ineligible_since"] is not None:
-            if now_ms - sess_row["ineligible_since"] > grace_seconds * 1000:
-                continuous = 0
+            # Относительные приращения: покупка или корректировка после загрузки снимка не теряются.
             conn.execute(
-                "UPDATE seed_active_sessions SET continuous_seconds = ?, last_eligible_at = ?, ineligible_since = NULL WHERE user_id = ?",
-                (continuous, now_ms, user["id"]),
+                "UPDATE seed_users SET total_seconds = total_seconds + ?, lifetime_points = lifetime_points + ?, balance = balance + ?, updated_at = ? WHERE id = ?",
+                (delta, points, points, now_ms, user["id"]),
             )
-            conn.commit()
-            continue
-
-        raw_delta = int((now_ms - int(sess_row["last_eligible_at"])) / 1000)
-        delta = max(0, min(raw_delta, max_delta_seconds))
-        if not delta:
-            continue
-        before = continuous
-        after = before + delta
-        points = _incremental_points(before, after)
-        conn.execute(
-            "UPDATE seed_active_sessions SET continuous_seconds = ?, last_eligible_at = ? WHERE user_id = ?",
-            (after, now_ms, user["id"]),
-        )
-        new_total_seconds = user["total_seconds"] + delta
-        new_lifetime = user["lifetime_points"] + points
-        new_balance = user["balance"] + points
-        # Баланс меняем относительно текущего значения: покупка или корректировка,
-        # случившаяся после загрузки снимка, не должна перезаписываться.
-        conn.execute(
-            "UPDATE seed_users SET total_seconds = ?, lifetime_points = ?, balance = balance + ?, updated_at = ? WHERE id = ?",
-            (new_total_seconds, new_lifetime, points, now_ms, user["id"]),
-        )
-        new_balance = _scalar(conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)))
-        wr = conn.execute(
-            "SELECT * FROM seed_weekly_stats WHERE user_id = ? AND week_key = ?",
-            (user["id"], week_key),
-        ).fetchone()
-        if wr:
-            conn.execute(
-                "UPDATE seed_weekly_stats SET seconds = seconds + ?, points = points + ? WHERE user_id = ? AND week_key = ?",
-                (delta, points, user["id"], week_key),
-            )
-        else:
-            conn.execute(
-                "INSERT INTO seed_weekly_stats (user_id, week_key, seconds, points) VALUES (?, ?, ?, ?)",
-                (user["id"], week_key, delta, points),
-            )
-        if points > 0:
-            ref = f"seed:{user['id']}:{now_ms}:{after}"
-            try:
+            new_balance = _scalar(conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)))
+            wr = conn.execute(
+                "SELECT * FROM seed_weekly_stats WHERE user_id = ? AND week_key = ?",
+                (user["id"], week_key),
+            ).fetchone()
+            if wr:
+                conn.execute(
+                    "UPDATE seed_weekly_stats SET seconds = seconds + ?, points = points + ? WHERE user_id = ? AND week_key = ?",
+                    (delta, points, user["id"], week_key),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO seed_weekly_stats (user_id, week_key, seconds, points) VALUES (?, ?, ?, ?)",
+                    (user["id"], week_key, delta, points),
+                )
+            if points > 0:
+                ref = f"seed:{user['id']}:{now_ms}:{after}"
+                # Ошибка журнала не глотается: баланс не должен измениться без записи в леджере.
                 conn.execute(
                     "INSERT INTO seed_point_ledger (user_id, ref, delta, balance_after, reason, created_at) VALUES (?, ?, ?, ?, 'seeding', ?)",
                     (user["id"], ref, points, new_balance, now_ms),
                 )
-            except Exception:
-                pass
-            awards.append({"discord_id": user["discord_id"], "points": points, "balance": new_balance})
-    conn.commit()
+                awards.append({"discord_id": user["discord_id"], "points": points, "balance": new_balance})
     return awards
 
 
@@ -2103,10 +2117,9 @@ def _add_time_for_user(user: dict, minutes: int, note: str, ref: str, week_key: 
             "INSERT INTO seed_weekly_stats (user_id, week_key, seconds, points, manual_seconds) VALUES (?, ?, ?, ?, ?)",
             (user["id"], week_key, seconds, points, seconds),
         )
-    new_lifetime = user["lifetime_points"] + points
     conn.execute(
-        "UPDATE seed_users SET total_seconds = total_seconds + ?, lifetime_points = ?, balance = balance + ?, updated_at = ? WHERE id = ?",
-        (seconds, new_lifetime, points, now, user["id"]),
+        "UPDATE seed_users SET total_seconds = total_seconds + ?, lifetime_points = lifetime_points + ?, balance = balance + ?, updated_at = ? WHERE id = ?",
+        (seconds, points, points, now, user["id"]),
     )
     new_balance = _scalar(conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)))
     # Ошибка журнала не должна молча оставлять баланс без записи: пусть откатит транзакцию.
@@ -2285,20 +2298,24 @@ def seed_set_vip_ownership(user_id: str, managed_by_bot: bool):
 def seed_activate_vip(user_id: str) -> dict | None:
     conn = get_conn()
     now = _now_ms()
-    member = seed_get_vip_membership(user_id)
-    if not member or member["state"] != "pending_add" or (member["queued_seconds"] or 0) <= 0:
-        return member
-    active_until = now + int(member["queued_seconds"]) * 1000
-    conn.execute(
-        "UPDATE seed_vip_memberships SET state = 'active', active_until = ?, queued_seconds = 0, pending_since = NULL, last_error = '', updated_at = ? WHERE user_id = ?",
-        (active_until, now, user_id),
-    )
-    conn.execute(
-        "UPDATE seed_vip_orders SET state = 'active' WHERE user_id = ? AND state = 'queued'",
-        (user_id,),
-    )
-    seed_audit("vip_activated", "", {"user_id": user_id, "active_until": active_until})
-    conn.commit()
+    with _write_tx(conn):
+        member = seed_get_vip_membership(user_id)
+        if not member or member["state"] != "pending_add" or (member["queued_seconds"] or 0) <= 0:
+            return member
+        active_until = now + int(member["queued_seconds"]) * 1000
+        cur = conn.execute(
+            "UPDATE seed_vip_memberships SET state = 'active', active_until = ?, queued_seconds = 0, pending_since = NULL, last_error = '', updated_at = ? "
+            "WHERE user_id = ? AND state = 'pending_add'",
+            (active_until, now, user_id),
+        )
+        if cur.rowcount != 1:
+            # Состояние уже изменилось параллельно: ничего не активируем.
+            return seed_get_vip_membership(user_id)
+        conn.execute(
+            "UPDATE seed_vip_orders SET state = 'active' WHERE user_id = ? AND state = 'queued'",
+            (user_id,),
+        )
+        seed_audit("vip_activated", "", {"user_id": user_id, "active_until": active_until})
     return {**member, "state": "active", "active_until": active_until, "queued_seconds": 0}
 
 
@@ -2308,20 +2325,20 @@ def seed_set_vip_state(user_id: str, state: str, error: str = "") -> dict | None
         raise ValueError("Invalid VIP state")
     conn = get_conn()
     now = _now_ms()
-    member = seed_get_vip_membership(user_id)
-    if not member:
-        return None
-    pending_since = (member.get("pending_since") or now) if state.startswith("pending_") else None
-    active_until = None if state == "inactive" else member.get("active_until")
-    managed = None if state == "inactive" else member.get("managed_by_bot")
-    conn.execute(
-        "UPDATE seed_vip_memberships SET state = ?, pending_since = ?, active_until = ?, managed_by_bot = ?, last_error = ?, updated_at = ? WHERE user_id = ?",
-        (state, pending_since, active_until, managed, error[:160], now, user_id),
-    )
-    if state == "inactive":
-        conn.execute("UPDATE seed_vip_orders SET state = 'expired' WHERE user_id = ? AND state = 'active'", (user_id,))
-        seed_audit("vip_expired", "", {"user_id": user_id})
-    conn.commit()
+    with _write_tx(conn):
+        member = seed_get_vip_membership(user_id)
+        if not member:
+            return None
+        pending_since = (member.get("pending_since") or now) if state.startswith("pending_") else None
+        active_until = None if state == "inactive" else member.get("active_until")
+        managed = None if state == "inactive" else member.get("managed_by_bot")
+        conn.execute(
+            "UPDATE seed_vip_memberships SET state = ?, pending_since = ?, active_until = ?, managed_by_bot = ?, last_error = ?, updated_at = ? WHERE user_id = ?",
+            (state, pending_since, active_until, managed, error[:160], now, user_id),
+        )
+        if state == "inactive":
+            conn.execute("UPDATE seed_vip_orders SET state = 'expired' WHERE user_id = ? AND state = 'active'", (user_id,))
+            seed_audit("vip_expired", "", {"user_id": user_id})
     return {**member, "state": state, "active_until": active_until, "managed_by_bot": managed, "last_error": error[:160]}
 
 
@@ -2364,7 +2381,22 @@ def seed_get_state(key: str, default=None):
     try:
         return _json.loads(row["value"])
     except Exception:
+        _log.error("seed_system_state[%s] содержит некорректный JSON; возвращаем значение по умолчанию", key, exc_info=True)
         return default
+
+
+def seed_get_state_strict(key: str, default=None):
+    """Как seed_get_state, но повреждённое значение не маскируется под default.
+    Используется в защитных проверках (отвязка): при нечитаемом состоянии операция отклоняется."""
+    conn = get_conn()
+    row = conn.execute("SELECT value FROM seed_system_state WHERE key = ?", (key,)).fetchone()
+    if not row:
+        return default
+    try:
+        return _json.loads(row["value"])
+    except Exception as exc:
+        _log.error("seed_system_state[%s] содержит некорректный JSON; операция отклонена", key, exc_info=True)
+        raise SeedDomainError("state_unreadable", "Не удалось проверить состояние VIP. Обратитесь к администратору.") from exc
 
 
 def seed_set_state(key: str, value):
