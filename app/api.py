@@ -2934,7 +2934,7 @@ async def _apply_reserved_access(srv: Server, steam_id: str, add: bool):
     return data
 
 
-async def _sync_vip_record(item, add=True):
+async def _sync_vip_record(item, add=True, touch_role=True):
     srv = _get_server(item["server_id"])
     if not srv:
         await db.mark_vip_sync(item["id"], "error", "Сервер не найден")
@@ -2951,6 +2951,8 @@ async def _sync_vip_record(item, add=True):
     await db.mark_vip_sync(item["id"], state, "")
     # Discord-роль VIP: выдаём при добавлении, снимаем при истечении
     # (только если у игрока не осталось других активных слотов).
+    if not touch_role:
+        return True, ""
     try:
         if add:
             await dmod.grant_vip_role(item["steam_id"])
@@ -3342,7 +3344,7 @@ async def vip_slot_delete(sid: str, vip_id: str, request: Request):
     if not item:
         raise HTTPException(status_code=404, detail="VIP-запись не найдена")
     queued_servers = []
-    synced, error = await _sync_vip_record(item, add=False)
+    synced, error = await _sync_vip_record(item, add=False, touch_role=False)
     if not synced:
         # Снятие не прошло — ставим в очередь повторов (истечение повторит снятие).
         await db.queue_vip_removal(item["id"], error)
@@ -3355,7 +3357,7 @@ async def vip_slot_delete(sid: str, vip_id: str, request: Request):
         )
         if not other_item:
             continue
-        other_synced, other_error = await _sync_vip_record(other_item, add=False)
+        other_synced, other_error = await _sync_vip_record(other_item, add=False, touch_role=False)
         if other_synced:
             await db.delete_vip_slot(other_item["id"], other.id)
         else:
@@ -3364,6 +3366,12 @@ async def vip_slot_delete(sid: str, vip_id: str, request: Request):
             log.warning("Снятие VIP %s не удалось на %s — в очереди: %s", item["steam_id"], other.id, other_error)
     if sid not in queued_servers:
         await db.delete_vip_slot(vip_id, sid)
+    # Роль решаем уже после удаления всех строк игрока, иначе проверка видит удаляемую запись.
+    if not queued_servers and not await _has_active_vip_slot_anywhere(item["steam_id"]):
+        try:
+            await dmod.revoke_vip_role(item["steam_id"])
+        except Exception:
+            log.exception("VIP role revoke failed for %s", item["steam_id"])
     await db.log_site_audit(user["steam_id"], sid, "vip.delete", item["steam_id"])
     disclog.emit(
         "vip.delete", actor=user["steam_id"], server=srv.name, steam_id=item["steam_id"],
@@ -3881,6 +3889,8 @@ async def server_bans_bulk(sid: str, request: Request):
             except RCONError as exc:
                 if exc.status != 404:
                     log.warning("Зеркальное снятие банa %s не удалось на %s: %s", steam_id, other.id, exc.message)
+                    # Как и при одиночном снятии: ставим повтор, иначе бан останется на зеркале.
+                    await db.enqueue_remote_op("ban_remove", other.id, steam_id, {"created_by": user["steam_id"]})
         for applied_sid in [sid] + [s.id for s in others]:
             await db.delete_managed_ban(applied_sid, steam_id)
         await db.delete_queued_ban(steam_id)
@@ -4027,7 +4037,8 @@ async def swap_player(srv, sid, steam_id, faction):
     is_vip = await _has_active_vip_slot_anywhere(steam_id)
     if not is_vip:
         prev = _sw_cooldown.get((sid, steam_id))
-        if prev == game_key:
+        # Карта неизвестна, а свап уже был: блокируем, чтобы сбой status() не обходил кулдаун.
+        if prev == game_key or (game_key == "__unknown__" and prev is not None):
             return False, "cooldown", "уже был свап на этой карте — 1 раз за игру"
     def count(name):
         return sum(1 for p in players if str(p.get("faction") or "").lower() == name.lower())
