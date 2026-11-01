@@ -1523,7 +1523,17 @@ class SeedingCog(commands.Cog):
             except Exception:
                 continue
             stats["checked"] += 1
-            if vip_role in member.roles and not self.donations.active(did) and not _panel_vip_active_by_discord(did):
+            # Не снимаем роль, если у пользователя есть активное членство в сиде:
+            # _vip_reconcile_user выдаёт её обратно, и иначе роль мигала бы каждый цикл.
+            seed_user = seed_get_user_by_discord(did)
+            seed_membership = seed_get_vip_membership(seed_user["id"]) if seed_user else None
+            seed_active = bool(seed_membership and seed_membership["state"] != "inactive")
+            if (
+                vip_role in member.roles
+                and not seed_active
+                and not self.donations.active(did)
+                and not _panel_vip_active_by_discord(did)
+            ):
                 try:
                     await member.remove_roles(vip_role, reason="WARDOGS seeding: vip expired")
                     stats["vip_revoked"] += 1
