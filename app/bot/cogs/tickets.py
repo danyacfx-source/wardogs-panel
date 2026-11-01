@@ -24,6 +24,10 @@ log = logging.getLogger("tickets")
 # открытый тикет» и запись в БД разделены созданием канала (await), и двойной
 # клик иначе проходил проверку дважды.
 _ticket_locks: dict = defaultdict(asyncio.Lock)
+# Закрытие/удаление одного канала и выгрузка его транскрипта не должны идти
+# параллельно при двойном клике (дубли комментариев, повторный delete).
+_channel_locks: dict = defaultdict(asyncio.Lock)
+_transcript_locks: dict = defaultdict(asyncio.Lock)
 
 _panel_db_mod = None
 
@@ -109,13 +113,18 @@ async def _ensure_site_ticket(row, channel):
 
 async def _sync_transcript(channel, row=None, by_id=None):
     """Автопуш транскрипта закрытого тикета в сайт-тикет (идемпотентно)."""
+    async with _transcript_locks[channel.id]:
+        await _sync_transcript_locked(channel, by_id)
+
+
+async def _sync_transcript_locked(channel, by_id=None):
     try:
         db = _panel_db()
         conn = get_conn()
-        if row is None:
-            row = conn.execute(
-                "SELECT * FROM tickets WHERE channel_id = ?", (channel.id,)
-            ).fetchone()
+        # Перечитываем строку под замком: флаг transcript_saved мог измениться.
+        row = conn.execute(
+            "SELECT * FROM tickets WHERE channel_id = ?", (channel.id,)
+        ).fetchone()
         if not row:
             return
         if int(_row_get(row, "transcript_saved") or 0):
@@ -274,13 +283,26 @@ class TicketPanelView(discord.ui.View):
         embed.set_footer(text=f"ID: {user.id}")
 
         staff_mention = " ".join(f"<@&{r}>" for r in config.TICKET_STAFF_ROLES)
-        await channel.send(content=f"{staff_mention} {user.mention}", embed=embed, view=TicketCloseView())
-
-        conn.execute(
-            "INSERT INTO tickets (user_id, channel_id, ticket_type, status, created_at) VALUES (?, ?, ?, 'open', ?)",
-            (user.id, channel.id, ticket_type, datetime.utcnow().isoformat()),
-        )
-        conn.commit()
+        # Пингуем только персонал и автора; @everyone и прочие роли не трогаем.
+        mentions = discord.AllowedMentions(everyone=False, roles=True, users=True)
+        # Канал уже создан: при любом сбое после этого удаляем его, иначе останется сирота.
+        try:
+            await channel.send(
+                content=f"{staff_mention} {user.mention}", embed=embed,
+                view=TicketCloseView(), allowed_mentions=mentions,
+            )
+            conn.execute(
+                "INSERT INTO tickets (user_id, channel_id, ticket_type, status, created_at) VALUES (?, ?, ?, 'open', ?)",
+                (user.id, channel.id, ticket_type, datetime.utcnow().isoformat()),
+            )
+            conn.commit()
+        except Exception:
+            log.exception("Ошибка после создания канала тикета %s, откат", channel.id)
+            try:
+                await channel.delete()
+            except Exception:
+                log.exception("Не удалось удалить сиротский канал тикета %s", channel.id)
+            return await interaction.followup.send("❌ Не удалось создать тикет.", ephemeral=True)
 
         site_row = conn.execute(
             "SELECT * FROM tickets WHERE channel_id = ?", (channel.id,)
@@ -295,7 +317,10 @@ class TicketPanelView(discord.ui.View):
         if config.TICKET_LOG_CHANNEL:
             log_ch = guild.get_channel(config.TICKET_LOG_CHANNEL)
             if log_ch:
-                await log_ch.send(f"🎫 Тикет создан: {channel.mention} | Пользователь: {user} | Тип: {label}")
+                await log_ch.send(
+                    f"🎫 Тикет создан: {channel.mention} | Пользователь: {user} | Тип: {label}",
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
 
 
 class TicketCloseView(discord.ui.View):
@@ -316,39 +341,42 @@ class TicketCloseConfirmView(discord.ui.View):
     @discord.ui.button(label="Да", style=discord.ButtonStyle.green, emoji="✅")
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        conn = get_conn()
-        row = conn.execute(
-            "SELECT * FROM tickets WHERE channel_id = ?", (interaction.channel.id,)
-        ).fetchone()
-
-        if row:
-            conn.execute(
-                "UPDATE tickets SET status = 'closed', closed_at = ?, closed_by = ? WHERE channel_id = ?",
-                (datetime.utcnow().isoformat(), interaction.user.id, interaction.channel.id),
-            )
-            conn.commit()
-            # Транскрипт уходит в панель сразу при закрытии — до правок прав,
-            # чтобы сбой прав не лишил нас автосохранения.
-            await _sync_transcript(interaction.channel, row, by_id=interaction.user.id)
-            try:
-                member = interaction.guild.get_member(row["user_id"])
-                if member:
-                    # Автор тикета больше не видит канал.
-                    await interaction.channel.set_permissions(member, overwrite=None)
-                # Дублируем «слепоту» через @everyone-перезапись как страховку
-                # (если права давались не только явным override).
-                await interaction.channel.set_permissions(
-                    interaction.guild.default_role, view_channel=False
+        channel = interaction.channel
+        async with _channel_locks[channel.id]:
+            conn = get_conn()
+            row = conn.execute(
+                "SELECT * FROM tickets WHERE channel_id = ?", (channel.id,)
+            ).fetchone()
+            # Двойной клик «Да»: второй проход не закрывает заново и не дублирует логи.
+            already_closed = bool(row) and _row_get(row, "status") == "closed"
+            if row and not already_closed:
+                conn.execute(
+                    "UPDATE tickets SET status = 'closed', closed_at = ?, closed_by = ? WHERE channel_id = ?",
+                    (datetime.utcnow().isoformat(), interaction.user.id, channel.id),
                 )
-                # Персонал оставляет доступ после закрытия.
-                for staff_role_id in config.TICKET_STAFF_ROLES:
-                    staff = interaction.guild.get_role(staff_role_id)
-                    if staff:
-                        await interaction.channel.set_permissions(
-                            staff, view_channel=True, send_messages=False, read_message_history=True
-                        )
-            except Exception:
-                log.exception("Не удалось обновить права закрытого тикета %s", interaction.channel.id)
+                conn.commit()
+                # Транскрипт уходит в панель сразу при закрытии — до правок прав,
+                # чтобы сбой прав не лишил нас автосохранения.
+                await _sync_transcript(channel, row, by_id=interaction.user.id)
+                try:
+                    member = interaction.guild.get_member(row["user_id"])
+                    if member:
+                        # Автор тикета больше не видит канал.
+                        await channel.set_permissions(member, overwrite=None)
+                    # Дублируем «слепоту» через @everyone-перезапись как страховку
+                    # (если права давались не только явным override).
+                    await channel.set_permissions(
+                        interaction.guild.default_role, view_channel=False
+                    )
+                    # Персонал оставляет доступ после закрытия.
+                    for staff_role_id in config.TICKET_STAFF_ROLES:
+                        staff = interaction.guild.get_role(staff_role_id)
+                        if staff:
+                            await channel.set_permissions(
+                                staff, view_channel=True, send_messages=False, read_message_history=True
+                            )
+                except Exception:
+                    log.exception("Не удалось обновить права закрытого тикета %s", channel.id)
 
         embed = discord.Embed(
             title="Тикет закрыт",
@@ -357,11 +385,12 @@ class TicketCloseConfirmView(discord.ui.View):
         )
         await interaction.message.edit(embed=embed, view=TicketClosedView())
 
-        if config.TICKET_LOG_CHANNEL:
+        if not already_closed and config.TICKET_LOG_CHANNEL:
             log_ch = interaction.guild.get_channel(config.TICKET_LOG_CHANNEL)
             if log_ch:
                 await log_ch.send(
-                    f"🎫 Тикет закрыт: {interaction.channel.mention} | Закрыл: {interaction.user}"
+                    f"🎫 Тикет закрыт: {channel.mention} | Закрыл: {interaction.user}",
+                    allowed_mentions=discord.AllowedMentions.none(),
                 )
 
     @discord.ui.button(label="Нет", style=discord.ButtonStyle.red, emoji="❌")
@@ -376,12 +405,22 @@ class TicketClosedView(discord.ui.View):
     @discord.ui.button(label="Удалить канал", style=discord.ButtonStyle.danger, custom_id="tk2_delete", emoji="🗑️")
     async def delete_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        # История удаляется вместе с каналом — транскрипт сохраняем до удаления.
-        await _sync_transcript(interaction.channel, by_id=interaction.user.id)
-        conn = get_conn()
-        conn.execute("DELETE FROM tickets WHERE channel_id = ?", (interaction.channel.id,))
-        conn.commit()
-        await interaction.channel.delete()
+        channel = interaction.channel
+        async with _channel_locks[channel.id]:
+            # История удаляется вместе с каналом — транскрипт сохраняем до удаления.
+            await _sync_transcript(channel, by_id=interaction.user.id)
+            try:
+                await channel.delete()
+            except discord.NotFound:
+                pass  # второй клик: канал уже удалён
+            except discord.HTTPException as e:
+                log.warning("Не удалось удалить канал тикета %s: %s", channel.id, e)
+                # Запись не трогаем: канал жив, и тикет должен остаться в БД.
+                return await interaction.followup.send("❌ Не удалось удалить канал.", ephemeral=True)
+            # Запись удаляем только после успешного удаления канала.
+            conn = get_conn()
+            conn.execute("DELETE FROM tickets WHERE channel_id = ?", (channel.id,))
+            conn.commit()
 
     @discord.ui.button(label="Сохранить транскрипт", style=discord.ButtonStyle.blurple, custom_id="tk2_transcript", emoji="📄")
     async def save_transcript(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -395,12 +434,16 @@ class TicketClosedView(discord.ui.View):
         # Дублируем транскрипт в панель (идемпотентно — при закрытии уже мог уйти).
         await _sync_transcript(interaction.channel, by_id=interaction.user.id)
 
-        if config.TICKET_TRANSCRIPT_CHANNEL:
-            tr_ch = interaction.guild.get_channel(config.TICKET_TRANSCRIPT_CHANNEL)
-            if tr_ch:
-                await tr_ch.send(file=file)
-                return await interaction.followup.send("Транскрипт сохранён.", ephemeral=True)
-        await interaction.followup.send(file=file, ephemeral=True)
+        try:
+            if config.TICKET_TRANSCRIPT_CHANNEL:
+                tr_ch = interaction.guild.get_channel(config.TICKET_TRANSCRIPT_CHANNEL)
+                if tr_ch:
+                    await tr_ch.send(file=file, allowed_mentions=discord.AllowedMentions.none())
+                    return await interaction.followup.send("Транскрипт сохранён.", ephemeral=True)
+            await interaction.followup.send(file=file, ephemeral=True)
+        except discord.HTTPException:
+            log.exception("Не удалось отправить транскрипт канала %s", interaction.channel.id)
+            await interaction.followup.send("❌ Не удалось отправить транскрипт.", ephemeral=True)
 
 
 class TicketCog(commands.Cog):
@@ -429,8 +472,28 @@ class TicketCog(commands.Cog):
             description="\n".join(lines),
             color=discord.Color.dark_red(),
         )
-        await target.send(embed=embed, view=TicketPanelView())
+        try:
+            await target.send(embed=embed, view=TicketPanelView())
+        except discord.HTTPException:
+            log.exception("Не удалось отправить панель тикетов в %s", target.id)
+            return await interaction.followup.send("❌ Не удалось отправить панель.", ephemeral=True)
         await interaction.followup.send(f"Панель отправлена в {target.mention}.", ephemeral=True)
+
+    @commands.Cog.listener()
+    async def on_guild_channel_delete(self, channel):
+        # Канал удалён вручную (не через кнопку): открытая запись блокировала бы
+        # автору создание нового тикета навсегда. Помечаем закрытой.
+        if not isinstance(channel, discord.TextChannel):
+            return
+        try:
+            conn = get_conn()
+            conn.execute(
+                "UPDATE tickets SET status = 'closed', closed_at = ? WHERE channel_id = ? AND status = 'open'",
+                (datetime.utcnow().isoformat(), channel.id),
+            )
+            conn.commit()
+        except Exception:
+            log.exception("Не удалось пометить тикет канала %s закрытым", channel.id)
 
 
 async def setup(bot: commands.Bot):
