@@ -2220,7 +2220,11 @@ class SeedingCog(commands.Cog):
         await self._set_vip_role(str(interaction.user.id), True)
         if self.rcon:
             try:
-                await self._vip_reconcile_user(order["user_id"], _now_ms(), seed_get_state("paid_slot_claims", {}) or {})
+                claims = seed_get_state("paid_slot_claims", {}) or {}
+                await self._vip_reconcile_user(order["user_id"], _now_ms(), claims)
+                # Сохраняем claim-владение, иначе покупка не попадёт в состояние и очистка не сработает.
+                if claims != (seed_get_state("paid_slot_claims", {}) or {}):
+                    seed_set_state("paid_slot_claims", claims)
             except Exception as e:
                 log.warning("post-purchase reconcile failed: %s", e)
         await interaction.followup.send(
