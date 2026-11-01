@@ -755,16 +755,29 @@ async def seed_vip_purchase(request: Request):
     result = seed_store.purchase_vip(discord_id, sku, entry["cost"], entry["duration"])
     if not result["ok"]:
         raise HTTPException(status_code=400, detail=result["error"])
+    ledger_ref = result.get("ledger_ref", "")
     duration = result["duration"]
     expires_utc = time.time() + duration
     steam_id = user["steam_id"]
     display_name = user.get("steam_name") or steam_id
     note = f"покупка за баллы сидинга ({sku})"
     created = []
-    for srv in POOL.values():
-        item = await db.save_vip_slot(srv.id, steam_id, display_name, expires_utc, note, steam_id)
-        ok, error = await _sync_vip_record(item, add=True)
-        created.append({"server": srv.id, "ok": ok, "error": error or None})
+    slot_error = None
+    try:
+        for srv in POOL.values():
+            item = await db.save_vip_slot(srv.id, steam_id, display_name, expires_utc, note, steam_id)
+            ok, error = await _sync_vip_record(item, add=True)
+            created.append({"server": srv.id, "ok": ok, "error": error or None})
+    except Exception as exc:
+        slot_error = exc
+    if slot_error is not None and not created:
+        # Ни один слот не был создан — возвращаем баллы и сообщаем об ошибке
+        refunded = seed_store.refund_vip(discord_id, ledger_ref, entry["cost"])
+        log.error(
+            "seed_vip_purchase: ошибка создания слотов для %s sku=%s ref=%s refunded=%s: %s",
+            steam_id, sku, ledger_ref, refunded, slot_error,
+        )
+        raise HTTPException(status_code=500, detail="Ошибка создания VIP-слотов; баллы возвращены")
     await db.log_site_audit(steam_id, None, "vip.save", f"{steam_id}:seed:{sku}")
     disclog.emit("vip.save", actor=steam_id, steam_id=steam_id,
                  detail=f"VIP за баллы сидинга ({sku}), баланс: {result['balance']}")
@@ -2948,7 +2961,17 @@ async def _sync_vip_record(item, add=True, touch_role=True):
         await db.mark_vip_sync(item["id"], "error", message)
         return False, str(message)
     state = "synced" if add else "expired"
-    await db.mark_vip_sync(item["id"], state, "")
+    # При истечении используем CAS по expires_utc: если слот успели продлить
+    # пока шёл _apply_reserved_access, не помечаем его expired.
+    expected_expires = item["expires_utc"] if not add else None
+    updated = await db.mark_vip_sync(item["id"], state, "", expected_expires_utc=expected_expires)
+    if not add and not updated:
+        # Слот был продлён между выборкой и апдейтом — отзыв отменён
+        log.info(
+            "VIP expire skipped for %s/%s: slot was renewed during expiry sync",
+            item["server_id"], item["steam_id"],
+        )
+        return False, "slot renewed during expiry"
     # Discord-роль VIP: выдаём при добавлении, снимаем при истечении
     # (только если у игрока не осталось других активных слотов).
     if not touch_role:
@@ -3260,14 +3283,16 @@ async def vip_slot_save(sid: str, request: Request):
     )
     if replay:
         return replay
-    item = await db.save_vip_slot(
+    # Административный путь: прямая перезапись срока (admin_set_vip_slot),
+    # чтобы можно было как продлить, так и сократить VIP через панель.
+    item = await db.admin_set_vip_slot(
         sid, steam_id, display_name, expires_utc, note, user["steam_id"]
     )
     synced, error = await _sync_vip_record(item, add=True)
     # VIP действует на все серверы: дублируем entitlement и managed-запись.
     mirrored = []
     for other in _other_servers(sid):
-        other_item = await db.save_vip_slot(
+        other_item = await db.admin_set_vip_slot(
             other.id, steam_id, display_name, expires_utc, note, user["steam_id"]
         )
         other_synced, other_error = await _sync_vip_record(other_item, add=True)

@@ -58,6 +58,7 @@ from .vip import (
     queue_vip_removal,
     has_seed_vip_active,
     save_vip_slot,
+    admin_set_vip_slot,
     list_vip_slots,
     list_active_vip_slots,
     list_player_vip_slots,

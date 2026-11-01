@@ -31,6 +31,48 @@ def _vip_row(row):
 
 
 async def save_vip_slot(server_id, steam_id, display_name, expires_utc, note, created_by):
+    """Создаёт или продлевает VIP-слот.
+
+    При конфликте (server_id, steam_id) срок действия обновляется только
+    в сторону увеличения (MAX), чтобы покупка не укоротила уже действующий VIP.
+    Для принудительной перезаписи срока используйте admin_set_vip_slot.
+    """
+    vip_id = secrets.token_hex(12)
+    now = _now()
+    async with _conn() as db:
+        await db.execute(
+            "INSERT INTO vip_slots "
+            "(id, server_id, steam_id, display_name, expires_utc, note, created_by, "
+            "created_utc, updated_utc, sync_state, sync_error) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', '') "
+            "ON CONFLICT(server_id, steam_id) DO UPDATE SET "
+            "display_name=excluded.display_name, "
+            "expires_utc=CASE "
+            "  WHEN excluded.expires_utc IS NULL THEN NULL "
+            "  WHEN vip_slots.expires_utc IS NULL THEN NULL "
+            "  ELSE MAX(vip_slots.expires_utc, excluded.expires_utc) "
+            "END, "
+            "note=excluded.note, updated_utc=excluded.updated_utc, "
+            "synced_utc=NULL, sync_state='pending', sync_error=''",
+            (vip_id, server_id, steam_id, display_name, expires_utc, note, created_by, now, now),
+        )
+        cur = await db.execute(
+            "SELECT id, server_id, steam_id, display_name, expires_utc, note, created_by, "
+            "created_utc, updated_utc, synced_utc, sync_state, sync_error "
+            "FROM vip_slots WHERE server_id = ? AND steam_id = ?",
+            (server_id, steam_id),
+        )
+        row = await cur.fetchone()
+        await db.commit()
+    return _vip_row(row)
+
+
+async def admin_set_vip_slot(server_id, steam_id, display_name, expires_utc, note, created_by):
+    """Создаёт или обновляет VIP-слот с принудительной перезаписью срока.
+
+    Используется из административного интерфейса, где явное сокращение срока
+    является намеренным действием. Покупки должны использовать save_vip_slot.
+    """
     vip_id = secrets.token_hex(12)
     now = _now()
     async with _conn() as db:
@@ -114,15 +156,30 @@ async def get_vip_slot(vip_id, server_id=None):
     return _vip_row(row)
 
 
-async def mark_vip_sync(vip_id, state, error=""):
+async def mark_vip_sync(vip_id, state, error="", expected_expires_utc=None):
+    """Обновляет статус синхронизации VIP-слота.
+
+    Если передан expected_expires_utc (при истечении), апдейт применяется
+    только если expires_utc в БД не изменился — защита от гонки между
+    expire_vip_slots и продлением слота через save_vip_slot/admin_set_vip_slot.
+    Возвращает True, если запись была обновлена.
+    """
     now = _now()
     async with _conn() as db:
-        await db.execute(
-            "UPDATE vip_slots SET sync_state = ?, sync_error = ?, synced_utc = ?, updated_utc = ? "
-            "WHERE id = ?",
-            (state, str(error or "")[:500], now, now, vip_id),
-        )
+        if expected_expires_utc is not None:
+            cur = await db.execute(
+                "UPDATE vip_slots SET sync_state = ?, sync_error = ?, synced_utc = ?, updated_utc = ? "
+                "WHERE id = ? AND expires_utc = ?",
+                (state, str(error or "")[:500], now, now, vip_id, float(expected_expires_utc)),
+            )
+        else:
+            cur = await db.execute(
+                "UPDATE vip_slots SET sync_state = ?, sync_error = ?, synced_utc = ?, updated_utc = ? "
+                "WHERE id = ?",
+                (state, str(error or "")[:500], now, now, vip_id),
+            )
         await db.commit()
+        return cur.rowcount > 0
 
 
 async def delete_vip_slot(vip_id, server_id):

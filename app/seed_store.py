@@ -111,6 +111,54 @@ def purchase_vip(discord_id: str, sku: str, cost: int, duration: int) -> dict:
             (row["id"], f"vip:{order_id}", -cost, new_balance, f"panel_vip:{sku}", now_ms),
         )
         c.commit()
-        return {"ok": True, "balance": new_balance, "cost": cost, "duration": duration, "sku": sku}
+        return {
+            "ok": True,
+            "balance": new_balance,
+            "cost": cost,
+            "duration": duration,
+            "sku": sku,
+            "ledger_ref": f"vip:{order_id}",
+        }
+    finally:
+        c.close()
+
+
+def refund_vip(discord_id: str, ledger_ref: str, cost: int) -> bool:
+    """Возвращает баллы за покупку VIP, если слоты не удалось создать.
+
+    Использует ledger_ref из purchase_vip для нахождения транзакции;
+    не компенсирует, если запись уже отменена (повторный вызов безопасен).
+    """
+    c = _seed_conn()
+    if not c:
+        return False
+    try:
+        row = c.execute(
+            "SELECT id, balance FROM seed_users WHERE discord_id = ?",
+            (discord_id,),
+        ).fetchone()
+        if not row:
+            return False
+        # Проверяем, что транзакция существует и не была ещё возвращена
+        existing = c.execute(
+            "SELECT delta FROM seed_point_ledger WHERE user_id = ? AND ref = ?",
+            (row["id"], ledger_ref),
+        ).fetchone()
+        if not existing or existing["delta"] >= 0:
+            # Либо не найдено, либо уже компенсировано
+            return False
+        new_balance = row["balance"] + cost
+        now_ms = int(time.time() * 1000)
+        c.execute(
+            "UPDATE seed_users SET balance = ?, updated_at = ? WHERE id = ?",
+            (new_balance, now_ms, row["id"]),
+        )
+        c.execute(
+            "INSERT INTO seed_point_ledger (user_id, ref, delta, balance_after, reason, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (row["id"], f"{ledger_ref}:refund", cost, new_balance, "panel_vip_refund", now_ms),
+        )
+        c.commit()
+        return True
     finally:
         c.close()
