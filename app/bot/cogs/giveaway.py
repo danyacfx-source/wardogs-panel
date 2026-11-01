@@ -156,12 +156,20 @@ class GiveawayCog(commands.Cog):
         else:
             embed.description = "😔 В розыгрыше никто не участвовал. Победитель не выбран."
 
-        try:
-            await channel.send(embed=embed)
-        except Exception:
-            # Флаг уже взят: без повтора объявление пропадёт, поэтому фиксируем ошибку явно.
-            log.exception("Розыгрыш %s: не удалось отправить итог, победители: %s", g["id"], winners)
-            return
+        # Флаг уже взят, поэтому объявление повторяем ограниченно (3 попытки).
+        # Если канал так и не принял итог, всё равно пишем победителям в ЛС.
+        announced = False
+        for attempt, delay in enumerate((0, 2, 5)):
+            if delay:
+                await asyncio.sleep(delay)
+            try:
+                await channel.send(embed=embed)
+                announced = True
+                break
+            except Exception:
+                log.warning("Розыгрыш %s: попытка %d отправить итог не удалась", g["id"], attempt + 1, exc_info=True)
+        if not announced:
+            log.error("Розыгрыш %s: итог не отправлен в канал, победители: %s", g["id"], winners)
         for w in winners:
             try:
                 user = await self.bot.fetch_user(w)

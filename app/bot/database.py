@@ -2156,6 +2156,20 @@ def seed_add_time_all(minutes: int, reason: str, actor_id: str, idempotency_key:
     return {**result, "applied": True}
 
 
+def seed_publish_vip_active(steam_id: str, active_until: float) -> None:
+    """Пишет в панельную базу признак активного сид-членства (читает панель, см. has_seed_vip_active).
+
+    active_until <= 0 означает неактивно: строка сразу перестаёт считаться активной.
+    """
+    import time as _t
+    conn = get_panel_conn()
+    conn.execute(
+        "INSERT INTO seed_vip_active (steam_id, active_until, updated_utc) VALUES (?, ?, ?) "
+        "ON CONFLICT(steam_id) DO UPDATE SET active_until=excluded.active_until, updated_utc=excluded.updated_utc",
+        (str(steam_id), float(active_until), _t.time()),
+    )
+
+
 def seed_get_vip_membership(user_id: str) -> dict | None:
     conn = get_conn()
     row = conn.execute("SELECT * FROM seed_vip_memberships WHERE user_id = ?", (user_id,)).fetchone()

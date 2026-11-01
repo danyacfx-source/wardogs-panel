@@ -121,9 +121,11 @@ async def _execute_swap(sid: str, side: str, target_steam_id: str, actor_discord
 
     is_vip = _is_vip(target_steam_id)
 
-    if not is_vip and status_map:
+    # Карта неизвестна — отдельный ключ, чтобы кулдаун для обычного игрока всё равно работал.
+    cooldown_map = status_map or "__unknown__"
+    if not is_vip:
         prev = SW_COOLDOWN.get((sid, target_steam_id))
-        if prev == status_map:
+        if prev == cooldown_map:
             return False, "Уже был свап на этой карте — 1 раз за игру (VIP — без кулдауна)"
 
     def count(name):
@@ -144,8 +146,8 @@ async def _execute_swap(sid: str, side: str, target_steam_id: str, actor_discord
     # Кулдаун резервируем до await: два быстрых нажатия не пройдут проверку оба.
     cooldown_key = (sid, target_steam_id)
     reserved = False
-    if not is_vip and status_map:
-        SW_COOLDOWN[cooldown_key] = status_map
+    if not is_vip:
+        SW_COOLDOWN[cooldown_key] = cooldown_map
         reserved = True
     try:
         await client2.set_faction(target_steam_id, side)

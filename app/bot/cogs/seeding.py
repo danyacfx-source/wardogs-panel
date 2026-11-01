@@ -48,6 +48,7 @@ from database import (
     seed_list_seeders,
     seed_list_users,
     seed_list_vip_memberships,
+    seed_publish_vip_active,
     seed_mark_report_published,
     seed_prepare_link_challenge,
     seed_previous_week_key,
@@ -935,6 +936,7 @@ class SeedingCog(commands.Cog):
                 await self._vip_reconcile_user(user_id, now, claims)
             except Exception as e:
                 log.warning("vip_user_reconcile_failed user=%s: %s", user_id, e)
+            self._publish_seed_vip(user_id, now)
         if claims != seed_get_state("paid_slot_claims", {}):
             seed_set_state("paid_slot_claims", claims)
         # Seeding-store VIPs are separate from site vip_slots: keep RU2/RU3
@@ -1062,6 +1064,29 @@ class SeedingCog(commands.Cog):
 
         if changed:
             seed_set_state(state_key, state)
+
+    def _publish_seed_vip(self, user_id: str, now: int):
+        """Пишет в панельную базу признак сид-членства (совпадает с определением роли бота).
+
+        pending_add считается активным, как и для роли. Для active срок берётся из членства.
+        Ошибка записи не должна ломать сверку: только лог.
+        """
+        try:
+            identity = seed_get_vip_identity_by_id(user_id)
+            if not identity or not identity.get("linked"):
+                return
+            membership = seed_get_vip_membership(user_id)
+            active_until = 0.0
+            if membership:
+                if membership["state"] == "pending_add":
+                    active_until = (now / 1000.0) + 3600.0
+                elif membership["state"] == "active" and (membership.get("active_until") or 0) > now:
+                    active_until = float(membership["active_until"])
+                    if active_until > 1e11:  # срок хранится в миллисекундах
+                        active_until = active_until / 1000.0
+            seed_publish_vip_active(identity["steam_id"], active_until)
+        except Exception as e:
+            log.warning("publish seed vip failed user=%s: %s", user_id, e)
 
     async def _vip_reconcile_user(self, user_id: str, now: int, claims: dict):
         if not self.rcon:
@@ -2225,6 +2250,7 @@ class SeedingCog(commands.Cog):
                 # Сохраняем claim-владение, иначе покупка не попадёт в состояние и очистка не сработает.
                 if claims != (seed_get_state("paid_slot_claims", {}) or {}):
                     seed_set_state("paid_slot_claims", claims)
+                self._publish_seed_vip(order["user_id"], _now_ms())
             except Exception as e:
                 log.warning("post-purchase reconcile failed: %s", e)
         await interaction.followup.send(

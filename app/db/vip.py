@@ -2,6 +2,7 @@
 
 import json
 import re
+import time
 import secrets
 
 try:
@@ -224,3 +225,26 @@ async def queue_vip_removal(vip_id, error=""):
             (now, str(error or "")[:500], now, vip_id),
         )
         await db.commit()
+
+
+async def set_seed_vip_active(steam_id, active_until):
+    """Признак членства из сид-бота. active_until <= 0 — неактивно. Строка истекает сама."""
+    now = time.time()
+    async with _conn() as db:
+        await db.execute(
+            "INSERT INTO seed_vip_active (steam_id, active_until, updated_utc) VALUES (?, ?, ?) "
+            "ON CONFLICT(steam_id) DO UPDATE SET active_until=excluded.active_until, updated_utc=excluded.updated_utc",
+            (str(steam_id), float(active_until), now),
+        )
+        await db.commit()
+
+
+async def has_seed_vip_active(steam_id, now=None):
+    now = time.time() if now is None else now
+    async with _conn() as db:
+        cur = await db.execute(
+            "SELECT 1 FROM seed_vip_active WHERE steam_id = ? AND active_until > ? LIMIT 1",
+            (str(steam_id), now),
+        )
+        row = await cur.fetchone()
+    return bool(row)

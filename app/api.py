@@ -2963,8 +2963,17 @@ async def _sync_vip_record(item, add=True):
 
 
 async def _has_active_vip_slot_anywhere(steam_id: str) -> bool:
-    """Есть ли у игрока хотя бы один активный VIP-слот на любом сервере."""
+    """Есть ли у игрока хотя бы один активный VIP на любом сервере.
+
+    Учитываются VIP-слоты панели и активное членство из сид-бота
+    (признак seed_vip_active, который бот пишет при каждом проходе сверки).
+    """
     now = time.time()
+    try:
+        if await db.has_seed_vip_active(steam_id, now):
+            return True
+    except Exception:
+        pass
     for srv in POOL.values():
         try:
             for slot in await db.list_vip_slots(srv.id):
@@ -4012,8 +4021,11 @@ async def swap_player(srv, sid, steam_id, faction):
         game_key = str((status or {}).get("map") or "")
     except Exception:
         game_key = ""
+    # Карта неизвестна — отдельный ключ: кулдаун для обычного игрока всё равно работает,
+    # а при появлении карты ключ меняется и ограничение сбрасывается.
+    game_key = game_key or "__unknown__"
     is_vip = await _has_active_vip_slot_anywhere(steam_id)
-    if game_key and not is_vip:
+    if not is_vip:
         prev = _sw_cooldown.get((sid, steam_id))
         if prev == game_key:
             return False, "cooldown", "уже был свап на этой карте — 1 раз за игру"
@@ -4023,7 +4035,7 @@ async def swap_player(srv, sid, steam_id, faction):
     if not _swap_allowed(diff, is_vip):
         return False, "balance", f"перевес {diff} больше допустимого (до +2; VIP — без лимита)"
     await srv.api.request("PATCH", f"/v1/players/{steam_id}", json_body={"faction": faction})
-    if game_key and not is_vip:
+    if not is_vip:
         _sw_cooldown[(sid, steam_id)] = game_key
         # Память ограничена: самые старые записи вытесняются (dict хранит порядок вставки).
         while len(_sw_cooldown) > 20000:
