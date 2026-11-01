@@ -135,11 +135,8 @@ async def _execute_swap(sid: str, side: str, target_steam_id: str, actor_discord
         counts[f] = counts.get(f, 0) + 1
 
     diff = abs(count(source) - count(side))
-    # Лимит проверяем по результату свапа: переход в более многочисленную сторону
-    # не должен давать перевес больше +2 (раньше смотрели только на текущий diff).
-    after_diff = abs((count(source) - 1) - (count(side) + 1))
-    if not is_vip and after_diff > 2 and after_diff >= diff:
-        return False, f"Перевес после свапа {after_diff} больше допустимого (до +2; VIP — без лимита)"
+    if not is_vip and diff > 2:
+        return False, f"Перевес {diff} больше допустимого (до +2; VIP — без лимита)"
 
     client2 = _get_rcon_client(sid)
     if not client2:

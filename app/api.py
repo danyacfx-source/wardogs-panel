@@ -3974,10 +3974,9 @@ async def server_player_patch(sid: str, steam_id: str, request: Request):
     return await _server_action(sid, request, "move_faction", action, steam_id)
 
 
-def _swap_allowed(diff: int, after_diff: int, has_vip: bool) -> bool:
-    """Штатный баланс: после свапа перевес до +2, либо свап уменьшает перевес
-    (он всегда полезен). У VIP-игроков ограничений нет, см. bot/cogs/swap.py."""
-    return has_vip or after_diff <= 2 or after_diff < diff
+def _swap_allowed(diff: int, has_vip: bool) -> bool:
+    """Штатный баланс: перевес до +2. У VIP-игроков ограничений нет, см. bot/cogs/swap.py."""
+    return has_vip or diff <= 2
 
 
 async def _has_active_vip_slot(sid, steam_id):
@@ -4021,10 +4020,8 @@ async def swap_player(srv, sid, steam_id, faction):
     def count(name):
         return sum(1 for p in players if str(p.get("faction") or "").lower() == name.lower())
     diff = abs(count(source) - count(faction))
-    # Лимит — по результату свапа: переход в более многочисленную сторону не даёт перевес больше +2.
-    after_diff = abs((count(source) - 1) - (count(faction) + 1))
-    if not _swap_allowed(diff, after_diff, is_vip):
-        return False, "balance", f"перевес после свапа {after_diff} больше допустимого (до +2; VIP — без лимита)"
+    if not _swap_allowed(diff, is_vip):
+        return False, "balance", f"перевес {diff} больше допустимого (до +2; VIP — без лимита)"
     await srv.api.request("PATCH", f"/v1/players/{steam_id}", json_body={"faction": faction})
     if game_key and not is_vip:
         _sw_cooldown[(sid, steam_id)] = game_key
