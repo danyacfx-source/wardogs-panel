@@ -135,21 +135,29 @@ async def _execute_swap(sid: str, side: str, target_steam_id: str, actor_discord
         counts[f] = counts.get(f, 0) + 1
 
     diff = abs(count(source) - count(side))
-    if not is_vip and diff > 2:
-        return False, f"Перевес {diff} больше допустимого (до +2; VIP — без лимита)"
+    # Лимит проверяем по результату свапа: переход в более многочисленную сторону
+    # не должен давать перевес больше +2 (раньше смотрели только на текущий diff).
+    after_diff = abs((count(source) - 1) - (count(side) + 1))
+    if not is_vip and after_diff > 2:
+        return False, f"Перевес после свапа {after_diff} больше допустимого (до +2; VIP — без лимита)"
 
     client2 = _get_rcon_client(sid)
     if not client2:
         return False, "Сервер не настроен"
+    # Кулдаун резервируем до await: два быстрых нажатия не пройдут проверку оба.
+    cooldown_key = (sid, target_steam_id)
+    reserved = False
+    if not is_vip and status_map:
+        SW_COOLDOWN[cooldown_key] = status_map
+        reserved = True
     try:
         await client2.set_faction(target_steam_id, side)
     except RconError as exc:
+        if reserved:
+            SW_COOLDOWN.pop(cooldown_key, None)
         return False, f"Ошибка RCON: {exc}"
     finally:
         await client2.close()
-
-    if not is_vip and status_map:
-        SW_COOLDOWN[(sid, target_steam_id)] = status_map
 
     try:
         db.seed_log_swap(

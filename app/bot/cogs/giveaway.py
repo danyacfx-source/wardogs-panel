@@ -341,7 +341,7 @@ class GiveawayCog(commands.Cog):
             await interaction.response.send_message("ℹ️ Розыгрыш уже завершён.", ephemeral=True)
             return
         await interaction.response.send_message("⏳ Завершаю розыгрыш и выбираю победителя...", ephemeral=True)
-        set_giveaway_done(g["id"])
+        # Не ставим done здесь: _finish сам атомарно забирает завершение (claim_giveaway_finish).
         await self._finish(g)
 
     @giveaway.command(name="list", description="Список активных розыгрышей")

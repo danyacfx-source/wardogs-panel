@@ -5,6 +5,7 @@ import base64
 import hashlib
 import hmac
 import io
+import copy
 import json
 import logging
 import os
@@ -145,9 +146,16 @@ class ClanStore:
 
     async def update(self, mutator):
         async with self._lock:
-            mutator(self._state)
-            self._state["updatedAt"] = iso_now()
-            await self._write_atomic()
+            # Откат при сбое записи: иначе память разойдётся с диском, и следующая
+            # успешная запись тихо сохранит изменение, которое сочли неудачным.
+            snapshot = copy.deepcopy(self._state)
+            try:
+                mutator(self._state)
+                self._state["updatedAt"] = iso_now()
+                await self._write_atomic()
+            except BaseException:
+                self._state = snapshot
+                raise
         return self._state
 
     async def save(self):
@@ -164,8 +172,18 @@ class ClanStore:
 
     async def _write_atomic(self):
         temp = STATE_FILE.with_suffix(f".{os.getpid()}.tmp")
-        temp.write_text(json.dumps(self._state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        temp.replace(STATE_FILE)
+        try:
+            with open(temp, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(self._state, ensure_ascii=False, indent=2) + "\n")
+                fh.flush()
+                os.fsync(fh.fileno())
+            temp.replace(STATE_FILE)
+        except BaseException:
+            try:
+                temp.unlink()
+            except OSError:
+                pass
+            raise
 
 
 class BackupManager:
