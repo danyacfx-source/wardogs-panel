@@ -216,8 +216,9 @@ class GiveawayCog(commands.Cog):
                         continue
 
                     # Уже восстановлен и стоит кнопка — пропускаем.
+                    # msg.components содержит discord.Button (компоненты REST), а не discord.ui.Button (UI-виджеты).
                     if msg.components and any(any(
-                        isinstance(c, discord.ui.Button) for c in row.children
+                        isinstance(c, discord.Button) for c in row.children
                     ) for row in msg.components):
                         continue
 
@@ -389,7 +390,9 @@ class GiveawayCog(commands.Cog):
             await interaction.response.send_message("ℹ️ Ты не участвуешь в этом розыгрыше.", ephemeral=True)
             return
         try:
-            await self._refresh_message(interaction.channel, g)
+            giveaway_channel = self.bot.get_channel(int(g["channel_id"]))
+            if giveaway_channel:
+                await self._refresh_message(giveaway_channel, g)
         except Exception:
             pass
         await interaction.response.send_message("✅ Ты вышел из розыгрыша.", ephemeral=True)
@@ -412,7 +415,9 @@ class GiveawayCog(commands.Cog):
             await interaction.response.send_message("ℹ️ Этот пользователь не участвует в розыгрыше.", ephemeral=True)
             return
         try:
-            await self._refresh_message(interaction.channel, g)
+            giveaway_channel = self.bot.get_channel(int(g["channel_id"]))
+            if giveaway_channel:
+                await self._refresh_message(giveaway_channel, g)
         except Exception:
             pass
         await interaction.response.send_message(f"✅ Участник <@{user.id}> снят с розыгрыша.", ephemeral=True)

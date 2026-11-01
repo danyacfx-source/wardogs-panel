@@ -944,6 +944,8 @@ class ClansCog(commands.Cog):
             e, views = self._hq_panel_full(clan)
             panel = await hq.send(embed=e, view=views[0], allowed_mentions=discord.AllowedMentions.none())
             clan["controlMessageId"] = str(panel.id)
+            if len(views) > 1:
+                await hq.send(view=views[1], allowed_mentions=discord.AllowedMentions.none())
             await self._persist_clan(clan)
         except Exception as ex:
             log.exception("Панель штаба клана %s не опубликована", clan["id"])
@@ -970,7 +972,7 @@ class ClansCog(commands.Cog):
         if warnings:
             message += "\n⚠️ Клан сохранён, но есть предупреждения: " + "; ".join(warnings) + "."
         await interaction.followup.send(message)
-        asyncio.get_event_loop().call_later(10, lambda: asyncio.ensure_future(self._delete_channel(guild, ticket_id)))
+        asyncio.get_running_loop().call_later(10, lambda: asyncio.ensure_future(self._delete_channel(guild, ticket_id)))
 
     async def _delete_channel(self, guild: discord.Guild, channel_id: str) -> bool:
         """True: канала нет (удалён или его не было). False: удалить не удалось."""
@@ -1249,7 +1251,7 @@ class ClansCog(commands.Cog):
             pass
         await self._audit(interaction.guild, "Кандидат принят в клан", f"[{clan['tag']}] · <@{applicant.id}> · решение <@{interaction.user.id}>", COLORS["green"])
         await interaction.followup.send(f"{applicant.mention} принят в клан как рекрут.")
-        asyncio.get_event_loop().call_later(15, lambda: asyncio.ensure_future(self._delete_channel(interaction.guild, ticket_id)))
+        asyncio.get_running_loop().call_later(15, lambda: asyncio.ensure_future(self._delete_channel(interaction.guild, ticket_id)))
 
     async def _demote_former_leader(self, guild, clan, new_leader_id) -> None:
         """При передаче лидерства снимает роль лидера и leaderId у прежнего лидера,
@@ -1258,7 +1260,7 @@ class ClansCog(commands.Cog):
         if not old_id or int(old_id) == int(new_leader_id):
             return
         leader_rid = clan["roleIds"].get("leader")
-        member_rid = clan["roleIds"].get("member")
+        fighter_rid = clan["roleIds"].get("fighter")
         try:
             old = guild.get_member(int(old_id)) or await guild.fetch_member(int(old_id))
         except Exception:
@@ -1266,8 +1268,8 @@ class ClansCog(commands.Cog):
         if old and leader_rid:
             try:
                 await old.remove_roles(discord.Object(id=leader_rid), reason="Clan leadership transferred")
-                if member_rid:
-                    await old.add_roles(discord.Object(id=member_rid), reason="Clan leadership transferred")
+                if fighter_rid:
+                    await old.add_roles(discord.Object(id=fighter_rid), reason="Clan leadership transferred")
             except Exception:
                 log.warning("не удалось снять роль лидера у %s клана %s", old_id, clan.get("id"), exc_info=True)
 
@@ -1699,7 +1701,7 @@ class ClansCog(commands.Cog):
                 pass
             await self._audit(interaction.guild, "Заявка на вступление отклонена", f"[{clan['tag']}] · <@{application['applicantId']}> · {reason} · решение <@{interaction.user.id}>", COLORS["grey"])
             await interaction.response.send_message("Заявка отклонена, кандидат уведомлён.", ephemeral=True)
-            asyncio.get_event_loop().call_later(15, lambda: asyncio.ensure_future(self._delete_channel(interaction.guild, ticket_id)))
+            asyncio.get_running_loop().call_later(15, lambda: asyncio.ensure_future(self._delete_channel(interaction.guild, ticket_id)))
             return
         if custom_id.startswith("clan:logo:"):
             clan_id_str = custom_id.split(":")[2]
@@ -1740,7 +1742,7 @@ class ClansCog(commands.Cog):
                 pass
             await self._audit(interaction.guild, "Заявка на клан отклонена", f"{app['name']} [{app['tag']}] · {reason} · решение <@{interaction.user.id}>", COLORS["grey"])
             await interaction.response.send_message("Заявка отклонена, заявитель уведомлён.", ephemeral=True)
-            asyncio.get_event_loop().call_later(15, lambda: asyncio.ensure_future(self._delete_channel(interaction.guild, ticket_id)))
+            asyncio.get_running_loop().call_later(15, lambda: asyncio.ensure_future(self._delete_channel(interaction.guild, ticket_id)))
             return
 
     @app_commands.command(name="clan-setup", description="Настроить клановую систему")

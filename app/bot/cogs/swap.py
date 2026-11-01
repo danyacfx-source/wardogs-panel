@@ -125,8 +125,12 @@ async def _execute_swap(sid: str, side: str, target_steam_id: str, actor_discord
     cooldown_map = status_map or "__unknown__"
     if not is_vip:
         prev = SW_COOLDOWN.get((sid, target_steam_id))
-        # Карта неизвестна, а свап уже был: блокируем, чтобы сбой чтения карты не обходил кулдаун.
-        if prev == cooldown_map or (cooldown_map == "__unknown__" and prev is not None):
+        # Блокируем если был любой свап в текущей игре (prev is not None).
+        # Случаи:
+        #   prev == cooldown_map          — та же карта: блокируем
+        #   prev == "__unknown__"         — прошлый свап на неизвестной карте: блокируем
+        #   cooldown_map == "__unknown__" — текущая карта неизвестна, а свап уже был: блокируем
+        if prev is not None:
             return False, "Уже был свап на этой карте — 1 раз за игру (VIP — без кулдауна)"
 
     def count(name):
