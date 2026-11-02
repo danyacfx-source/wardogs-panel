@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>WARDOGS // Панель управления</title>
 <link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
-<link rel="stylesheet" href="/static/style.css?v=20261102-2" />
+<link rel="stylesheet" href="/static/style.css?v=20261102-3" />
 </head>
 <body data-panel-mode="panel">
 <div id="app" v-cloak>
@@ -1311,6 +1311,24 @@
               </div>
             </section>
 
+            <section class="player-section" v-if="playerCard.profile && playerCard.cheater?.configured !== false">
+              <div class="player-section-title">cheatercheck.io</div>
+              <p class="player-action-hint" v-if="playerCard.cheater?.loading">Загружаем данные…</p>
+              <p class="player-action-hint" v-else-if="playerCard.cheater?.reason === 'unavailable'">Сервис cheatercheck.io сейчас недоступен. Попробуйте открыть карточку позже.</p>
+              <p class="player-action-hint" v-else-if="playerCard.cheater?.reason === 'not_found'">Steam не знает этого игрока.</p>
+              <template v-else-if="playerCard.cheater?.data">
+                <p class="player-action-hint" v-if="playerCard.cheater.data.status === 'scanning'">Скан игрока ещё идёт, данные появятся позже.</p>
+                <p class="player-action-hint" v-else-if="playerCard.cheater.data.status === 'deferred'">Лимит сканирования исчерпан, данные появятся позже.</p>
+                <div class="player-tags" v-else>
+                  <span class="player-tag">скор: {{ playerCard.cheater.data.score ?? '—' }}</span>
+                  <span class="player-tag" :class="{'red': playerCard.cheater.data.vac_bans > 0}">VAC: {{ playerCard.cheater.data.vac_bans }}</span>
+                  <span class="player-tag" :class="{'red': playerCard.cheater.data.game_bans > 0}">game-баны: {{ playerCard.cheater.data.game_bans }}</span>
+                  <span class="player-tag">жалоб: {{ playerCard.cheater.data.reports_total }} (за 30 дн.: {{ playerCard.cheater.data.reports_30d }})</span>
+                </div>
+              </template>
+              <p class="player-action-hint">Источник: <a :href="playerCard.cheater?.data?.profile_url || 'https://cheatercheck.io'" target="_blank" rel="noopener">cheatercheck.io ↗</a>. Скор — оценка сервиса, а не доказательство нарушений.</p>
+            </section>
+
             <section class="player-section">
               <div class="player-section-title">Действия</div>
               <div class="player-card-actions">
@@ -1497,7 +1515,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/panel.render.js?v=20261102-2"></script>
-<script src="/static/app.js?v=20261102-2"></script>
+<script src="/static/panel.render.js?v=20261102-3"></script>
+<script src="/static/app.js?v=20261102-3"></script>
 </body>
 </html>

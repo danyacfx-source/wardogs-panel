@@ -856,6 +856,17 @@ const app = createApp({
         this.playerCard.error = data?.detail || "Карточка игрока пока пуста";
       }
       this.playerCard.loading = false;
+      if (this.playerCard.profile) this.loadPlayerCheaterCheck(steamId, requestId);
+    },
+    async loadPlayerCheaterCheck(steamId, requestId) {
+      this.playerCard.cheater = { loading: true, configured: true, reason: "", data: null };
+      const { status, data } = await this.api.request("GET", `/api/players/${encodeURIComponent(steamId)}/cheatercheck`);
+      if (requestId !== this._playerRequestId || !this.playerCard.open) return;
+      if (status === 200 && data?.ok) {
+        this.playerCard.cheater = { loading: false, configured: data.configured !== false, reason: data.reason || "", data: data.player || null };
+      } else {
+        this.playerCard.cheater = { loading: false, configured: true, reason: "unavailable", data: null };
+      }
     },
     closePlayerCard() {
       this._playerRequestId=(this._playerRequestId || 0)+1;

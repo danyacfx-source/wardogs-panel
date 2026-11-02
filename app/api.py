@@ -32,6 +32,7 @@ try:
     from . import disclog
     from . import seed_store
     from . import steam as steam_mod
+    from . import cheatercheck
     from .bot import database as bot_db
     from .rcon_client import RCONError, WardogsRCON
     from .schemas import (
@@ -54,6 +55,7 @@ except ImportError:
     import disclog
     import seed_store
     import steam as steam_mod
+    import cheatercheck
     from bot import database as bot_db
     from rcon_client import RCONError, WardogsRCON
     from schemas import (
@@ -1277,6 +1279,14 @@ async def player_profile(steam_id: str, request: Request):
         "community_banned": bool(steam_bans.get("community_banned")),
     }
     return {"ok": True, "profile": profile}
+
+
+@router.get("/players/{steam_id}/cheatercheck")
+async def player_cheatercheck(steam_id: str, request: Request):
+    """Скор и жалобы cheatercheck.io. Отдельный запрос, чтобы карточка не ждала внешний сервис."""
+    await _require_perm(request, "players_view")
+    steam_id = _validate_steam_id(steam_id)
+    return {"ok": True, **(await cheatercheck.fetch_player(steam_id))}
 
 
 @router.get("/players/{steam_id}/history/export")

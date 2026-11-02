@@ -151,6 +151,8 @@ ALLOWED_HOSTS = [host for host in ALLOWED_HOSTS if host]
 
 STEAM_API_KEY = (os.environ.get("STEAM_API_KEY") or "").strip()
 STEAM_REGRESSION = int(os.environ.get("STEAM_REGRESSION") or 0)
+# Необязательно: ключ cheatercheck.io (cc_live_...). Без него блок в карточке игрока скрыт.
+CHEATERCHECK_API_KEY = (os.environ.get("CHEATERCHECK_API_KEY") or "").strip()
 
 DISCORD_CLIENT_ID = (os.environ.get("DISCORD_CLIENT_ID") or "").strip()
 DISCORD_CLIENT_SECRET = (os.environ.get("DISCORD_CLIENT_SECRET") or "").strip()
