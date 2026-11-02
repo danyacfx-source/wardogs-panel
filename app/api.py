@@ -2225,6 +2225,8 @@ async def _enrich_bans(sid, data):
         meta = managed.get(str(item.get("steamId") or ""))
         if meta:
             item["managed"] = True
+            # Причину хранит панель: upstream после своего рестарта может отдать бан без неё.
+            item["reason"] = meta["reason"] or item.get("reason") or ""
             item["expiresUtc"] = meta["expires_utc"]
             item["displayName"] = meta["display_name"]
             item["syncState"] = meta["sync_state"]
