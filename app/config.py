@@ -228,21 +228,33 @@ if ALERT_WEBHOOK_URL:
 
 
 SERVERS_FILE = BASE_DIR / (os.environ.get("WARDOGS_SERVERS_FILE") or "servers.json")
+
+
+def _load_servers_json(text, source):
+    """Разбирает JSON серверов; пустой файл или BOM (Блокнот) не роняют запуск молча."""
+    text = text.lstrip("﻿").strip()
+    if not text:
+        raise RuntimeError(f"Конфигурация серверов пуста: {source}")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Конфигурация серверов не является JSON: {source} ({exc})") from exc
+
+
 _servers_json = (os.environ.get("WARDOGS_SERVERS_JSON") or "").strip()
 if _servers_json:
-    try:
-        _raw = json.loads(_servers_json)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("WARDOGS_SERVERS_JSON должен содержать корректный JSON") from exc
-elif SERVERS_FILE.exists():
-    with open(SERVERS_FILE, "r", encoding="utf-8") as f:
-        _raw = json.load(f)
+    _raw = _load_servers_json(_servers_json, "WARDOGS_SERVERS_JSON")
+elif SERVERS_FILE.exists() and SERVERS_FILE.read_bytes().strip():
+    with open(SERVERS_FILE, "r", encoding="utf-8-sig") as f:
+        _raw = _load_servers_json(f.read(), str(SERVERS_FILE))
 elif ENVIRONMENT != "production" and (BASE_DIR / "servers.example.json").exists():
     SERVERS_FILE = BASE_DIR / "servers.example.json"
-    with open(SERVERS_FILE, "r", encoding="utf-8") as f:
-        _raw = json.load(f)
+    with open(SERVERS_FILE, "r", encoding="utf-8-sig") as f:
+        _raw = _load_servers_json(f.read(), str(SERVERS_FILE))
 else:
-    raise RuntimeError(f"Файл серверов не найден: {SERVERS_FILE}")
+    raise RuntimeError(
+        f"Нет конфигурации серверов: задайте WARDOGS_SERVERS_JSON или положите непустой {SERVERS_FILE}"
+    )
 
 if not isinstance(_raw, dict):
     raise RuntimeError("Конфигурация servers.json должна быть JSON-объектом")
