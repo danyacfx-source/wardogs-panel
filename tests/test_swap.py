@@ -7,8 +7,8 @@ from app.main import app
 def test_swap_balance_rules():
     assert _swap_allowed(2, has_vip=False) is True   # штатный баланс
     assert _swap_allowed(3, has_vip=False) is False  # больше +2 — отказ
-    assert _swap_allowed(4, has_vip=True) is True    # VIP: ещё +2
-    assert _swap_allowed(5, has_vip=True) is False   # и с VIP больше +4 нельзя
+    assert _swap_allowed(4, has_vip=True) is True    # VIP: без лимита перевеса (см. bot/cogs/swap.py)
+    assert _swap_allowed(5, has_vip=True) is True
 
 
 def test_swap_endpoint_requires_permission():

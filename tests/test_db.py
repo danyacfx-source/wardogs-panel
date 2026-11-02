@@ -3,6 +3,7 @@ import hashlib
 import sqlite3
 
 from app import config, db
+from app.db.core import REQUIRED_SCHEMA_VERSION
 
 
 def test_migration_and_site_audit(tmp_path, monkeypatch):
@@ -10,7 +11,7 @@ def test_migration_and_site_audit(tmp_path, monkeypatch):
 
     async def run():
         await db.init()
-        assert await db.schema_version() == 19
+        assert await db.schema_version() == REQUIRED_SCHEMA_VERSION
         await db.upsert_user("76561190000000000", "Test")
         session_token = await db.create_session("76561190000000000")
         with sqlite3.connect(tmp_path / "test.db") as raw:
@@ -305,7 +306,9 @@ def test_vip_slots_lifecycle_and_expiry(tmp_path, monkeypatch):
         assert (await db.list_player_vip_slots("76561190000000001"))[0]["id"] == item["id"]
         await db.mark_vip_sync(item["id"], "synced")
         assert (await db.get_vip_slot(item["id"], "ru1"))["sync_state"] == "synced"
-        updated = await db.save_vip_slot(
+        # save_vip_slot продлевает только в сторону увеличения (MAX), поэтому
+        # укорачивание срока проверяем через admin_set_vip_slot.
+        updated = await db.admin_set_vip_slot(
             "ru1",
             "76561190000000001",
             "VIP игрок 2",

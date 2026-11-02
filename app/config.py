@@ -160,6 +160,17 @@ DISCORD_BOT_PANEL_TOKEN = (os.environ.get("DISCORD_BOT_PANEL_TOKEN") or "").stri
 GUILD_ID = (os.environ.get("WARDOGS_GUILD_ID") or "").strip()
 # Канал Discord для логов банов/випок (пусто — логи в Discord не отправляются).
 DISCORD_LOG_CHANNEL_ID = (os.environ.get("WARDOGS_LOG_CHANNEL_ID") or "").strip()
+# Мониторы серверов: отдельный Discord-бот на каждый RCON-сервер (RU1..RU3).
+MONITOR_BOT_TOKENS = {
+    sid: (os.environ.get(f"MONITOR_BOT_TOKEN_{sid}") or "").strip()
+    for sid in ("RU1", "RU2", "RU3")
+}
+MONITOR_STATUS_CHANNEL_ID = (os.environ.get("MONITOR_STATUS_CHANNEL_ID") or "").strip()
+MONITOR_ALERT_CHANNEL_ID = (os.environ.get("MONITOR_ALERT_CHANNEL_ID") or "").strip()
+try:
+    MONITOR_POLL_INTERVAL = max(5, int(os.environ.get("MONITOR_POLL_INTERVAL") or 30))
+except ValueError:
+    MONITOR_POLL_INTERVAL = 30
 # Канал розыгрышов и ID бота-автора: панель сама строит публичный фид
 # GET /api/public/giveaways (пусто — фид не синхронизируется).
 GIVEAWAY_CHANNEL_ID = (os.environ.get("WARDOGS_GIVEAWAY_CHANNEL_ID") or "").strip()

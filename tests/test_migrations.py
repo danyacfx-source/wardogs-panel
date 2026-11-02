@@ -2,6 +2,7 @@ import asyncio
 import sqlite3
 
 from app import config, db
+from app.db.core import REQUIRED_SCHEMA_VERSION
 
 
 def test_upgrade_from_previous_release(tmp_path, monkeypatch):
@@ -29,7 +30,7 @@ def test_upgrade_from_previous_release(tmp_path, monkeypatch):
 
     async def run():
         await db.init()
-        assert await db.schema_version() == 19
+        assert await db.schema_version() == REQUIRED_SCHEMA_VERSION
         with sqlite3.connect(database) as raw:
             assert raw.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0
             columns = {row[1] for row in raw.execute("PRAGMA table_info(site_audit)")}
