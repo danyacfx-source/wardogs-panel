@@ -176,6 +176,7 @@ const app = createApp({
       roleCopySources: {},
       roleSelected: [],
       playerCard: { open: false, loading: false, profile: null, live: null, error: "" },
+      selectedPunishmentIds: [],
       playerCardFaction: "",
       playerCardClanId: "",
       playerCardTab: "overview",
@@ -805,6 +806,7 @@ const app = createApp({
       this.playerCardTab = "overview";
       this.playerCardClanId = "";
       this.playerNotes = { items: [], loading: false, error: "", canEdit: false, draft: "" };
+      this.selectedPunishmentIds = [];
       this.playerCard = { open: true, loading: true, profile: null, live: live || (typeof playerOrSteamId === "object" ? playerOrSteamId : null), error: "" };
       this.playerCardFaction = this.playerCard.live?.faction || "";
       const { status, data } = await this.api.request("GET", `/api/players/${encodeURIComponent(steamId)}`);
@@ -828,6 +830,7 @@ const app = createApp({
           last_seen_utc: null,
           punishments: [],
           can_view_punishments: ["audit", "ban_view", "ban_add", "ban_remove"].some((permission) => this.has(permission)),
+          can_manage_punishments: this.has("audit"),
           tags: [],
           can_edit_tags: this.has("player_tags"),
           clan: null,
@@ -964,6 +967,55 @@ const app = createApp({
         this.toast(exists ? "Такая метка уже установлена" : "Метка добавлена", exists ? "warn" : "ok");
       } else {
         this.toast(data?.detail || data?.error?.message || "Не удалось добавить метку", "err");
+      }
+    },
+    isPunishmentSelected(item) {
+      return this.selectedPunishmentIds.includes(item.id);
+    },
+    togglePunishmentSelection(item) {
+      this.selectedPunishmentIds = this.isPunishmentSelected(item)
+        ? this.selectedPunishmentIds.filter((id) => id !== item.id)
+        : [...this.selectedPunishmentIds, item.id];
+    },
+    toggleAllPunishments() {
+      const all = this.playerCard.profile?.punishments || [];
+      this.selectedPunishmentIds = this.selectedPunishmentIds.length === all.length ? [] : all.map((item) => item.id);
+    },
+    async hidePunishments(ids) {
+      const steamId = this.playerCardSteamId();
+      if (!steamId || !ids.length || !this.playerCard.profile?.can_manage_punishments) return;
+      const confirmed = await this.confirmAction("Скрыть записи", `Скрыть из истории наказаний записей: ${ids.length}? Журнал аудита сохраняется.`, "Скрыть");
+      if (!confirmed) return;
+      const { status, data } = await this.api.request(
+        "POST",
+        `/api/players/${encodeURIComponent(steamId)}/punishments/hide`,
+        { ids },
+      );
+      if (status === 200 && data?.ok) {
+        const hidden = new Set(data.hidden || []);
+        this.playerCard.profile.punishments = this.playerCard.profile.punishments.filter((entry) => !hidden.has(entry.id));
+        this.selectedPunishmentIds = this.selectedPunishmentIds.filter((id) => !hidden.has(id));
+        this.toast(`Скрыто записей: ${hidden.size}`, "ok");
+      } else {
+        this.toast(data?.detail || data?.error?.message || "Не удалось скрыть записи", "err");
+      }
+    },
+    async clearPunishments() {
+      const steamId = this.playerCardSteamId();
+      if (!steamId || !this.playerCard.profile?.can_manage_punishments) return;
+      const confirmed = await this.confirmAction("Очистить историю", "Скрыть всю историю наказаний этого игрока в карточке? Журнал аудита сохраняется.", "Очистить");
+      if (!confirmed) return;
+      const { status, data } = await this.api.request(
+        "DELETE",
+        `/api/players/${encodeURIComponent(steamId)}/punishments`,
+        {},
+      );
+      if (status === 200 && data?.ok) {
+        this.playerCard.profile.punishments = [];
+        this.selectedPunishmentIds = [];
+        this.toast("История очищена", "ok");
+      } else {
+        this.toast(data?.detail || data?.error?.message || "Не удалось очистить историю", "err");
       }
     },
     async deletePlayerTag(item) {

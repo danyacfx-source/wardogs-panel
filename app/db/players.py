@@ -127,25 +127,71 @@ async def list_player_punishments(steam_id, limit=100):
     placeholders = ", ".join("?" for _ in events)
     async with _conn() as db:
         cur = await db.execute(
-            "SELECT a.timestamp_utc, a.actor_steam_id, COALESCE(u.persona, ''), "
+            "SELECT a.id, a.timestamp_utc, a.actor_steam_id, COALESCE(u.persona, ''), "
             "a.server_id, a.event "
             "FROM site_audit a "
             "LEFT JOIN users u ON u.steam_id = a.actor_steam_id "
             f"WHERE a.detail = ? AND a.event IN ({placeholders}) "
+            "AND NOT EXISTS (SELECT 1 FROM punishment_hidden h WHERE h.audit_id = a.id) "
             "ORDER BY a.timestamp_utc DESC LIMIT ?",
             (steam_id, *events, limit),
         )
         rows = await cur.fetchall()
     return [
         {
-            "timestamp_utc": row[0],
-            "actor_steam_id": row[1],
-            "actor_name": row[2] or "",
-            "server_id": row[3],
-            "event": row[4],
+            "id": row[0],
+            "timestamp_utc": row[1],
+            "actor_steam_id": row[2],
+            "actor_name": row[3] or "",
+            "server_id": row[4],
+            "event": row[5],
         }
         for row in rows
     ]
+
+
+PUNISHMENT_EVENTS = ("ban.add", "ban.remove", "rcon.kick", "rcon.kill")
+
+
+async def hide_selected_player_punishments(steam_id, audit_ids, actor_steam_id):
+    """Скрывает выбранные записи истории наказаний игрока. Строки журнала не удаляются.
+
+    Возвращает id записей, которые действительно относятся к этому игроку и были скрыты.
+    """
+    ids = sorted({int(value) for value in audit_ids})
+    if not ids:
+        return []
+    id_placeholders = ", ".join("?" for _ in ids)
+    event_placeholders = ", ".join("?" for _ in PUNISHMENT_EVENTS)
+    async with _conn() as db:
+        cur = await db.execute(
+            "SELECT id FROM site_audit "
+            f"WHERE detail = ? AND event IN ({event_placeholders}) AND id IN ({id_placeholders})",
+            (steam_id, *PUNISHMENT_EVENTS, *ids),
+        )
+        found = [row[0] for row in await cur.fetchall()]
+        for audit_id in found:
+            await db.execute(
+                "INSERT INTO punishment_hidden (audit_id, steam_id, hidden_by, hidden_utc) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT(audit_id) DO NOTHING",
+                (audit_id, steam_id, actor_steam_id, _now()),
+            )
+        await db.commit()
+    return found
+
+
+async def hide_all_player_punishments(steam_id, actor_steam_id):
+    """Скрывает всю видимую историю наказаний игрока на текущий момент."""
+    placeholders = ", ".join("?" for _ in PUNISHMENT_EVENTS)
+    async with _conn() as db:
+        await db.execute(
+            "INSERT INTO punishment_hidden (audit_id, steam_id, hidden_by, hidden_utc) "
+            "SELECT a.id, ?, ?, ? FROM site_audit a "
+            f"WHERE a.detail = ? AND a.event IN ({placeholders}) "
+            "ON CONFLICT(audit_id) DO NOTHING",
+            (steam_id, actor_steam_id, _now(), steam_id, *PUNISHMENT_EVENTS),
+        )
+        await db.commit()
 
 
 async def list_player_tags(steam_id):

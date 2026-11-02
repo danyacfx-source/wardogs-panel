@@ -35,6 +35,8 @@ from .players import (
     list_player_notes,
     delete_player_note,
     list_player_punishments,
+    hide_selected_player_punishments,
+    hide_all_player_punishments,
     list_player_tags,
     add_player_tag,
     delete_player_tag,

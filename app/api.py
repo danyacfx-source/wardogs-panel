@@ -1249,6 +1249,7 @@ async def player_profile(steam_id: str, request: Request):
         await db.list_player_punishments(steam_id) if can_view_punishments else []
     )
     profile["can_view_punishments"] = can_view_punishments
+    profile["can_manage_punishments"] = "audit" in status["permissions"]
     profile["tags"] = await db.list_player_tags(steam_id)
     profile["can_edit_tags"] = "player_tags" in status["permissions"]
     profile["clan"] = await db.get_player_clan(steam_id)
@@ -1288,6 +1289,37 @@ async def player_history_export(steam_id: str, request: Request):
         ["timestamp_utc", "server_id", "event", "actor_steam_id", "actor_name"],
         rows,
     )
+
+
+@router.post("/players/{steam_id}/punishments/hide")
+async def player_punishments_hide(steam_id: str, request: Request):
+    """Скрывает выбранные записи из истории наказаний в карточке. Журнал аудита не меняется."""
+    user = await _require_perm(request, "audit")
+    steam_id = _validate_steam_id(steam_id)
+    body = await _json_object(request)
+    raw_ids = body.get("ids")
+    if not isinstance(raw_ids, list) or not 1 <= len(raw_ids) <= 200:
+        raise HTTPException(status_code=400, detail="Выберите от 1 до 200 записей")
+    if not all(isinstance(value, int) and not isinstance(value, bool) and value > 0 for value in raw_ids):
+        raise HTTPException(status_code=400, detail="Некорректный ID записи")
+    hidden = await db.hide_selected_player_punishments(steam_id, raw_ids, user["steam_id"])
+    if not hidden:
+        raise HTTPException(status_code=404, detail="Записи не найдены")
+    await db.log_site_audit(
+        user["steam_id"], None, "player.punishment.hide",
+        f"{steam_id}:{','.join(str(value) for value in hidden)}",
+    )
+    return {"ok": True, "hidden": hidden}
+
+
+@router.delete("/players/{steam_id}/punishments")
+async def player_punishments_clear(steam_id: str, request: Request):
+    """Скрывает всю текущую историю наказаний игрока в карточке. Журнал аудита не меняется."""
+    user = await _require_perm(request, "audit")
+    steam_id = _validate_steam_id(steam_id)
+    await db.hide_all_player_punishments(steam_id, user["steam_id"])
+    await db.log_site_audit(user["steam_id"], None, "player.punishment.clear", steam_id)
+    return {"ok": True}
 
 
 @router.get("/players/{steam_id}/notes")

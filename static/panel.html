@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>WARDOGS // Панель управления</title>
 <link rel="icon" href="/static/wardogs-theme/favicon.ico" sizes="any" />
-<link rel="stylesheet" href="/static/style.css?v=20261021-1" />
+<link rel="stylesheet" href="/static/style.css?v=20261102-2" />
 </head>
 <body data-panel-mode="panel">
 <div id="app" v-cloak>
@@ -1348,13 +1348,20 @@
             <section class="player-section player-history">
               <div class="player-section-title">История наказаний</div>
               <a v-if="playerCard.profile.can_view_punishments" class="mini-btn" :href="`/api/players/${playerCard.profile.steam_id}/history/export`" download>Экспорт CSV</a>
+              <div v-if="playerCard.profile.can_manage_punishments && playerCard.profile.punishments?.length" class="punishment-actions">
+                <button type="button" class="mini-btn" @click="toggleAllPunishments">{{ selectedPunishmentIds.length === playerCard.profile.punishments.length ? 'Снять выбор' : 'Выбрать все' }}</button>
+                <button type="button" class="mini-btn" :disabled="!selectedPunishmentIds.length" @click="hidePunishments(selectedPunishmentIds)">Скрыть выбранные ({{ selectedPunishmentIds.length }})</button>
+                <button type="button" class="mini-btn danger" @click="clearPunishments">Очистить историю</button>
+              </div>
               <div v-if="playerCard.profile.can_view_punishments && playerCard.profile.punishments?.length" class="punishment-list">
-                <article v-for="item in playerCard.profile.punishments" :key="`${item.timestamp_utc}-${item.event}`" class="punishment-item">
+                <article v-for="item in playerCard.profile.punishments" :key="item.id" class="punishment-item" :class="{managed: playerCard.profile.can_manage_punishments}">
+                  <input v-if="playerCard.profile.can_manage_punishments" type="checkbox" class="punishment-check" :checked="isPunishmentSelected(item)" @change="togglePunishmentSelection(item)" aria-label="Выбрать запись">
                   <span class="punishment-dot" :class="{danger: item.event === 'ban.add'}"></span>
                   <div>
                     <b>{{ punishmentLabel(item.event) }}</b>
                     <small>{{ item.server_id || 'панель' }} · {{ item.actor_name || shortSid(item.actor_steam_id) }} · {{ fmtDate(item.timestamp_utc * 1000) }}</small>
                   </div>
+                  <button v-if="playerCard.profile.can_manage_punishments" type="button" class="mini-btn" title="Скрыть запись из карточки" @click="hidePunishments([item.id])">×</button>
                 </article>
               </div>
               <p v-else-if="playerCard.profile.can_view_punishments" class="muted">Наказаний в журнале панели не найдено.</p>
@@ -1490,7 +1497,7 @@
 </div>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/panel.render.js?v=20261021-2"></script>
-<script src="/static/app.js?v=20261019-6"></script>
+<script src="/static/panel.render.js?v=20261102-2"></script>
+<script src="/static/app.js?v=20261102-2"></script>
 </body>
 </html>
