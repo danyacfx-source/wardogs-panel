@@ -504,7 +504,7 @@
                   <td>{{ fmtDate((match.ended_utc || match.started_utc || 0) * 1000) }}</td>
                   <td><b>{{ mapLabel(match.map) || 'Неизвестно' }}</b></td>
                   <td><span class="pc-server">{{ cardServerName(match.server_id) }}</span></td>
-                  <td><span class="report-scores"><span v-for="item in match.scores" :key="item.faction" :class="{winner: match.winning_faction && item.faction.toLowerCase() === match.winning_faction.toLowerCase()}" :title="item.faction"><i :style="{background: item.color || factionColor(item.faction)}"></i>{{ item.score ?? '—' }}</span><span v-if="!match.scores.length" class="muted">{{ match.winning_faction ? 'Победа: ' + match.winning_faction : '—' }}</span></span></td>
+                  <td><span class="report-scores"><span v-for="item in match.scores" :key="item.faction" :class="{winner: match.winning_faction && item.faction.toLowerCase() === match.winning_faction.toLowerCase()}" :title="item.faction"><b :style="{color: item.color || factionColor(item.faction)}">{{ item.faction || '—' }}</b>{{ item.score ?? '—' }}</span><span v-if="!match.scores.length" class="muted">{{ match.winning_faction ? 'Победа: ' + match.winning_faction : '—' }}</span></span></td>
                   <td>{{ match.players ?? '—' }}</td>
                   <td><span v-if="match.in_progress" class="report-live">идёт</span> {{ matchDuration(match) }}</td>
                 </tr>
@@ -553,7 +553,7 @@
               </span>
               <button class="faction-sort" :title="`Сортировка: ${boardSortLabel}`" :aria-label="`Сортировка: ${boardSortLabel}`" @click="cycleBoardSort">⇅</button>
             </header>
-            <button v-for="player in column.players" :key="player.steamId" class="faction-row" :class="{admin: player.meta.admin, vip: player.meta.vip, gone: player.gone, selected: playerCard.open && playerCardSteamId === player.steamId}" :title="player.gone ? 'Только что вышел или не попал в последний опрос' : ''" @click="openPlayerCard(player, player)">
+            <button v-for="player in column.players" :key="player.steamId" class="faction-row" :class="{['rank-' + player.meta.rank]: player.meta.rank, vip: player.meta.vip, gone: player.gone, selected: playerCard.open && playerCardSteamId === player.steamId}" :title="player.gone ? 'Только что вышел или не попал в последний опрос' : ''" @click="openPlayerCard(player, player)">
               <span class="faction-name"><small v-if="player.meta.clan_tag">[{{ player.meta.clan_tag }}]</small> {{ player.name }}</span>
               <span class="faction-hours" title="Часов на наших серверах">{{ player.meta.play_seconds ? Math.round(player.meta.play_seconds / 3600) : '' }}</span>
               <span class="faction-steam" title="Часов в Steam">{{ player.meta.game_hours ?? '' }}</span>
@@ -564,7 +564,7 @@
           <p v-if="!factionColumns.length" class="panel empty">Сервер пуст.</p>
         </div>
         <div v-else class="panel empty">Загрузка…</div>
-        <p class="faction-legend"><span class="admin">админ</span><span class="vip">VIP</span><span>серым — часы у нас</span><span class="steam">синим — часы в Steam</span><span>справа — убийства и смерти</span><span>{{ '«/» — поиск' }}</span></p>
+        <p class="faction-legend"><span class="rank-developer">разработчик</span><span class="rank-owner">владелец</span><span class="rank-admin">админ</span><span class="rank-moderator">модератор</span><span class="vip">VIP</span><span>серым — часы у нас</span><span class="steam">синим — часы в Steam</span><span>справа — убийства и смерти</span><span>{{ '«/» — поиск' }}</span></p>
       </section>
       <section v-if="state.tab === 'players' && playersLayout === 'table' && (playersView === 'live' || !has('players_view'))" class="players-stretch">
         <div v-if="ov && ov.error" class="panel err-box"><b>Сервер недоступен.</b> {{ ov.error.message }}</div>

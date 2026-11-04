@@ -79,6 +79,8 @@ const ROLE_PRESETS = {
 };
 function pad(n) { return String(n).padStart(2, "0"); }
 const PLAYER_LIST_KEEP_MS = 60000;
+// Цвета сторон для матчей: событие match_ended цвет не передаёт, а сервер может быть уже другим.
+const KNOWN_FACTION_COLORS = { valkyra: "#ff5a5f", lonestar: "#5aa9ff", manticore: "#4cd787" };
 const PLAYER_GONE_KEEP_MS = 20000;
 
 const app = createApp({
@@ -1110,7 +1112,7 @@ const app = createApp({
     },
 
     factionColor(name) {
-      return (this.ov?.status?.factionScores || []).find((faction) => faction.name === name)?.colorHex || "#777";
+      return (this.ov?.status?.factionScores || []).find((faction) => faction.name === name)?.colorHex || KNOWN_FACTION_COLORS[String(name || "").toLowerCase()] || "#777";
     },
 
     chooseFaction(player, faction, event) {

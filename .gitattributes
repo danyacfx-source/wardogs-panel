@@ -1,0 +1,6 @@
+# Шаблоны и скомпилированные из них render-файлы сравниваются побайтно:
+# на Windows CRLF ложно делает их устаревшими для build-vue-render --check.
+static/index.html text eol=lf
+static/panel.html text eol=lf
+static/index.render.js text eol=lf
+static/panel.render.js text eol=lf

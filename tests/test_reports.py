@@ -1,5 +1,7 @@
 """Отчёты: статистика за период, ники, матчи, поиск в журнале, таблица VIP."""
 import asyncio
+import json
+import sqlite3
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -411,3 +413,151 @@ def test_expired_vip_counts_as_regular(client):
     asyncio.run(setup())
     _sign_in(client, ["players_view"])
     assert B in {row["steam_id"] for row in _rows(client, scope="regular")["items"]}
+
+
+def _bot_database(tmp_path, monkeypatch, vip_rows=(), feed=None, links=()):
+    path = tmp_path / "bot.db"
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        "CREATE TABLE seed_users (discord_id TEXT, steam_id TEXT, linked INTEGER);"
+        "CREATE TABLE donations_vip (id TEXT, user_id INTEGER, product_id TEXT, ends_at INTEGER);"
+        "CREATE TABLE seed_system_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
+    )
+    connection.executemany("INSERT INTO seed_users VALUES (?, ?, ?)", links)
+    connection.executemany("INSERT INTO donations_vip VALUES (?, ?, ?, ?)", vip_rows)
+    if feed is not None:
+        connection.execute("INSERT INTO seed_system_state VALUES ('donation_feed', ?)", (json.dumps(feed),))
+    connection.commit()
+    connection.close()
+
+    def open_connection():
+        opened = sqlite3.connect(path)
+        opened.row_factory = sqlite3.Row
+        return opened
+
+    monkeypatch.setattr(api.seed_store, "_seed_conn", open_connection)
+
+
+def _regular_ids(client):
+    _sign_in(client, ["players_view"])
+    return {row["steam_id"] for row in _rows(client, scope="regular")["items"]}
+
+
+def test_regular_scope_hides_vip_bought_through_bot(client, tmp_path, monkeypatch):
+    _seed_stats()
+    future = int((time.time() + 3600) * 1000)
+    _bot_database(tmp_path, monkeypatch, vip_rows=[("v", 555, "personal_1", future)], links=[("555", A, 1)])
+    ids = _regular_ids(client)
+    assert A not in ids and B in ids
+
+
+def test_regular_scope_hides_vip_from_donation_feed(client, tmp_path, monkeypatch):
+    _seed_stats()
+    future = int((time.time() + 3600) * 1000)
+    _bot_database(tmp_path, monkeypatch, feed={"vip": {"555": {"tier": 2, "endsAt": future}}}, links=[("555", B, 1)])
+    ids = _regular_ids(client)
+    assert B not in ids and A in ids
+
+
+def test_regular_scope_uses_panel_binding_for_bot_vip(client, tmp_path, monkeypatch):
+    _seed_stats()
+    future = int((time.time() + 3600) * 1000)
+    _bot_database(tmp_path, monkeypatch, vip_rows=[("v", 777, "clan_10", future)])
+    asyncio.run(db.upsert_binding(A, "777", "a", [], True))
+    assert A not in _regular_ids(client)
+
+
+def test_regular_scope_keeps_expired_and_unlinked_bot_vip(client, tmp_path, monkeypatch):
+    _seed_stats()
+    now = time.time()
+    _bot_database(
+        tmp_path, monkeypatch,
+        vip_rows=[("old", 555, "personal_1", int((now - 60) * 1000)), ("free", 999, "personal_1", int((now + 3600) * 1000))],
+        links=[("555", A, 1)],
+    )
+    assert {A, B} <= _regular_ids(client)
+
+
+def test_regular_scope_survives_missing_bot_tables(client, tmp_path, monkeypatch):
+    _seed_stats()
+    path = tmp_path / "empty.db"
+    sqlite3.connect(path).close()
+    monkeypatch.setattr(api.seed_store, "_seed_conn", lambda: sqlite3.connect(path))
+    assert {A, B} <= _regular_ids(client)
+
+
+def _discord_roles(monkeypatch, roles):
+    async def guild_roles():
+        return roles
+
+    monkeypatch.setattr(api.dmod, "guild_roles", guild_roles)
+
+
+def _ranks():
+    return asyncio.run(api._staff_ranks())
+
+
+@pytest.mark.parametrize("role_name, rank", [
+    ("Разработчик", "developer"), ("Владелец", "owner"), ("Owner", "owner"),
+    ("Администратор", "admin"), ("Модератор", "moderator"),
+])
+def test_staff_rank_comes_from_role_name(client, monkeypatch, role_name, rank):
+    _discord_roles(monkeypatch, {"10": role_name})
+
+    async def setup():
+        await db.upsert_binding(A, "111", "a", ["10"], True)
+        await db.set_role_perms("10", ["kick"])
+
+    asyncio.run(setup())
+    assert _ranks()[A] == rank
+
+
+def test_role_without_panel_access_does_not_change_rank(client, monkeypatch):
+    _discord_roles(monkeypatch, {"10": "Модератор", "20": "Devils Clan", "30": "Clan Owner"})
+
+    async def setup():
+        await db.upsert_binding(A, "111", "a", ["10", "20", "30"], True)
+        await db.set_role_perms("10", ["kick"])
+
+    asyncio.run(setup())
+    assert _ranks()[A] == "moderator"
+
+
+def test_personal_access_rank_follows_permissions(client):
+    async def setup():
+        await db.upsert_binding(A, "111", "a", [], True)
+        await db.set_role_perms("user:111", ["kick"])
+        await db.upsert_binding(B, "222", "b", [], True)
+        await db.set_role_perms("user:222", ["kick", "change_map"])
+
+    asyncio.run(setup())
+    ranks = _ranks()
+    assert ranks[A] == "moderator" and ranks[B] == "admin"
+
+
+def test_developer_list_outranks_owner_list(client, monkeypatch):
+    monkeypatch.setattr(config, "OWNER_STEAM_IDS", {A, B})
+    monkeypatch.setattr(config, "DEVELOPER_STEAM_IDS", {A})
+    ranks = _ranks()
+    assert ranks[A] == "developer" and ranks[B] == "owner"
+
+
+def test_developer_list_gives_no_access(client, monkeypatch):
+    monkeypatch.setattr(config, "DEVELOPER_STEAM_IDS", {STAFF})
+    _sign_in(client, [])
+    assert client.get("/api/players/stats").status_code == 403
+
+
+def test_players_meta_has_rank_and_bot_vip(client, tmp_path, monkeypatch):
+    _roster_server(monkeypatch, [{"steamId": A, "name": "Волк"}, {"steamId": B, "name": "Медведь"}])
+    monkeypatch.setattr(config, "DEVELOPER_STEAM_IDS", {A})
+    monkeypatch.setattr(api.steam_mod, "cached_game_hours", lambda ids: {})
+    monkeypatch.setattr(api.steam_mod, "start_game_hours_fill", lambda ids: None)
+    _bot_database(
+        tmp_path, monkeypatch,
+        vip_rows=[("v", 555, "personal_1", int((time.time() + 3600) * 1000))], links=[("555", B, 1)],
+    )
+    _sign_in(client, ["kick"])
+    players = client.get("/api/server/ru1/players/meta").json()["players"]
+    assert players[A]["rank"] == "developer" and players[A]["admin"] is True and players[A]["vip"] is False
+    assert players[B]["rank"] == "" and players[B]["admin"] is False and players[B]["vip"] is True

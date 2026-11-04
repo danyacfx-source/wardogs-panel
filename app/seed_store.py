@@ -124,6 +124,33 @@ def get_player_summary(steam_id: str, discord_id: str = "") -> dict:
     return summary
 
 
+def paid_vip_steam_ids(discord_to_steam: dict | None = None) -> set[str]:
+    """SteamID игроков с действующим VIP, купленным через бота.
+
+    В базе бота покупка записана на Discord ID. SteamID берём из привязок бота
+    и из привязок панели (discord_to_steam): игрока без привязки определить нельзя.
+    """
+    c = _seed_conn()
+    if not c:
+        return set()
+    now_ms = int(time.time() * 1000)
+    try:
+        rows = c.execute("SELECT user_id FROM donations_vip WHERE ends_at > ?", (now_ms,)).fetchall()
+        buyers = {str(row["user_id"]) for row in rows}
+        state = c.execute("SELECT value FROM seed_system_state WHERE key = 'donation_feed'").fetchone()
+        feed = (json.loads(state["value"]).get("vip") or {}) if state else {}
+        buyers |= {discord_id for discord_id, entry in feed.items() if int(entry.get("endsAt") or 0) > now_ms}
+        if not buyers:
+            return set()
+        links = dict(discord_to_steam or {})
+        for row in c.execute("SELECT discord_id, steam_id FROM seed_users WHERE linked = 1").fetchall():
+            if row["steam_id"]:
+                links[str(row["discord_id"])] = str(row["steam_id"])
+        return {links[discord_id] for discord_id in buyers if discord_id in links}
+    finally:
+        c.close()
+
+
 def purchase_vip(discord_id: str, sku: str, cost: int, duration: int) -> dict:
     c = _seed_conn()
     if not c:

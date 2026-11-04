@@ -55,6 +55,11 @@ for _token in re.split(r"[,;\s]+", os.environ.get("WARDOGS_OWNER_STEAM_IDS") or 
         OWNER_STEAM_IDS.add(_token)
     else:
         print(f"WARNING: WARDOGS_OWNER_STEAM_IDS: skipped invalid entry {_token!r}", file=sys.stderr)
+# Разработчики: только цвет ника в панели, доступа этот список не даёт.
+DEVELOPER_STEAM_IDS = {
+    _token for _token in re.split(r"[,;\s]+", os.environ.get("WARDOGS_DEVELOPER_STEAM_IDS") or "")
+    if re.fullmatch(r"\d{17}", _token)
+}
 DB_PATH = BASE_DIR / (os.environ.get("WARDOGS_DB") or "site.db")
 
 

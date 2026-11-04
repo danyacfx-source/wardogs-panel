@@ -1470,18 +1470,55 @@ def _report_day(value):
     return value
 
 
-async def _admin_steam_ids():
+_STAFF_GROUP_RANKS = {
+    "Разработчики": "developer", "Основатели": "owner", "Администраторы": "admin",
+    "Модераторы": "moderator", "Сотрудники": "moderator",
+}
+
+
+def _role_grants_access(role_id, role_map, perms_map):
+    """Даёт ли роль права в панели. Клановые и прочие роли не должны влиять на ранг по названию."""
+    name = role_map.get(role_id, "")
+    configured = [perms_map[ref] for ref in (role_id, name) if ref and ref in perms_map]
+    if configured:
+        return any(configured)
+    return role_id in config.ADMIN_ROLE_IDS or name in config.ADMIN_ROLE_NAMES
+
+
+async def _staff_ranks():
+    """Состав панели: {steam_id: developer | owner | admin | moderator}."""
     role_map = await dmod.guild_roles()
     perms_map = await db.get_role_perms_all()
-    admins = {steam_id for steam_id in config.OWNER_STEAM_IDS}
+    ranks = {}
     for binding in await db.list_bindings():
         permissions = dmod.compute_permissions(
             {"discord_id": binding["discord_id"], "guild_member": binding["guild_member"], "roles": binding["role_ids"]},
             role_map, perms_map,
         )
-        if permissions:
-            admins.add(binding["steam_id"])
-    return admins
+        if not permissions:
+            continue
+        role_ids = binding["role_ids"] if binding["guild_member"] else []
+        names = [role_map.get(role_id, "") for role_id in role_ids if _role_grants_access(role_id, role_map, perms_map)]
+        group = _staff_group(names, permissions)
+        # Название роли может быть любым: шаблон «Администратор» отличается от модератора правом менять карту.
+        ranks[binding["steam_id"]] = "admin" if group == "Сотрудники" and "change_map" in permissions else _STAFF_GROUP_RANKS[group]
+    ranks.update(dict.fromkeys(config.OWNER_STEAM_IDS, "owner"))
+    ranks.update(dict.fromkeys(config.DEVELOPER_STEAM_IDS, "developer"))
+    return ranks
+
+
+async def _admin_steam_ids():
+    return set(await _staff_ranks())
+
+
+async def _bot_vip_steam_ids():
+    """VIP, купленные через бота. Таблицы принадлежат ботам: их отсутствие не должно ломать панель."""
+    links = {str(item["discord_id"]): item["steam_id"] for item in await db.list_bindings() if item["discord_id"]}
+    try:
+        return seed_store.paid_vip_steam_ids(links)
+    except Exception:
+        log.warning("Не удалось прочитать VIP, купленные через бота", exc_info=True)
+        return set()
 
 
 @router.get("/players/stats")
@@ -1498,7 +1535,7 @@ async def players_stats(
         admins = await _admin_steam_ids()
         rows = [row for row in rows if row["steam_id"] in admins]
     elif scope == "regular":
-        privileged = await _admin_steam_ids() | await db.active_vip_steam_ids()
+        privileged = await _admin_steam_ids() | await db.active_vip_steam_ids() | await _bot_vip_steam_ids()
         rows = [row for row in rows if row["steam_id"] not in privileged]
     needle = str(q or "").strip().casefold()[:120]
     if needle:
@@ -2550,9 +2587,12 @@ async def server_players_meta(sid: str, request: Request):
 
     async def build():
         meta = await db.live_player_meta(ids)
-        admins = await _admin_steam_ids()
+        ranks = await _staff_ranks()
+        bot_vips = await _bot_vip_steam_ids()
         for steam_id, item in meta.items():
-            item["admin"] = steam_id in admins
+            item["admin"] = steam_id in ranks
+            item["rank"] = ranks.get(steam_id, "")
+            item["vip"] = item["vip"] or steam_id in bot_vips
         return meta
 
     meta = await _cached(srv.id, "players-meta", build, ttl=20.0)
@@ -2932,7 +2972,7 @@ def _staff_group(role_names, permissions):
     text = " ".join(role_names).lower()
     if any(word in text for word in ("разработ", "developer", "dev")):
         return "Разработчики"
-    if any(word in text for word in ("основател", "owner", "founder")):
+    if any(word in text for word in ("основател", "владел", "owner", "founder")):
         return "Основатели"
     if any(word in text for word in ("админ", "admin")):
         return "Администраторы"

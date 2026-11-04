@@ -910,7 +910,8 @@ body[data-panel-mode="monitor"] { background:#080809; }
 .report-scores { display:inline-flex; flex-wrap:wrap; gap:12px; }
 .report-scores>span { display:inline-flex; align-items:center; gap:5px; color:#a7a2a0; }
 .report-scores>span.winner { color:#fff; font-weight:800; }
-.report-scores i { width:10px; height:10px; border-radius:3px; }
+.report-scores b { font-weight:600; }
+.report-scores>span.winner b { font-weight:800; }
 .report-live { display:inline-block; margin-right:6px; padding:2px 8px; border-radius:999px; background:#12301f; color:#4fd98a; font-size:11px; font-weight:700; }
 .report-actions { display:flex; flex-wrap:wrap; gap:5px; }
 .report-muted-row { opacity:.6; }
@@ -948,15 +949,21 @@ body[data-panel-mode="monitor"] { background:#080809; }
 .faction-row.gone { opacity:.45; }
 .faction-name { min-width:0; overflow:hidden; font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
 .faction-name small { color:#a7a2a0; font-weight:500; }
-.faction-row.admin .faction-name { color:#4fd98a; }
 .faction-row.vip .faction-name { color:#e8bd5a; }
+.faction-row.rank-moderator .faction-name { color:#4fd98a; }
+.faction-row.rank-admin .faction-name { color:#e0605f; }
+.faction-row.rank-owner .faction-name { color:#ff1f2d; font-weight:800; }
+.faction-row.rank-developer .faction-name { color:#b77dff; font-weight:800; }
 .faction-hours { color:#a7a2a0; font-size:13px; }
 .faction-steam { color:#5b84e8; font-size:13px; }
 .faction-score { margin-left:auto; white-space:nowrap; }
 .faction-score small { color:#8f8a88; }
 .faction-empty { margin:0; padding:14px; }
 .faction-legend { display:flex; flex-wrap:wrap; gap:14px; margin:12px 2px 0; color:#8f8a88; font-size:12px; }
-.faction-legend .admin { color:#4fd98a; }
+.faction-legend .rank-moderator { color:#4fd98a; }
+.faction-legend .rank-admin { color:#e0605f; }
+.faction-legend .rank-owner { color:#ff1f2d; font-weight:800; }
+.faction-legend .rank-developer { color:#b77dff; font-weight:800; }
 .faction-legend .vip { color:#e8bd5a; }
 .faction-legend .steam { color:#5b84e8; }
 .report-switch { display:flex; width:fit-content; max-width:100%; box-sizing:border-box; overflow-x:auto; }
