@@ -2296,133 +2296,19 @@ function initMobileSphLevelWarning() {
    DESKTOP SAVED TARGETS COLLAPSE
    ========================= */
 
-function installDesktopSavedTargetsCollapseStyle() {
-
-    if (
-        $('savedTargetsCollapseStyle')
-    ) {
-        return;
-    }
-
-    const style =
-        document.createElement(
-            'style'
-        );
-
-    style.id =
-        'savedTargetsCollapseStyle';
-
-    style.textContent = `
-        body:not(.mobile-app)
-        .saved-targets {
-            transition:
-                width .18s ease,
-                padding .18s ease;
-        }
-
-        body:not(.mobile-app)
-        .saved-targets-header {
-            display: grid;
-
-            grid-template-columns:
-                minmax(0, 1fr)
-                auto
-                24px;
-
-            align-items: center;
-
-            gap: 7px;
-        }
-
-        body:not(.mobile-app)
-        .saved-targets-collapse-toggle {
-            width: 24px;
-            min-width: 24px;
-
-            height: 24px;
-            min-height: 24px;
-
-            margin: 0;
-            padding: 0;
-
-            display: grid;
-            place-items: center;
-
-            border: 1px solid
-                var(--border-light);
-
-            border-radius: 5px;
-
-            background:
-                var(--input-bg);
-
-            color:
-                var(--muted);
-
-            font-size: 12px;
-            line-height: 1;
-
-            cursor: pointer;
-        }
-
-        body:not(.mobile-app)
-        .saved-targets-collapse-toggle:hover,
-        body:not(.mobile-app)
-        .saved-targets-collapse-toggle:focus-visible {
-            border-color:
-                var(--accent-border);
-
-            background:
-                var(--input-hover-bg);
-
-            color:
-                var(--accent);
-        }
-
-        body:not(.mobile-app)
-        .saved-targets.is-collapsed {
-            width: 205px;
-
-            padding:
-                9px
-                10px;
-        }
-
-        body:not(.mobile-app)
-        .saved-targets.is-collapsed
-        .saved-targets-header {
-            margin-bottom: 0;
-        }
-
-        body:not(.mobile-app)
-        .saved-targets.is-collapsed
-        > .saved-targets-list,
-
-        body:not(.mobile-app)
-        .saved-targets.is-collapsed
-        > .saved-target-options,
-
-        body:not(.mobile-app)
-        .saved-targets.is-collapsed
-        > .saved-target-actions {
-            display: none;
-        }
-    `;
-
-    document.head.appendChild(
-        style
-    );
-}
-
 function loadDesktopSavedTargetsCollapsed() {
 
     try {
 
-        return (
+        const stored =
             localStorage.getItem(
                 SAVED_TARGETS_PANEL_COLLAPSED_KEY
-            ) === 'true'
-        );
+            );
+
+        // On a phone the open panel covers half of the map, so it starts collapsed.
+        return stored === null
+            ? window.matchMedia('(max-width: 750px)').matches
+            : stored === 'true';
 
     } catch (error) {
 
@@ -2561,8 +2447,6 @@ function initDesktopSavedTargetsCollapse() {
     ) {
         return;
     }
-
-    installDesktopSavedTargetsCollapseStyle();
 
     let toggle =
         $('savedTargetsCollapseToggle');
