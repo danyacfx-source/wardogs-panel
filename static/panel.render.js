@@ -3096,9 +3096,9 @@ return function render(_ctx, _cache) {
                                   return (_openBlock(), _createElementBlock("tr", { key: p.steamId }, [
                                     _createElementVNode("td", null, _toDisplayString((playersTablePage - 1) * playersTablePageSize + i + 1), 1),
                                     _createElementVNode("td", null, [_createElementVNode("button", {
-                                      class: "player-name-link",
+                                      class: _normalizeClass(["player-name-link", nickClass(p.steamId)]),
                                       onClick: $event => (openPlayerCard(p, p))
-                                    }, [_createElementVNode("b", null, _toDisplayString(p.name), 1)], 8, _hoisted_336), _createElementVNode("div", _hoisted_337, "[" + _toDisplayString(shortSid(p.steamId)) + "]", 1)]),
+                                    }, [_createElementVNode("b", null, _toDisplayString(p.name), 1)], 10, _hoisted_336), _createElementVNode("div", _hoisted_337, "[" + _toDisplayString(shortSid(p.steamId)) + "]", 1)]),
                                     _createElementVNode("td", null, [(has('move_faction'))
                                       ? (_openBlock(), _createElementBlock("details", _hoisted_338, [_createElementVNode("summary", null, [_createElementVNode("i", { style: _normalizeStyle({background:factionColor(p.faction)}) }, null, 4), _createTextVNode(_toDisplayString(p.faction || 'Без команды'), 1), _cache[147] || (_cache[147] = _createElementVNode("span", null, "⌄", -1))]), _createElementVNode("div", _hoisted_339, [(_openBlock(true), _createElementBlock(_Fragment, null, _renderList(ov.status.factionScores || [], (f) => {
                                           return (_openBlock(), _createElementBlock("button", {

@@ -1115,6 +1115,13 @@ const app = createApp({
       return (this.ov?.status?.factionScores || []).find((faction) => faction.name === name)?.colorHex || KNOWN_FACTION_COLORS[String(name || "").toLowerCase()] || "#777";
     },
 
+    nickClass(steamId) {
+      const meta = this.playerMeta[this.state.sid]?.[steamId];
+      if (!meta) return "";
+      if (meta.rank) return `rank-${meta.rank}`;
+      return meta.vip ? "nick-vip" : "";
+    },
+
     chooseFaction(player, faction, event) {
       event?.currentTarget?.closest("details")?.removeAttribute("open");
       this.moveFaction(player, faction);

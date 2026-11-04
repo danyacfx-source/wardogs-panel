@@ -954,6 +954,12 @@ body[data-panel-mode="monitor"] { background:#080809; }
 .faction-row.rank-admin .faction-name { color:#e0605f; }
 .faction-row.rank-owner .faction-name { color:#ff1f2d; font-weight:800; }
 .faction-row.rank-developer .faction-name { color:#b77dff; font-weight:800; }
+.player-name-link.nick-vip { color:#e8bd5a; }
+.player-name-link.rank-moderator { color:#4fd98a; }
+.player-name-link.rank-admin { color:#e0605f; }
+.player-name-link.rank-owner { color:#ff1f2d; }
+.player-name-link.rank-developer { color:#b77dff; }
+.player-name-link.rank-owner b,.player-name-link.rank-developer b { font-weight:800; }
 .faction-hours { color:#a7a2a0; font-size:13px; }
 .faction-steam { color:#5b84e8; font-size:13px; }
 .faction-score { margin-left:auto; white-space:nowrap; }

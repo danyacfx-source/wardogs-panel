@@ -597,7 +597,7 @@
                   <tr v-for="(p, i) in pagedPlayers" :key="p.steamId">
                     <td>{{ (playersTablePage - 1) * playersTablePageSize + i + 1 }}</td>
                     <td>
-                      <button class="player-name-link" @click="openPlayerCard(p, p)">
+                      <button class="player-name-link" :class="nickClass(p.steamId)" @click="openPlayerCard(p, p)">
                         <b>{{ p.name }}</b>
                       </button>
                       <div class="muted steam">[{{ shortSid(p.steamId) }}]</div>
