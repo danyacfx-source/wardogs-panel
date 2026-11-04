@@ -78,6 +78,8 @@ const ROLE_PRESETS = {
   },
 };
 function pad(n) { return String(n).padStart(2, "0"); }
+const PLAYER_LIST_KEEP_MS = 60000;
+const PLAYER_GONE_KEEP_MS = 20000;
 
 const app = createApp({
   render: window.WARDOGS_RENDER,
@@ -109,6 +111,28 @@ const app = createApp({
       botEvents: [],
       botEventsName: '',
       noAccess: false,
+      navOpen: false,
+      playersView: "live",
+      playersLayout: "board",
+      boardQuery: "",
+      boardOffline: [],
+      boardSearchBusy: false,
+      boardSort: "name",
+      playerMeta: {},
+      playerGrace: {},
+      vipView: "table",
+      auditJson: null,
+      statsPeriods: [{ id: "week", label: "Неделя" }, { id: "last", label: "Прошлая" }, { id: "all", label: "Всё" }, { id: "custom", label: "Период" }],
+      auditSections: [{ id: "", label: "Все разделы" }, { id: "bans", label: "Баны" }, { id: "players", label: "Игроки" }, { id: "vip", label: "VIP и резерв" }, { id: "match", label: "Карта и матч" }, { id: "clans", label: "Кланы" }, { id: "tickets", label: "Тикеты" }, { id: "settings", label: "Настройки" }],
+      reports: {
+        playerStats: { items: [], total: 0, page: 1, perPage: 50, loading: false, error: "", q: "", server: "", scope: "all", sort: "online_seconds", direction: "desc", period: "week", firstDay: "", lastDay: "" },
+        playerNames: { items: [], total: 0, page: 1, perPage: 50, loading: false, error: "", q: "" },
+        matches: { items: [], live: [], total: 0, page: 1, perPage: 50, loading: false, error: "", server: "", player: "" },
+        auditLog: { items: [], total: 0, page: 1, perPage: 50, loading: false, error: "", q: "", section: "", server: "" },
+      },
+      maintenance: { closed: {} },
+      vipPrices: { items: [], saving: false, error: "", maxRub: 1000000 },
+      devSections: { loading: false, error: "", items: [], defaultMessage: "", saving: "" },
       authConfigured: false,
       devAuthEnabled: false,
       busy: false,
@@ -161,6 +185,7 @@ const app = createApp({
       vip: { items: [], count: 0, history: [], loading: false, error: "" },
       vipQuery: "",
       vipFilter: "active",
+      vipTierFilter: "",
       playerSearch: "",
       playerSearchResults: [],
       playerSearchBusy: false,
@@ -179,7 +204,7 @@ const app = createApp({
       selectedPunishmentIds: [],
       playerCardFaction: "",
       playerCardClanId: "",
-      playerCardTab: "overview",
+      playerCardTab: "punishments",
       playerNotes: { items: [], loading: false, error: "", canEdit: false, draft: "" },
       actionDialog: {
         open: false,
@@ -209,6 +234,130 @@ const app = createApp({
     me() { return this.state.me; },
     perms() { return (this.me && this.me.permissions) || []; },
     hasPerms() { return this.perms.length > 0; },
+    // Закрытый раздел текущей вкладки. Владелец работает в нём как обычно.
+    currentMaintenance() { return this.maintenance.closed[this.state.tab] || null; },
+    sectionClosed() { return this.has("owner") ? null : this.currentMaintenance; },
+    boardSortLabel() { return { name: "по имени", kills: "по убийствам", hours: "по часам" }[this.boardSort]; },
+    playerCardSteamId() { return this.playerCard.profile?.steam_id || this.playerCard.live?.steamId || ""; },
+    boardMatches() {
+      const query = this.boardQuery.trim().toLowerCase();
+      if (!query) return [];
+      const matches = [];
+      for (const server of this.state.servers) {
+        for (const player of this.state.ovById[server.id]?.players?.players || []) {
+          if (String(player.name || "").toLowerCase().includes(query) || String(player.steamId || "").includes(query)) {
+            matches.push({ server, player });
+          }
+        }
+      }
+      return matches.slice(0, 30);
+    },
+    factionColumns() {
+      const sid = this.state.sid;
+      const meta = this.playerMeta[sid] || {};
+      const grace = this.playerGrace[sid] || {};
+      const scores = this.ov?.status?.factionScores || [];
+      const columns = new Map(scores.map((item) => [item.name, { name: item.name, color: item.colorHex, score: item.score, players: [] }]));
+      const live = this.ov?.players?.players || [];
+      const seen = new Set(live.map((player) => player.steamId));
+      const add = (player, gone) => {
+        const name = player.faction || "Без стороны";
+        if (!columns.has(name)) columns.set(name, { name, color: "#a7a2a0", score: null, players: [] });
+        columns.get(name).players.push({ ...player, gone, meta: meta[player.steamId] || {} });
+      };
+      live.forEach((player) => add(player, false));
+      Object.values(grace).forEach((player) => { if (!seen.has(player.steamId)) add(player, true); });
+      // По умолчанию порядок по имени: строки не прыгают при каждом опросе, пока ищешь игрока глазами.
+      const sorters = {
+        name: (a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"),
+        kills: (a, b) => (b.kills || 0) - (a.kills || 0) || String(a.steamId).localeCompare(String(b.steamId)),
+        hours: (a, b) => (b.meta.play_seconds || 0) - (a.meta.play_seconds || 0) || String(a.steamId).localeCompare(String(b.steamId)),
+      };
+      return [...columns.values()].filter((column) => column.players.length || column.score != null).map((column) => {
+        column.players.sort(sorters[this.boardSort]);
+        column.admins = column.players.filter((player) => player.meta.admin).length;
+        column.steamHours = column.players.reduce((sum, player) => sum + (player.meta.game_hours || 0), 0);
+        return column;
+      });
+    },
+    matchRows() { return [...this.reports.matches.live, ...this.reports.matches.items]; },
+    // VIP зеркалится на все серверы: одинаковые слоты показываем одним значком.
+    cardVipChips() {
+      const groups = new Map();
+      for (const slot of (this.playerCard.profile?.vip_slots || []).filter((item) => item.active)) {
+        const key = `${slot.tier || 1}:${slot.expires_utc || ""}`;
+        if (!groups.has(key)) groups.set(key, { key, tier: slot.tier || 1, expires: slot.expires_utc, servers: [] });
+        groups.get(key).servers.push(slot.server_id);
+      }
+      return [...groups.values()].map((group) => ({
+        ...group,
+        server: group.servers.length < this.state.servers.length ? group.servers.join(", ") : "",
+      }));
+    },
+    cardKills() {
+      const stats = this.playerCard.activity?.stats;
+      return stats && (stats.kills || stats.deaths) ? stats.kills : (this.playerCard.profile?.kills || 0);
+    },
+    cardDeaths() {
+      const stats = this.playerCard.activity?.stats;
+      return stats && (stats.kills || stats.deaths) ? stats.deaths : (this.playerCard.profile?.deaths || 0);
+    },
+    cardKd() {
+      const ratio = this.cardKills / Math.max(1, this.cardDeaths);
+      return ratio.toFixed(2).replace(".", ",");
+    },
+    cardKillRows() {
+      const activity = this.playerCard.activity;
+      if (!activity) return [];
+      return this.playerCardTab === "teamkills" ? activity.teamkills : activity.kills;
+    },
+    cheaterTone() {
+      const data = this.playerCard.cheater?.data;
+      if (!data || data.score == null) return "";
+      return data.vac_bans > 0 || data.game_bans > 0 ? "bad" : "good";
+    },
+    playerChart() {
+      const byDay = new Map((this.playerCard.activity?.daily || []).map((item) => [item.day, item]));
+      const days = 35;
+      const today = new Date();
+      const bars = [];
+      let maxHours = 0;
+      for (let offset = days - 1; offset >= 0; offset -= 1) {
+        const date = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - offset));
+        const day = date.toISOString().slice(0, 10);
+        const entry = byDay.get(day);
+        const hours = (entry?.play_seconds || 0) / 3600;
+        maxHours = Math.max(maxHours, hours);
+        bars.push({ day, hours, seed: (entry?.seed_seconds || 0) / 3600, label: `${day.slice(8)}.${day.slice(5, 7)}`, offset });
+      }
+      const top = Math.max(2, Math.ceil(maxHours / 2) * 2);
+      const ticks = [];
+      for (let tick = top; tick >= 0; tick -= top > 8 ? Math.ceil(top / 4) : 2) ticks.push(tick);
+      if (ticks[ticks.length - 1] !== 0) ticks.push(0);
+      return {
+        hasData: maxHours > 0,
+        ticks,
+        bars: bars.map((bar) => ({
+          ...bar,
+          height: Math.min(100, (bar.hours / top) * 100),
+          seedShare: bar.hours ? Math.min(100, (bar.seed / bar.hours) * 100) : 0,
+          showLabel: bar.offset % 2 === 0,
+          title: `${bar.label}: ${bar.hours.toFixed(1)} ч, сид ${bar.seed.toFixed(1)} ч`,
+        })),
+      };
+    },
+    vipPriceGroups() {
+      const items = this.vipPrices.items;
+      const groups = [1, 2, 3].map((tier) => ({
+        title: `VIP Tier ${tier}`,
+        hint: { 1: "VIP и резервный слот", 2: "VIP и личный тикет", 3: "VIP, тикет и объявление о входе" }[tier],
+        items: items.filter((item) => item.kind === "personal" && item.tier === tier),
+      }));
+      groups.push({ title: "VIP для клана", hint: "Оформляется в Discord, уровень Tier 1", items: items.filter((item) => item.kind === "clan") });
+      return groups;
+    },
+    devPanelSections() { return this.devSections.items.filter((item) => item.group === "panel"); },
+    devSiteSections() { return this.devSections.items.filter((item) => item.group === "site"); },
     tabs() {
       if (MODE === "monitor") {
         const t = [{ id: "status", label: "Мониторинг" }];
@@ -220,6 +369,7 @@ const app = createApp({
       const t = [{ id: "status", label: "Мониторинг" }];
       const any = (...ps) => ps.some((p) => this.perms.includes(p));
       if (any("players_view", "broadcast", "kick", "kill", "message", "move_faction")) t.push({ id: "players", label: "Игроки" });
+      if (this.perms.includes("players_view")) t.push({ id: "matches", label: "Матчи" });
       if (this.perms.includes("players_view")) t.push({ id: "killfeed", label: "Killfeed" });
       if (any("change_map", "change_lighting", "match_end", "match_restart")) t.push({ id: "controls", label: "Карта / Матч" });
       if (this.perms.length) t.push({ id: "rotation", label: "Ротация" });
@@ -232,8 +382,9 @@ const app = createApp({
       if (this.perms.includes("audit")) t.push({ id: "journal", label: "Журнал" });
       if (any("config_view", "config_edit")) t.push({ id: "config", label: "Конфиг" });
       if (this.perms.includes("roles")) t.push({ id: "staff", label: "Администрация" });
-      if (this.perms.includes("roles")) t.push({ id: "discord", label: "Боты и Discord" });
-      if (any("audit", "roles", "config_view")) t.push({ id: "system", label: "Состояние" });
+      if (this.perms.includes("owner")) t.push({ id: "discord", label: "Боты и Discord" });
+      if (this.perms.includes("owner")) t.push({ id: "system", label: "Состояние" });
+      if (this.perms.includes("owner")) t.push({ id: "dev", label: "Dev" });
       if (this.perms.includes("roles")) t.push({ id: "roles", label: "Права ролей" });
       return t;
     },
@@ -324,6 +475,7 @@ const app = createApp({
     filteredVips() {
       const query = this.vipQuery.trim().toLowerCase();
       return this.vip.items.filter((item) => {
+        if (this.vipTierFilter && String(item.tier || 1) !== this.vipTierFilter) return false;
         if (this.vipFilter === "active" && !item.active) return false;
         if (this.vipFilter === "expired" && item.active) return false;
         if (this.vipFilter === "errors" && item.sync_state !== "error") return false;
@@ -348,6 +500,16 @@ const app = createApp({
   },
 
   watch: {
+    // Права могли забрать, пока панель открыта: не оставляем пользователя на чужой вкладке.
+    perms() {
+      if (MODE === "panel" && this.state.tab !== "server" && !this.tabs.some((t) => t.id === this.state.tab)) {
+        this.state.tab = "status";
+      }
+    },
+    playersView(view) {
+      if (view === "stats") this.loadReport("playerStats");
+      if (view === "names") this.loadReport("playerNames");
+    },
     playersTableQuery() { this.playersTablePage = 1; },
     playersTableSort() { this.playersTablePage = 1; },
     bansQuery() { this.bansPage = 1; },
@@ -356,24 +518,13 @@ const app = createApp({
       if (tab === "notes" && this.playerCard.open) this.loadPlayerNotes();
       if (tab === "clan" && this.playerCard.open && this.has("clans")) this.loadClans();
     },
+    sectionClosed(current, previous) {
+      if (previous && !current) this.loadTabData(this.state.tab);
+      else if (current) this.stopKillfeedPolling();
+    },
     "state.tab"(t) {
-      if (t === 'status') this.loadAttention();
-      if (t === "controls") this.ensureCatalog();
-      if (t === "rotation") this.ensureCatalog();
-      if (t === "audit") { this.loadAudit(); this.loadSiteAudit(); }
-      if (t === "journal") this.loadSiteAudit();
-      if (t === "killfeed") this.startKillfeedPolling();
-      else this.stopKillfeedPolling();
-      if (t === "config") this.ensureConfig();
-      if (t === "staff") this.loadStaff();
-      if (t === "discord") this.loadDiscordAdmin();
-      if (t === "system") this.loadSystemStatus();
-      if (t === "clans") this.loadClans();
-      if (t === "roles") this.loadRoles();
-      if (t === "reserved") this.loadReserved();
-      if (t === "vip") { this.loadVipSlots(); this.loadPayments(); }
-      if (t === "tickets") { this.loadTickets(); this.loadTicketTypes(); }
-      if (t === "server") this.loadRoutes();
+      this.navOpen = false;
+      this.loadTabData(t);
     },
     serverView(v) {
       if (v === "server") this.loadRoutes();
@@ -383,8 +534,9 @@ const app = createApp({
       this.serverApiRoutes = [];
       this.serverBuild = "";
       if (!this.state.ovById[this.state.sid]) this.loadOverview(this.state.sid, true);
+      if (this.sectionClosed) return;
+      if (this.state.tab === "players") this.loadPlayerMeta();
       if (this.state.tab === "audit") { this.loadAudit(); this.loadSiteAudit(); }
-      if (this.state.tab === "journal") this.loadSiteAudit();
       if (this.state.tab === "killfeed") { this.killfeedSetup = null; this.loadKillfeed(); }
       if (this.state.tab === "config") this.loadConfig();
       if (this.state.tab === "rotation") this.ensureCatalog();
@@ -440,6 +592,8 @@ const app = createApp({
         try { data = await r.json(); } catch (e) { /* не JSON */ }
         clearTimeout(timeout);
         vm.panelReachable = true;
+        if (r.status === 401 && url !== "/api/auth/logout") vm.handleUnauthorized();
+        if (r.status === 503 && data?.error?.code === "maintenance") vm.loadMaintenance();
         if (operation) {
           const ok = r.ok && data && data.ok !== false && !data.error;
           Object.assign(operation,{state:ok ? (data.synced === false ? 'pending' : 'confirmed') : 'error', detail: ok ? (data.synced === false ? 'Сохранено, сервер ещё не подтвердил синхронизацию' : 'Запрос подтверждён API') : String(data?.detail || data?.error?.message || `Ошибка ${r.status}`)});
@@ -448,12 +602,14 @@ const app = createApp({
       },
     };
     document.addEventListener("keydown", this.handleGlobalKeydown);
+    document.addEventListener("visibilitychange", this.handleVisibilityChange);
     this._clock = setInterval(()=>{this.clockNow=Date.now();},1000);
-      this._attentionTimer=setInterval(()=>{if(this.booted && !this.noAccess && MODE==='panel') {if(this.state.tab==='status') this.loadAttention();if(this.state.tab==='discord' && !this.discordAdmin.loading) this.loadDiscordAdmin(true);}},30000);
+      this._attentionTimer=setInterval(()=>{if(this.booted && !this.noAccess && !document.hidden && MODE==='panel') {this.loadMaintenance();if(this.state.tab==='status') this.loadAttention();if(this.state.tab==='players' && this.playersView==='live') this.loadPlayerMeta();if(this.state.tab==='discord' && !this.discordAdmin.loading) this.loadDiscordAdmin(true);}},30000);
     this.init();
   },
   beforeUnmount() {
     document.removeEventListener("keydown", this.handleGlobalKeydown);
+    document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     this.stopTimer();
     clearInterval(this._clock);
     clearInterval(this._attentionTimer);
@@ -472,8 +628,8 @@ const app = createApp({
     operationLabel(state) { return {sending:'Отправлено',confirmed:'Подтверждено',pending:'Ожидает синхронизации',unknown:'Результат неизвестен',error:'Ошибка'}[state] || state; },
     async loadAttention() {
       const tasks=[];
-      if(this.has('tickets_view') || this.has('tickets_edit')) tasks.push(this.api.request('GET','/api/tickets').then(r=>{this.overviewAttention.tickets=r.status===200 ? (r.data?.items || []).filter(t=>!['closed','resolved'].includes(t.status)).length : null;}));
-      if(this.has('vip_view') || this.has('vip_edit')) tasks.push(Promise.all(this.state.servers.map(async s=>{const r=await this.api.request('GET',`/api/server/${s.id}/vip-slots`); return r.status===200 ? (r.data.items || []).map(v=>({...v,server_name:s.name,server_id:s.id})) : null;})).then(rows=>{this.overviewAttention.vips=rows.flatMap(r=>r || []);this.overviewAttention.error=rows.some(r=>r===null) ? 'Не все серверы передали сведения VIP' : '';}));
+      if((this.has('tickets_view') || this.has('tickets_edit')) && (this.has('owner') || !this.maintenance.closed.tickets)) tasks.push(this.api.request('GET','/api/tickets').then(r=>{this.overviewAttention.tickets=r.status===200 ? (r.data?.items || []).filter(t=>!['closed','resolved'].includes(t.status)).length : null;}));
+      if((this.has('vip_view') || this.has('vip_edit')) && (this.has('owner') || !this.maintenance.closed.vip)) tasks.push(Promise.all(this.state.servers.map(async s=>{const r=await this.api.request('GET',`/api/server/${s.id}/vip-slots`); return r.status===200 ? (r.data.items || []).map(v=>({...v,server_name:s.name,server_id:s.id})) : null;})).then(rows=>{this.overviewAttention.vips=rows.flatMap(r=>r || []);this.overviewAttention.error=rows.some(r=>r===null) ? 'Не все серверы передали сведения VIP' : '';}));
       await Promise.allSettled(tasks);
     },
     saveViewPreferences() {
@@ -485,10 +641,267 @@ const app = createApp({
       setTimeout(() => this.toasts.shift(), 3500);
     },
     has(p) { return this.perms.includes(p); },
-    permLabel(p) { return PERM_LABELS[p] || p; },
-    permLabel(p) { return PERM_LABELS[p] || p; },
+    permLabel(p) { return p === "owner" ? "Владелец панели" : (PERM_LABELS[p] || p); },
+    _loadTabSections(t) {
+      if (t === "controls") this.ensureCatalog();
+      if (t === "rotation") this.ensureCatalog();
+      if (t === "audit") { this.loadAudit(); this.loadSiteAudit(); }
+      if (t === "journal") this.loadReport("auditLog");
+      if (t === "matches") this.loadReport("matches");
+      if (t === "players") this.loadPlayerMeta();
+      if (t === "players" && this.playersView !== "live") this.loadReport(this.playersView === "stats" ? "playerStats" : "playerNames");
+      if (t === "killfeed") this.startKillfeedPolling();
+      else this.stopKillfeedPolling();
+      if (t === "config") this.ensureConfig();
+      if (t === "staff") this.loadStaff();
+      if (t === "discord") this.loadDiscordAdmin();
+      if (t === "system") this.loadSystemStatus();
+      if (t === "clans") this.loadClans();
+      if (t === "roles") this.loadRoles();
+      if (t === "reserved") this.loadReserved();
+      if (t === "vip") { this.loadVipSlots(); this.loadPayments(); }
+      if (t === "tickets") { this.loadTickets(); this.loadTicketTypes(); }
+      if (t === "server") this.loadRoutes();
+      if (t === "dev") { this.loadDevSections(); this.loadVipPrices(); }
+    },
+    async loadTabData(t) {
+      if (this.sectionClosed) { this.stopKillfeedPolling(); return; }
+      this._loadTabSections(t);
+    },
+    // Один неудачный опрос списка игроков не должен очищать экран: показываем прошлый список,
+    // а если сервер пропустил отдельного игрока, держим его строку ещё немного.
+    keepPlayerList(id, cached, next) {
+      const now = Date.now();
+      const expected = Number(next.status?.players?.current || 0);
+      const list = next.players?.players;
+      const unusable = next.players_visible !== false && next.status && (!list || (!list.length && expected > 0));
+      if (unusable && cached?.players && now - (cached._playersTs || 0) < PLAYER_LIST_KEEP_MS) {
+        next.players = cached.players;
+        next._playersTs = cached._playersTs;
+        return next;
+      }
+      next._playersTs = now;
+      const grace = { ...(this.playerGrace[id] || {}) };
+      const current = new Set((list || []).map((player) => player.steamId));
+      for (const player of cached?.players?.players || []) {
+        if (!current.has(player.steamId) && !grace[player.steamId]) grace[player.steamId] = { ...player, _goneAt: now };
+      }
+      for (const steamId of Object.keys(grace)) {
+        if (current.has(steamId) || now - grace[steamId]._goneAt > PLAYER_GONE_KEEP_MS) delete grace[steamId];
+      }
+      this.playerGrace[id] = next.players_visible === false ? {} : grace;
+      return next;
+    },
+    async loadPlayerMeta() {
+      const sid = this.state.sid;
+      if (!sid || !this.ov?.players_visible) return;
+      const { status, data } = await this.api.request("GET", `/api/server/${encodeURIComponent(sid)}/players/meta`);
+      if (status === 200 && data?.ok) this.playerMeta[sid] = data.players || {};
+    },
+    cycleBoardSort() {
+      const order = ["name", "kills", "hours"];
+      this.boardSort = order[(order.indexOf(this.boardSort) + 1) % order.length];
+    },
+    queueBoardSearch() {
+      clearTimeout(this._boardTimer);
+      this.boardOffline = [];
+      const query = this.boardQuery.trim();
+      if (!query || !this.has("players_view")) return;
+      this.boardSearchBusy = true;
+      this._boardTimer = setTimeout(async () => {
+        const { status, data } = await this.api.request("GET", `/api/players?q=${encodeURIComponent(query)}&limit=20`);
+        if (query !== this.boardQuery.trim()) return;
+        this.boardSearchBusy = false;
+        const online = new Set(this.boardMatches.map((match) => match.player.steamId));
+        this.boardOffline = status === 200 && data?.ok ? (data.items || []).filter((item) => !online.has(item.steam_id)) : [];
+      }, 300);
+    },
+    openBoardMatch(match) {
+      this.state.sid = match.server.id;
+      this.openPlayerCard(match.player, match.player);
+    },
+    reportPages(report) { return Math.max(1, Math.ceil(report.total / report.perPage)); },
+    // Поиск ждёт паузу в наборе, чтобы не отправлять запрос на каждую букву.
+    queueReport(name) {
+      clearTimeout(this._reportTimer);
+      this._reportTimer = setTimeout(() => this.loadReport(name, 1), 300);
+    },
+    reportRequest(name, report) {
+      const params = new URLSearchParams({ page: report.page, per_page: report.perPage });
+      const add = (key, value) => { if (value) params.set(key, value); };
+      if (name === "playerStats") {
+        const [first, last] = this.statsRange(report);
+        add("first_day", first); add("last_day", last); add("q", report.q); add("server", report.server);
+        add("scope", report.scope); add("sort", report.sort); add("direction", report.direction);
+        return `/api/players/stats?${params}`;
+      }
+      if (name === "playerNames") { add("q", report.q); return `/api/players/names?${params}`; }
+      if (name === "matches") { add("server", report.server); add("player", report.player); return `/api/matches?${params}`; }
+      add("q", report.q); add("section", report.section); add("server", report.server);
+      return `/api/audit/search?${params}`;
+    },
+    statsRange(report) {
+      if (report.period === "all") return ["", ""];
+      if (report.period === "custom") return [report.firstDay, report.lastDay];
+      const today = new Date();
+      const iso = (date) => date.toISOString().slice(0, 10);
+      const monday = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - ((today.getUTCDay() + 6) % 7)));
+      if (report.period === "week") return [iso(monday), iso(today)];
+      return [iso(new Date(monday.getTime() - 7 * 86400000)), iso(new Date(monday.getTime() - 86400000))];
+    },
+    async loadReport(name, page) {
+      const report = this.reports[name];
+      if (page) report.page = page;
+      const requestId = (report.requestId || 0) + 1;
+      report.requestId = requestId;
+      report.loading = true;
+      report.error = "";
+      const { status, data } = await this.api.request("GET", this.reportRequest(name, report));
+      // Ответ на устаревший запрос не должен затереть результат более нового поиска.
+      if (requestId !== report.requestId) return;
+      report.loading = false;
+      if (status === 200 && data?.ok) {
+        report.items = data.items || [];
+        report.total = data.total || 0;
+        if (name === "matches") report.live = data.live || [];
+      } else if (status !== 503) {
+        report.error = data?.detail || data?.error?.message || "Не удалось загрузить данные";
+      }
+    },
+    sortPlayerStats(key) {
+      const report = this.reports.playerStats;
+      if (report.sort === key) report.direction = report.direction === "asc" ? "desc" : "asc";
+      else { report.sort = key; report.direction = key === "name" ? "asc" : "desc"; }
+      this.loadReport("playerStats", 1);
+    },
+    setStatsPeriod(period) {
+      const report = this.reports.playerStats;
+      report.period = period;
+      if (period !== "custom" || (report.firstDay && report.lastDay)) this.loadReport("playerStats", 1);
+    },
+    matchDuration(match) {
+      const end = match.ended_utc || this.clockNow / 1000;
+      return match.started_utc ? this.fmtPlaytime(Math.max(0, end - match.started_utc)) : "—";
+    },
+    auditActionLabel(event) {
+      const labels = {
+        "ban.add": "Бан", "ban.remove": "Разбан", "ban.update": "Изменение бана", "ban.expire": "Бан истёк",
+        "rcon.kick": "Кик", "rcon.kill": "Slay", "rcon.message": "Варн", "rcon.move_faction": "Смена стороны",
+        "rcon.change_map": "Смена карты", "rcon.change_lighting": "Смена освещения", "rcon.match_end": "Завершение матча",
+        "rcon.match_restart": "Перезапуск матча", "broadcast": "Объявление", "rotation.update": "Изменение ротации",
+        "dev.vip_prices": "Цены VIP", "vip.ticket": "Личный тикет VIP", "vip.ticket.close": "Личный тикет закрыт автоматически", "vip.save": "Выдача VIP", "vip.delete": "Отзыв VIP", "vip.expire": "VIP истёк", "reserved.add": "Резерв выдан",
+        "reserved.remove": "Резерв снят", "reserved.limit": "Лимит резерва", "roles.update": "Права роли",
+        "config.edit": "Настройки", "config.put": "Конфиг сервера", "dev.maintenance": "Техработы",
+        "player.punishment.hide": "Скрыта запись наказания", "player.punishment.clear": "Очищена история наказаний",
+      };
+      return labels[event] || event;
+    },
+    auditPlayerId(entry) { return /^\d{17}$/.test(entry.detail || ""); },
+    showAuditJson(entry) {
+      let detail = entry.detail;
+      try { detail = JSON.parse(entry.detail); } catch { /* обычный текст */ }
+      this.auditJson = JSON.stringify({ ...entry, detail }, null, 2);
+    },
+    async loadMaintenance() {
+      const { status, data } = await this.api.request("GET", "/api/maintenance");
+      if (status === 200 && data?.ok) this.maintenance.closed = data.closed || {};
+    },
+    async loadVipPrices() {
+      const { status, data } = await this.api.request("GET", "/api/dev/vip-prices");
+      if (status === 200 && data?.ok) {
+        this.vipPrices.items = data.items || [];
+        this.vipPrices.maxRub = data.max_rub || this.vipPrices.maxRub;
+      } else {
+        this.vipPrices.error = data?.detail || "Не удалось загрузить цены";
+      }
+    },
+    async saveVipPrices() {
+      if (this.vipPrices.saving) return;
+      this.vipPrices.saving = true;
+      this.vipPrices.error = "";
+      const items = this.vipPrices.items.map((item) => ({
+        id: item.id, enabled: !!item.enabled, rub: item.rub === "" || item.rub == null ? null : item.rub,
+      }));
+      const { status, data } = await this.api.request("PUT", "/api/dev/vip-prices", { items });
+      this.vipPrices.saving = false;
+      if (status !== 200 || !data?.ok) {
+        this.vipPrices.error = data?.detail || "Не удалось сохранить цены";
+        return;
+      }
+      this.vipPrices.items = data.items || [];
+      if (data.discord?.ok) this.toast("Цены сохранены, сообщение в Discord обновлено", "ok");
+      else this.toast(`Цены сохранены. Discord не обновлён: ${data.discord?.error || "бот недоступен"}`, "warn");
+    },
+    async loadDevSections() {
+      this.devSections.loading = true;
+      this.devSections.error = "";
+      const { status, data } = await this.api.request("GET", "/api/dev/sections");
+      this.devSections.loading = false;
+      if (status !== 200 || !data?.ok) {
+        this.devSections.error = data?.detail || "Не удалось загрузить разделы";
+        return;
+      }
+      this.devSections.defaultMessage = data.default_message || "";
+      this.devSections.items = (data.sections || []).map((item) => ({
+        ...item,
+        draftMessage: item.message || "",
+        draftUntil: item.until_utc ? this.toLocalInput(item.until_utc) : "",
+      }));
+    },
+    toLocalInput(seconds) {
+      const date = new Date(seconds * 1000);
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    },
+    async saveDevSection(item, closed) {
+      if (this.devSections.saving) return;
+      let untilUtc = null;
+      if (closed && item.draftUntil) {
+        const parsed = new Date(item.draftUntil).getTime();
+        if (!Number.isFinite(parsed)) { this.toast("Некорректное время окончания", "err"); return; }
+        untilUtc = parsed / 1000;
+      }
+      this.devSections.saving = item.id;
+      const { status, data } = await this.api.request("PUT", `/api/dev/sections/${encodeURIComponent(item.id)}`, {
+        closed, message: item.draftMessage, until_utc: untilUtc,
+      });
+      this.devSections.saving = "";
+      if (status !== 200 || !data?.ok) {
+        this.toast(data?.detail || "Не удалось сохранить", "err");
+        return;
+      }
+      this.toast(closed ? `«${item.label}»: закрыт на техработы` : `«${item.label}»: снова открыт`, closed ? "warn" : "ok");
+      this.maintenance.closed = data.closed || {};
+      await this.loadDevSections();
+    },
+    // Скрытая вкладка не опрашивает сервер; при возврате данные обновляются сразу.
+    handleVisibilityChange() {
+      if (!document.hidden && this.booted && !this.noAccess && this._timer) this.refreshAll(true);
+    },
+    async handleUnauthorized() {
+      if (MODE !== "panel" || this.noAccess || this._authCheck) return;
+      this._authCheck = true;
+      try {
+        // Обновление ролей меняет сессию: запрос со старой cookie мог получить 401, хотя вход в порядке.
+        const response = await fetch("/api/session", { credentials: "same-origin" });
+        const data = response.ok ? await response.json() : null;
+        if (data?.ok && !data.authed) {
+          this.state.authed = false;
+          this.state.me = null;
+          this.noAccess = true;
+          this.toast("Сессия завершена, войдите снова", "warn");
+        }
+      } catch {
+        // Сеть недоступна: об этом уже сообщает индикатор связи.
+      } finally {
+        this._authCheck = false;
+      }
+    },
     permHint(p) { return PERM_HINTS[p] || p; },
     handleGlobalKeydown(event) {
+      if (event.key === "/" && this.state.tab === "players" && !["INPUT", "TEXTAREA", "SELECT"].includes(event.target?.tagName)) {
+        const input = document.getElementById("faction-search-input");
+        if (input) { event.preventDefault(); input.focus(); return; }
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         document.querySelector(".admin-search input")?.focus();
@@ -605,6 +1018,10 @@ const app = createApp({
     },
 
     async init() {
+      if (MODE === "monitor" && ["#community", "#support"].includes(location.hash)) {
+        location.replace("/community");
+        return;
+      }
       const { data } = await this.api.request("GET", "/api/session");
       if (!data || !data.ok) { this.booted = true; return; }
       this.state.authed = !!data.authed;
@@ -618,6 +1035,8 @@ const app = createApp({
       if (MODE === "panel" && (!this.state.authed || !this.hasPerms)) {
         this.noAccess = true;
         this.booted = true;
+        // Если права выдадут или Discord снова ответит, панель откроется без перезагрузки вручную.
+        if (this.state.authed) this.startTimer();
         return;
       }
 
@@ -625,7 +1044,8 @@ const app = createApp({
       if (q.get("bind") === "discord" && q.get("ok")) this.toast("Discord привязан", "ok");
       else if (q.get("bind") === "discord") this.toast(`Привязка Discord не удалась (${q.get("fail") || "?"})`, "err");
       else if (q.get("auth") === "steam" && q.get("fail")) this.toast("Вход через Steam не удался", "err");
-      if (MODE === "panel") this.loadRoles();
+      if (MODE === "panel" && this.has("roles")) this.loadRoles();
+      if (MODE === "panel") await this.loadMaintenance();
       if (location.hash === "#profile" && this.state.authed) this.openProfileCard();
       if (MODE === "panel") {
         try { const saved=JSON.parse(sessionStorage.getItem('wardogs-view') || '{}'); for(const k of ['playersTableQuery','playersTableSort','bansQuery','bansSort','vipQuery','vipFilter','ticketQuery','ticketStatusFilter','ticketPriorityFilter']) if(typeof saved[k]==='string') this[k]=saved[k]; } catch {}
@@ -634,7 +1054,7 @@ const app = createApp({
       }
       this.booted = true;
       this.startTimer();
-      this.refreshAll(true);
+      this.refreshAll(false);
     },
 
     loginSteam() { location.href = "/api/auth/steam/start"; },
@@ -647,13 +1067,16 @@ const app = createApp({
     goPanel() { location.href = "/panel"; },
     goProfile() { this.openProfileCard(); },
     async refreshRoles(silent = false) {
-      this.busy = true;
+      // Фоновое обновление не должно блокировать действия пользователя через busy.
+      if (!silent) this.busy = true;
       const { data } = await this.api.request("POST", "/api/auth/refresh");
-      this.busy = false;
+      if (!silent) this.busy = false;
       if (data && data.authed) {
+        const wasLocked = this.noAccess;
         this.state.me = data;
         if (!silent) this.toast(this.perms.length ? "Права обновлены" : "Роли обновлены, права не выданы", this.perms.length ? "ok" : "warn");
         if (MODE === "panel" && !this.hasPerms) this.noAccess = true;
+        else if (MODE === "panel" && wasLocked) location.reload();
       } else {
         if (!silent) this.toast("Не удалось обновить роли", "err");
       }
@@ -666,6 +1089,7 @@ const app = createApp({
 
     selectServer(id) {
       this.state.sid = id;
+      this.navOpen = false;
       if (MODE === "panel") { this.serverView = "overview"; this.state.tab = "server"; }
     },
 
@@ -719,9 +1143,9 @@ const app = createApp({
 
     startTimer() {
       this.stopTimer();
-      this._timer = setInterval(() => { if (!this.noAccess) this.refreshAll(false); }, this.state.refresh * 1000);
+      this._timer = setInterval(() => { if (!this.noAccess && !document.hidden) this.refreshAll(false); }, this.state.refresh * 1000);
       if (this.state.authed && this.authConfigured) {
-        this._roleTimer = setInterval(() => this.refreshRoles(true), 60 * 1000);
+        this._roleTimer = setInterval(() => { if (!document.hidden) this.refreshRoles(true); }, 60 * 1000);
       }
     },
     stopTimer() {
@@ -749,10 +1173,17 @@ const app = createApp({
     },
 
     async refreshAll(force) {
+      // Опрос не ждёт все серверы разом: зависший сервер не должен задерживать остальные.
+      if (!force) {
+        for (const server of this.state.servers) {
+          this.loadOverview(server.id, false).then(() => { this.lastUpdate = new Date().toLocaleTimeString("ru-RU"); });
+        }
+        return;
+      }
       if (this.state.refreshing) return;
       this.state.refreshing = true;
       try {
-        await Promise.allSettled(this.state.servers.map((s) => this.loadOverview(s.id, force)));
+        await Promise.allSettled(this.state.servers.map((s) => this.loadOverview(s.id, true)));
         this.lastUpdate = new Date().toLocaleTimeString("ru-RU");
       } finally {
         this.state.refreshing = false;
@@ -762,13 +1193,21 @@ const app = createApp({
     async loadOverview(id, force) {
       const cached = this.state.ovById[id];
       if (cached && !force && Date.now() - (cached._ts || 0) < 1500) return;
+      this._overviewInFlight = this._overviewInFlight || {};
+      if (this._overviewInFlight[id] && !force) return;
+      this._overviewInFlight[id] = true;
       try {
-        const { status, data } = await this.api.request("GET", `/api/server/${id}/overview`);
+        const { status, data } = await this.api.request("GET", `/api/server/${id}/overview${force ? "?fresh=1" : ""}`);
         const ok=status===200 && data && data.ok!==false && !data.error;
         this.connections[id]={ok:!!ok,success:ok ? Date.now() : this.connections[id]?.success || null,detail:ok ? '' : data?.error?.message || data?.detail || 'Не удалось получить состояние сервера'};
-        if(ok || !cached?.status) this.state.ovById[id]=data?.status || data?.error ? {...data,_ts:Date.now()} : {error:{message:'Сервер недоступен'},_ts:Date.now()};
+        if(ok || !cached?.status) {
+          const next=data?.status || data?.error ? {...data,_ts:Date.now()} : {error:{message:'Сервер недоступен'},_ts:Date.now()};
+          this.state.ovById[id]=this.keepPlayerList(id,cached,next);
+        }
       } catch {
         this.connections[id]={ok:false,success:this.connections[id]?.success || null,detail:'Нет связи с панелью'};
+      } finally {
+        this._overviewInFlight[id] = false;
       }
     },
 
@@ -796,6 +1235,45 @@ const app = createApp({
         this.playerSearchBusy = false;
       }
     },
+    async loadPlayerActivity(steamId, requestId) {
+      const { status, data } = await this.api.request("GET", `/api/players/${encodeURIComponent(steamId)}/activity`);
+      if (requestId !== this._playerRequestId || !this.playerCard.profile) return;
+      if (status === 200 && data?.ok) this.playerCard.activity = data;
+      else this.playerCard.activity = { daily: [], sessions: [], matches: [], kills: [], teamkills: [], seed_seconds: 0, seed_balance: null, clan_vip_until: null, wins: 0, losses: 0, win_rate: null, rating: null, paid_tier: 0, paid_until: null, stats: { kills: 0, deaths: 0, teamkills: 0, headshots: 0 } };
+    },
+    fmtHours(seconds) { return `${(Number(seconds || 0) / 3600).toFixed(1).replace(".", ",")} ч`; },
+    fmtThousands(value) { return Number(value || 0).toLocaleString("ru-RU"); },
+    fmtDay(seconds) { return new Date(seconds * 1000).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }); },
+    cardServerName(id) { return this.state.servers.find((server) => server.id === id)?.name || id || "панель"; },
+    punishmentShort(event) { return { "ban.add": "BAN", "ban.remove": "UNBAN", "rcon.kick": "KICK", "rcon.kill": "SLAY", "rcon.message": "WARN" }[event] || event; },
+    punishmentStatus(status) { return { active: "Действует", expired: "Истёк", removed: "Разбанен", replaced: "Заменён" }[status] || ""; },
+    punishmentTerm(item) {
+      if (!item.expires_utc) return item.reason ? "навсегда" : "срок не указан";
+      const days = Math.max(0, (item.expires_utc - item.timestamp_utc) / 86400);
+      return days >= 1 ? `${Math.round(days)} д` : `${Math.max(1, Math.round(days * 24))} ч`;
+    },
+    killKind(kill) {
+      if (kill.suicide) return "СУИЦИД";
+      if (kill.teamkill) return "ТК";
+      return kill.victim_id === this.playerCard.profile?.steam_id ? "СМЕРТЬ" : "УБИЙСТВО";
+    },
+    killTitle(kill) {
+      if (kill.suicide) return kill.victim_name || "Игрок";
+      if (kill.victim_id === this.playerCard.profile?.steam_id) return kill.killer_name || "Окружение";
+      return kill.victim_name || "Игрок";
+    },
+    async loadPlayerSteam(steamId, requestId) {
+      const { status, data } = await this.api.request("GET", `/api/players/${encodeURIComponent(steamId)}/steam`);
+      if (requestId !== this._playerRequestId || !this.playerCard.profile) return;
+      if (status === 200 && data?.ok) {
+        this.playerCard.profile.avatar_url = data.avatar_url || "";
+        this.playerCard.profile.steam_profile_url = data.steam_profile_url;
+        this.playerCard.profile.steam = data.steam;
+        this.playerCard.profile.game_hours = data.game_hours;
+      } else {
+        this.playerCard.profile.steam = { available: false };
+      }
+    },
     async openPlayerCard(playerOrSteamId, live = null) {
       const steamId = typeof playerOrSteamId === "string" ? playerOrSteamId : playerOrSteamId?.steamId;
       if (!steamId) return;
@@ -803,7 +1281,7 @@ const app = createApp({
       const requestId=(this._playerRequestId || 0)+1; this._playerRequestId=requestId;
       live=live || (this.ov?.players?.players || []).find(p=>p.steamId===steamId) || null;
       this.playerSearchResults = [];
-      this.playerCardTab = "overview";
+      this.playerCardTab = "punishments";
       this.playerCardClanId = "";
       this.playerNotes = { items: [], loading: false, error: "", canEdit: false, draft: "" };
       this.selectedPunishmentIds = [];
@@ -856,7 +1334,12 @@ const app = createApp({
         this.playerCard.error = data?.detail || "Карточка игрока пока пуста";
       }
       this.playerCard.loading = false;
-      if (this.playerCard.profile) this.loadPlayerCheaterCheck(steamId, requestId);
+      if (this.playerCard.profile) {
+        this.loadPlayerCheaterCheck(steamId, requestId);
+        this.loadPlayerSteam(steamId, requestId);
+        this.loadPlayerActivity(steamId, requestId);
+        if (this.has("player_notes")) this.loadPlayerNotes();
+      }
     },
     async loadPlayerCheaterCheck(steamId, requestId) {
       this.playerCard.cheater = { loading: true, configured: true, reason: "", data: null };
@@ -871,7 +1354,7 @@ const app = createApp({
     closePlayerCard() {
       this._playerRequestId=(this._playerRequestId || 0)+1;
       this._playerReturnFocus?.focus?.({preventScroll:true});
-      this.playerCardTab = "overview";
+      this.playerCardTab = "punishments";
       this.playerCardFaction = "";
       this.playerCardClanId = "";
       this.playerNotes = { items: [], loading: false, error: "", canEdit: false, draft: "" };
@@ -1417,6 +1900,18 @@ const app = createApp({
       if (item.sync_state === "synced") return "синхронизирован";
       return "ожидает синхронизации";
     },
+    vipTierHint(tier) {
+      return {
+        2: "VIP и личный тикет с администрацией",
+        3: "VIP, личный тикет и объявление о входе в игре",
+      }[tier] || "VIP";
+    },
+    async openVipTicket(item) {
+      const { status, data } = await this.api.request("POST", `/api/players/${encodeURIComponent(item.steam_id)}/vip-ticket`, {});
+      if (status !== 200 || !data?.ok) return this.toast(data?.detail || "Не удалось открыть тикет", "err");
+      if (!data.ticket?.ok) return this.toast(`Личный тикет не создан: ${data.ticket?.error || "бот недоступен"}`, "warn");
+      this.toast(data.ticket.created ? "Личный тикет создан в Discord" : "Личный тикет уже открыт", "ok");
+    },
     async saveVipSlot(item = null) {
       const values = await this.openActionDialog({
         title: item ? "Изменить VIP-слот" : "Выдать VIP-слот",
@@ -1425,6 +1920,11 @@ const app = createApp({
         fields: [
           { key: "steam_id", label: "SteamID64", required: true, validator: "steam64", maxLength: 17, value: item?.steam_id || "", placeholder: "7656119…" },
           { key: "display_name", label: "Игрок", maxLength: 120, value: item?.display_name || "", placeholder: "Ник или комментарий" },
+          { key: "tier", label: "Уровень VIP", type: "select", value: String(item?.tier || 1), options: [
+            { value: "1", label: "Tier 1 — VIP" },
+            { value: "2", label: "Tier 2 — VIP и личный тикет с администрацией" },
+            { value: "3", label: "Tier 3 — как Tier 2 и объявление о входе в игре" },
+          ] },
           { key: "expires_date", label: "Действует до", type: "date", value: this.vipDateInput(item?.expires_utc), placeholder: "пусто = бессрочно" },
           { key: "note", label: "Заметка", type: "textarea", maxLength: 500, value: item?.note || "", placeholder: "Основание выдачи, покупка, событие…" },
         ],
@@ -1444,10 +1944,12 @@ const app = createApp({
           display_name: values.display_name,
           expires_utc: expiresUtc,
           note: values.note,
+          tier: Number(values.tier) || 1,
         },
       );
       if (status === 200 && data?.ok) {
         await this.loadVipSlots();
+        if (data.ticket && !data.ticket.ok) this.toast(`Личный тикет не создан: ${data.ticket.error}`, "warn");
         this.toast(data.synced ? "VIP выдан и синхронизирован" : `VIP сохранён: ${data.warning || "нужна синхронизация"}`, data.synced ? "ok" : "warn");
       } else {
         this.toast(data?.detail || data?.error?.message || "Не удалось сохранить VIP", "err");
@@ -1516,7 +2018,10 @@ const app = createApp({
       this.ticketTypes.error = "";
       try {
         const { status, data } = await this.api.request("GET", "/api/ticket-types");
-        if (status === 200 && data?.ok) this.ticketTypes.items = data.types || [];
+        if (status === 200 && data?.ok) {
+          this.ticketTypes.items = data.types || [];
+          if (data.available === false) this.ticketTypes.error = "Типы тикетов появятся после первого запуска Discord-бота";
+        }
         else this.ticketTypes.error = data?.detail || "Не удалось загрузить типы тикетов";
       } finally {
         this.ticketTypes.loading = false;
@@ -1860,6 +2365,7 @@ const app = createApp({
     },
 
     async ensureCatalog() {
+      if (MODE !== "panel" || !(this.has("change_map") || this.has("change_lighting"))) return;
       if (Object.keys(this.catalog.maps).length || !this.state.sid) return;
       const { data } = await this.api.request("GET", `/api/server/${this.state.sid}/catalog`);
       if (data && data.ok) {
@@ -1902,6 +2408,7 @@ const app = createApp({
     punishmentLabel(event) {
       return {
         "ban.add": "Бан выдан",
+        "rcon.message": "Варн",
         "ban.remove": "Бан снят",
         "rcon.kick": "Кик с сервера",
         "rcon.kill": "Slay",
@@ -1978,10 +2485,10 @@ const app = createApp({
     },
     async sendMsg(p) {
       const values = await this.openActionDialog({
-        title: `Сообщение для ${p.name}`,
-        message: `SteamID64: ${p.steamId}`,
+        title: `Варн для ${p.name}`,
+        message: `Игрок получит сообщение на сервере, запись появится в истории наказаний. SteamID64: ${p.steamId}`,
         confirmText: "Отправить",
-        fields: [{ key: "message", label: "Сообщение", type: "textarea", required: true, maxLength: 2000, placeholder: "Введите сообщение игроку" }],
+        fields: [{ key: "message", label: "Сообщение", type: "textarea", required: true, maxLength: 2000, placeholder: "Текст предупреждения" }],
       });
       if (!values) return;
       this.act(`/api/server/${this.state.sid}/players/${p.steamId}/message`, "POST", { message: values.message });
@@ -2196,7 +2703,7 @@ const app = createApp({
     startKillfeedPolling() {
       this.stopKillfeedPolling();
       this.loadKillfeed();
-      this.killfeedTimer = setInterval(() => this.loadKillfeed(), 5000);
+      this.killfeedTimer = setInterval(() => { if (!document.hidden) this.loadKillfeed(); }, 5000);
     },
     stopKillfeedPolling() {
       if (this.killfeedTimer) {
@@ -2233,7 +2740,7 @@ const app = createApp({
       if (!this.cfg.loaded) await this.loadConfig();
     },
     async loadRoutes() {
-      if (!this.state.sid) return;
+      if (!this.state.sid || !this.has("config_view")) return;
       const { status, data } = await this.api.request("GET", `/api/server/${this.state.sid}/routes`);
       if (status === 200 && data?.ok) {
         this.serverApiRoutes = data.routes || [];

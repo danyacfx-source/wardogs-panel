@@ -1,5 +1,6 @@
 """Покупка VIP за баллы сидинга: читает wardogs_v2.db бота, цены в site.db."""
 
+import json
 import sqlite3
 import time
 import uuid
@@ -88,6 +89,39 @@ def get_balance(discord_id: str) -> dict | None:
         return dict(row) if row else None
     finally:
         c.close()
+
+
+def get_player_summary(steam_id: str, discord_id: str = "") -> dict:
+    """Бонусы, время сида и срок кланового VIP из базы бота. Пусто, если базы или записи нет."""
+    summary = {"balance": None, "seed_seconds": 0, "clan_vip_until": None, "paid_tier": 0, "paid_until": None}
+    c = _seed_conn()
+    if not c:
+        return summary
+    try:
+        row = c.execute(
+            "SELECT discord_id, balance, total_seconds FROM seed_users WHERE steam_id = ? AND linked = 1",
+            (steam_id,),
+        ).fetchone()
+        if row:
+            summary["balance"] = int(row["balance"] or 0)
+            summary["seed_seconds"] = int(row["total_seconds"] or 0)
+            discord_id = discord_id or str(row["discord_id"] or "")
+        if discord_id.isdigit():
+            vip = c.execute(
+                "SELECT MAX(ends_at) AS ends_at FROM donations_vip "
+                "WHERE user_id = ? AND product_id LIKE 'clan_%' AND ends_at > ?",
+                (int(discord_id), int(time.time() * 1000)),
+            ).fetchone()
+            if vip and vip["ends_at"]:
+                summary["clan_vip_until"] = int(vip["ends_at"]) / 1000
+            state = c.execute("SELECT value FROM seed_system_state WHERE key = 'donation_feed'").fetchone()
+            entry = (json.loads(state["value"]).get("vip") or {}).get(discord_id) if state else None
+            if entry and int(entry.get("endsAt") or 0) > time.time() * 1000:
+                summary["paid_tier"] = int(entry.get("tier") or 1)
+                summary["paid_until"] = int(entry["endsAt"]) / 1000
+    finally:
+        c.close()
+    return summary
 
 
 def purchase_vip(discord_id: str, sku: str, cost: int, duration: int) -> dict:

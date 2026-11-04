@@ -14,6 +14,9 @@ except ImportError:
 
 log = logging.getLogger("monitor")
 
+# Вызывается со свежим списком игроков каждой проверки сервера; задаёт main.
+players_hook = None
+
 
 async def _notify(text):
     if not config.ALERT_WEBHOOK_URL:
@@ -71,6 +74,8 @@ async def check_servers(pool):
                         status_players.get("max", 0),
                         player_list,
                     )
+                    if players_hook is not None:
+                        await players_hook(srv, player_list)
             except Exception:
                 log.exception("Не удалось записать срез мониторинга для %s", srv.id)
         return {"id": srv.id, "ok": online, "detail": detail if not online else None}

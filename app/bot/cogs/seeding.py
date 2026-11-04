@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import io
 import json
+import importlib
 import logging
 import re
 import secrets
@@ -112,14 +113,9 @@ class SeedShopView(discord.ui.View):
             await cog._vip_purchase(interaction, sku)
         return _callback
 
-DONATION_PRODUCTS = {
-    "personal_1": {"kind": "personal", "amount": 50000, "seats": 1, "months": 1},
-    "personal_3": {"kind": "personal", "amount": 120000, "seats": 1, "months": 3},
-    "personal_12": {"kind": "personal", "amount": 480000, "seats": 1, "months": 12},
-    "clan_10": {"kind": "clan", "amount": 450000, "seats": 10, "months": 1},
-    "clan_20": {"kind": "clan", "amount": 850000, "seats": 20, "months": 1},
-    "clan_30": {"kind": "clan", "amount": 1200000, "seats": 30, "months": 1},
-}
+# Состав тарифа определяется его ID. Цена не проверяется по таблице: её меняет владелец,
+# а заказ подписан и хранит сумму, поэтому сверяется оплата с суммой самого заказа.
+DONATION_PRODUCTS = importlib.import_module("app.vip_catalog").PRODUCTS
 
 
 def _parse_clock(text: str, default_minutes: int) -> int:
@@ -283,8 +279,9 @@ def _validated_vip_event(event: dict, secret: str) -> dict | None:
     if (
         order.get("id") != order_id
         or order.get("kind") != product["kind"]
-        or order.get("amountKopecks") != product["amount"]
-        or gross != product["amount"]
+        or type(order.get("amountKopecks")) is not int
+        or order["amountKopecks"] <= 0
+        or gross != order["amountKopecks"]
         or not SNOWFLAKE_RE.match(str(order.get("buyerId") or ""))
         or not isinstance(order.get("createdAt"), int)
         or not isinstance(order.get("expiresAt"), int)
@@ -303,6 +300,7 @@ def _validated_vip_event(event: dict, secret: str) -> dict | None:
         "operationId": op_id,
         "recipients": order["recipients"],
         "months": product["months"],
+        "tier": product["tier"],
         "paidAt": ts * 1000,
     }
 
@@ -383,6 +381,7 @@ class DonationFeedService:
         self.state.setdefault("offset", 0)
         self.state.setdefault("orders", {})
         self.state.setdefault("vip", {})
+        self.state.setdefault("pendingTickets", [])
         self.last_success = 0.0
         self.running = False
 
@@ -418,11 +417,18 @@ class DonationFeedService:
             return False
         self.state["orders"][grant["orderId"]] = grant["operationId"]
         for discord_id in grant["recipients"]:
-            starts_at = max(grant["paidAt"], int((self.state["vip"].get(discord_id) or {}).get("endsAt") or 0))
+            previous = self.state["vip"].get(discord_id) or {}
+            starts_at = max(grant["paidAt"], int(previous.get("endsAt") or 0))
+            # Продление меньшим тарифом не снижает уровень, пока прошлый VIP ещё действует.
+            still_active = int(previous.get("endsAt") or 0) > grant["paidAt"]
+            tier = max(grant["tier"], int(previous.get("tier") or 1) if still_active else 1)
             self.state["vip"][discord_id] = {
                 "endsAt": _calendar_months(starts_at, grant["months"]),
                 "orderId": grant["orderId"],
+                "tier": tier,
             }
+            if tier >= 2:
+                self.state["pendingTickets"].append({"discordId": str(discord_id), "tier": tier})
         return True
 
     async def refresh(self, session: aiohttp.ClientSession) -> int:
@@ -1702,8 +1708,27 @@ class SeedingCog(commands.Cog):
                 granted = await self.donations.refresh(session)
             if granted:
                 log.info("donation_feed granted=%d", granted)
+            await self._open_paid_vip_tickets()
         except Exception as e:
             log.warning("donation_feed_unavailable: %s", e)
+
+    async def _open_paid_vip_tickets(self):
+        pending = self.donations.state.get("pendingTickets") or []
+        if not pending:
+            return
+        cog = self.bot.get_cog("TicketCog")
+        if cog is None:
+            return
+        for item in list(pending):
+            try:
+                result = await cog.panel_open_vip_ticket({"discord_id": item["discordId"], "tier": item["tier"]})
+                if not result.get("ok"):
+                    log.warning("Личный тикет %s не создан: %s", item["discordId"], result.get("error"))
+            except Exception:
+                log.exception("Сбой создания личного тикета %s", item.get("discordId"))
+            # Не повторяем бесконечно: администратор может открыть тикет кнопкой в панели.
+            pending.remove(item)
+        seed_set_state("donation_feed", self.donations.state)
 
     @donation_loop.before_loop
     async def _before_donation_loop(self):

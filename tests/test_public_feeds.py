@@ -55,7 +55,7 @@ def test_clan_sync_hmac_roundtrip(monkeypatch, tmp_path):
         good = _sign(secret, str(int(time.time())), CLAN_BODY)
         response = client.post("/api/public/clan-sync", content=CLAN_BODY, headers=good)
         assert response.status_code == 200, response.text
-        assert response.json() == {"ok": True, "clans": 1}
+        assert response.json() == {"ok": True, "clans": 1, "rejected": 2}
 
         # публичная отдача
         response = client.get("/api/public/clans-registry")

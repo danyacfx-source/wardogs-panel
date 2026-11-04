@@ -45,6 +45,16 @@ for _token in re.split(r"[,;\s]+", os.environ.get("WARDOGS_ADMIN_IPS") or ""):
         ADMIN_IPS.append(ipaddress.ip_network(_token, strict=False))
     except ValueError:
         print(f"WARNING: WARDOGS_ADMIN_IPS: skipped invalid entry {_token!r}", file=sys.stderr)
+# SteamID64 владельцев панели: только они видят служебные разделы. Список хранится
+# вне базы, поэтому его нельзя изменить из панели, даже имея право управлять ролями.
+OWNER_STEAM_IDS = set()
+for _token in re.split(r"[,;\s]+", os.environ.get("WARDOGS_OWNER_STEAM_IDS") or ""):
+    if not _token:
+        continue
+    if re.fullmatch(r"\d{17}", _token):
+        OWNER_STEAM_IDS.add(_token)
+    else:
+        print(f"WARNING: WARDOGS_OWNER_STEAM_IDS: skipped invalid entry {_token!r}", file=sys.stderr)
 DB_PATH = BASE_DIR / (os.environ.get("WARDOGS_DB") or "site.db")
 
 
@@ -150,6 +160,14 @@ ALLOWED_HOSTS = list(dict.fromkeys(
 ALLOWED_HOSTS = [host for host in ALLOWED_HOSTS if host]
 
 STEAM_API_KEY = (os.environ.get("STEAM_API_KEY") or "").strip()
+# Объявление в игре при входе игрока с VIP Tier 3. {name} — ник. Пусто — объявлений нет.
+VIP_JOIN_MESSAGE = (
+    os.environ["WARDOGS_VIP_JOIN_MESSAGE"].strip()
+    if "WARDOGS_VIP_JOIN_MESSAGE" in os.environ
+    else "Игрок с VIP Tier 3 {name} зашёл на сервер"
+)
+# ID игры WARDOGS в Steam: по нему берётся наигранное время игрока.
+STEAM_APP_ID = (os.environ.get("WARDOGS_STEAM_APP_ID") or "1867240").strip()
 STEAM_REGRESSION = int(os.environ.get("STEAM_REGRESSION") or 0)
 # Необязательно: ключ cheatercheck.io (cc_live_...). Без него блок в карточке игрока скрыт.
 CHEATERCHECK_API_KEY = (os.environ.get("CHEATERCHECK_API_KEY") or "").strip()

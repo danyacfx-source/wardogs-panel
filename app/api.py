@@ -16,6 +16,7 @@ import logging
 import math
 import re
 import secrets
+import sqlite3
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -29,6 +30,8 @@ try:
     from . import config, db
     from . import discord as dmod
     from . import donate
+    from . import maintenance
+    from . import vip_catalog
     from . import disclog
     from . import seed_store
     from . import steam as steam_mod
@@ -52,6 +55,8 @@ except ImportError:
     import db
     import discord as dmod
     import donate
+    import maintenance
+    import vip_catalog
     import disclog
     import seed_store
     import steam as steam_mod
@@ -78,14 +83,6 @@ log = logging.getLogger("api")
 router = APIRouter(prefix="/api")
 
 # A draft order never grants access: only a future verified provider receipt may do so.
-VIP_PLANS = [
-    {"id":"personal-1","name":"Личный · 1 месяц","amount":500,"months":1,"seats":1},
-    {"id":"personal-3","name":"Личный · 3 месяца","amount":1200,"months":3,"seats":1},
-    {"id":"personal-12","name":"Личный · 12 месяцев","amount":4800,"months":12,"seats":1},
-    {"id":"clan-10","name":"Клан · 10 участников","amount":4500,"months":1,"seats":10},
-    {"id":"clan-20","name":"Клан · 20 участников","amount":8500,"months":1,"seats":20},
-    {"id":"clan-30","name":"Клан · 30 участников","amount":12000,"months":1,"seats":30},
-]
 
 
 @router.get('/vip/orders')
@@ -96,7 +93,7 @@ async def vip_orders(request: Request):
         item['pay_url'] = _vip_pay_url(item) if item['status'] == 'awaiting_payment' else ''
     return {
         'ok': True,
-        'plans': VIP_PLANS,
+        'plans': vip_catalog.panel_plans(),
         'items': items,
         'provider_connected': bool(config.YOOMONEY_WALLET),
         'pay_page': f'{config.PUBLIC_URL}/donate/vip/',
@@ -113,6 +110,7 @@ def _vip_pay_url(order) -> str:
 async def _grant_vip_slots(order):
     """Выдаёт VIP-слоты получателям заказа. Ошибка основного сервера поднимается наружу."""
     expires_utc = time.time() + float(order.get('months') or 1) * 30 * 86400
+    tier = vip_catalog.tier_of_plan(order.get('plan_id'))
     results = []
     for steam_id in order.get('recipients') or []:
         db_user = await db.get_user(steam_id)
@@ -124,6 +122,8 @@ async def _grant_vip_slots(order):
             f"заказ {order['id']}",
             order.get('actor_steam_id') or '',
         )
+        if tier > 1:
+            await db.raise_vip_tier(order['server_id'], steam_id, tier)
         synced, error = await _sync_vip_record(item, add=True)
         results.append({'steam_id': steam_id, 'synced': synced, 'error': error})
         # VIP действует на все серверы: дублируем entitlement и managed-запись.
@@ -136,6 +136,8 @@ async def _grant_vip_slots(order):
                     f"заказ {order['id']}",
                     order.get('actor_steam_id') or '',
                 )
+                if tier > 1:
+                    await db.raise_vip_tier(other.id, steam_id, tier)
                 other_synced, other_error = await _sync_vip_record(other_item, add=True)
                 if not other_synced:
                     log.warning(
@@ -172,6 +174,13 @@ async def fulfill_vip_order(order, operation_id: str = ""):
     issued = all(item['synced'] for item in results)
     if issued:
         await db.mark_vip_order(order['id'], 'fulfilled', expected='paid')
+    tier = vip_catalog.tier_of_plan(order.get('plan_id'))
+    if tier >= 2:
+        # Оплата уже принята: сбой при создании тикета не должен её откатывать.
+        for item in results:
+            ticket = await _open_vip_ticket(item['steam_id'], tier)
+            if not ticket.get('ok'):
+                log.warning("Личный тикет %s не создан: %s", item['steam_id'], ticket.get('error'))
     detail = order['id'] + (f':{operation_id}' if operation_id else '')
     if issued:
         detail += f":{len(results)} выдано"
@@ -193,7 +202,8 @@ async def fulfill_vip_order(order, operation_id: str = ""):
 async def vip_order_create(request: Request):
     user = await _require_perm(request, 'vip_edit')
     payload = await _validated(request, VipOrderCreate)
-    plan = next((p for p in VIP_PLANS if p['id'] == payload.plan_id), None)
+    await vip_catalog.refresh()
+    plan = next((p for p in vip_catalog.panel_plans() if p['id'] == payload.plan_id), None)
     buyer = payload.buyer_steam_id
     sid = str(payload.server_id or '')
     recipients = list(payload.recipients or [])
@@ -271,6 +281,10 @@ def _valid_state(request, cookie_name):
 
 def _dev_auth_allowed(request: Request):
     if not config.DEV_AUTH or not request.client:
+        return False
+    # За reverse proxy на этой же машине пир всегда loopback, поэтому посетитель
+    # из интернета выглядел бы локальным. Проксированные запросы не считаем локальными.
+    if any(request.headers.get(name) for name in ("x-forwarded-for", "x-real-ip", "forwarded")):
         return False
     try:
         return ipaddress.ip_address(request.client.host).is_loopback
@@ -404,7 +418,14 @@ class Server:
 
 POOL = {cfg["id"]: Server(cfg) for cfg in config.SERVERS}
 CACHE_TTL = 3.0
+# Обзор отдаёт последние данные сразу и обновляет их в фоне, а не заставляет ждать RCON.
+STALE_SECONDS = 20.0
+# Сбой запоминается ненадолго: иначе каждый запрос заново ждал бы таймаут зависшего сервера.
+FAILURE_TTL = 8.0
 _cache = {}
+_failures = {}
+_cache_generation = defaultdict(int)
+_refresh_tasks = {}
 _cache_lock = asyncio.Lock()
 _cache_key_locks = defaultdict(asyncio.Lock)
 _monitor_buckets = {}
@@ -434,36 +455,81 @@ def _not_found(sid):
     )
 
 
-async def _cached(sid, name, func, ttl=CACHE_TTL):
+async def _load_cached(key, func, ttl, remember_failure):
+    generation = _cache_generation[key[0]]
+    try:
+        data = await func()
+    except RCONError as error:
+        if remember_failure:
+            _failures[key] = (time.monotonic() + FAILURE_TTL, error)
+        raise
+    async with _cache_lock:
+        # Команда могла сбросить кэш, пока шёл запрос: старый ответ сохранять нельзя.
+        if generation == _cache_generation[key[0]]:
+            _cache[key] = (time.monotonic() + ttl, data)
+            _failures.pop(key, None)
+        if len(_cache_key_locks) > 5000:
+            for old_key, old_lock in list(_cache_key_locks.items()):
+                if len(_cache_key_locks) <= 4000:
+                    break
+                if old_key not in _cache and not old_lock.locked():
+                    _cache_key_locks.pop(old_key, None)
+    return data
+
+
+def _schedule_refresh(key, func, ttl):
+    """Одно фоновое обновление на ключ, ответ пользователю его не ждёт."""
+    if key in _refresh_tasks:
+        return
+
+    async def refresh():
+        try:
+            async with _cache_key_locks[key]:
+                await _load_cached(key, func, ttl, True)
+        except RCONError:
+            pass
+        except Exception:
+            log.exception("Фоновое обновление %s не удалось", key)
+        finally:
+            _refresh_tasks.pop(key, None)
+
+    _refresh_tasks[key] = asyncio.create_task(refresh())
+
+
+async def _cached(sid, name, func, ttl=CACHE_TTL, stale=0.0, remember_failure=False):
     key = (sid, name)
     async with _cache_lock:
+        now = time.monotonic()
         hit = _cache.get(key)
-        if hit and hit[0] > time.monotonic():
+        if hit and hit[0] > now:
             return hit[1]
+        failure = _failures.get(key)
+        failing = bool(failure and failure[0] > now)
+        if hit and stale and hit[0] + stale > now:
+            if not failing:
+                _schedule_refresh(key, func, ttl)
+            return hit[1]
+        if failing and remember_failure:
+            raise failure[1]
     # Coalesce concurrent misses so a page refresh storm does not multiply
     # identical RCON requests.
     async with _cache_key_locks[key]:
         async with _cache_lock:
+            now = time.monotonic()
             hit = _cache.get(key)
-            if hit and hit[0] > time.monotonic():
+            if hit and hit[0] > now:
                 return hit[1]
-        data = await func()
-        async with _cache_lock:
-            _cache[key] = (time.monotonic() + ttl, data)
-            if len(_cache_key_locks) > 5000:
-                for old_key, old_lock in list(_cache_key_locks.items()):
-                    if len(_cache_key_locks) <= 4000:
-                        break
-                    if old_key not in _cache and not old_lock.locked():
-                        _cache_key_locks.pop(old_key, None)
-        return data
+            failure = _failures.get(key)
+            if remember_failure and failure and failure[0] > now:
+                raise failure[1]
+        return await _load_cached(key, func, ttl, remember_failure)
 
 
-async def _cached_players(srv, attempts=2):
+async def _cached_players(srv, attempts=2, **cache_options):
     last = None
     for i in range(attempts):
         try:
-            return await _cached(srv.id, "players", srv.api.players)
+            return await _cached(srv.id, "players", srv.api.players, **cache_options)
         except RCONError as e:
             last = e
             if i < attempts - 1:
@@ -473,8 +539,11 @@ async def _cached_players(srv, attempts=2):
 
 async def _invalidate(sid):
     async with _cache_lock:
+        _cache_generation[sid] += 1
         for key in [k for k in _cache if k[0] == sid]:
             del _cache[key]
+        for key in [k for k in _failures if k[0] == sid]:
+            del _failures[key]
 
 
 def _rcon_error(e):
@@ -601,16 +670,37 @@ async def _idempotency_abort(user_id, key):
 
 # ---------- пользователь ----------
 
-async def _current_user(request: Request):
-    token = request.cookies.get(SESSION_COOKIE)
-    steam_id = await db.get_session(token)
-    if not steam_id:
-        return None
+_TOUCH_INTERVAL_SECONDS = 60
+_touch_times = {}
+
+
+async def _touch_user_throttled(steam_id):
+    """last_seen нужен с точностью до минуты, а запись в БД на каждый запрос дорога."""
+    now = time.monotonic()
+    last = _touch_times.get(steam_id)
+    if last is not None and now - last < _TOUCH_INTERVAL_SECONDS:
+        return
+    if len(_touch_times) >= 10000:
+        _touch_times.clear()
+    _touch_times[steam_id] = now
     try:
         await db.touch_user(steam_id)
     except Exception:
         log.warning("touch_user failed for %s", steam_id, exc_info=True)
-    return {"steam_id": steam_id}
+
+
+async def _current_user(request: Request):
+    # Обработчик может спросить пользователя несколько раз за запрос (overview — трижды).
+    state = request.state
+    if hasattr(state, "wardogs_user"):
+        return state.wardogs_user
+    token = request.cookies.get(SESSION_COOKIE)
+    steam_id = await db.get_session(token)
+    user = {"steam_id": steam_id} if steam_id else None
+    if user:
+        await _touch_user_throttled(steam_id)
+    state.wardogs_user = user
+    return user
 
 
 def _require_user(user):
@@ -621,9 +711,19 @@ def _require_user(user):
 
 async def _user_status(user):
     """Статус пользователя: steam, persona, discord-привязка, роли и права."""
+    # Обработчик спрашивает статус по нескольку раз за запрос, а user живёт один запрос.
+    cached_status = user.get("_status")
+    if cached_status is not None:
+        return cached_status
+    status = await _load_user_status(user)
+    user["_status"] = status
+    return status
+
+
+async def _load_user_status(user):
     steam_id = user["steam_id"]
     if config.DEV_AUTH and steam_id == DEV_STEAM_ID:
-        permissions = sorted(dmod.ALL_PERMS)
+        permissions = sorted(dmod.ALL_PERMS | {dmod.OWNER_PERM})
         return {
             "authed": True,
             "steam_id": steam_id,
@@ -641,6 +741,8 @@ async def _user_status(user):
     role_map = await dmod.guild_roles()
     perms_map = await db.get_role_perms_all()
     permissions = dmod.compute_permissions(binding, role_map, perms_map)
+    if steam_id in config.OWNER_STEAM_IDS:
+        permissions = sorted({*permissions, dmod.OWNER_PERM})
     return {
         "authed": True,
         "steam_id": steam_id,
@@ -652,12 +754,27 @@ async def _user_status(user):
     }
 
 
+async def _request_permissions(request: Request, user):
+    """Права с учётом WARDOGS_ADMIN_IPS: вне allowlist сотрудник равен обычному посетителю."""
+    if not user or not admin_ip_allowed(request):
+        return []
+    return (await _user_status(user))["permissions"]
+
+
+async def _client_status(request: Request, user):
+    """Статус для браузера: кнопка панели не должна появляться там, где API ответит отказом."""
+    status = await _user_status(user)
+    if admin_ip_allowed(request):
+        return status
+    return {**status, "permissions": [], "admin": False, "ip_restricted": True}
+
+
 # ---------- сессия / авторизация ----------
 
 @router.get("/session")
 async def api_session(request: Request):
     user = await _current_user(request)
-    me = await _user_status(user) if user else None
+    me = await _client_status(request, user) if user else None
     return {
         "ok": True,
         "authed": bool(user),
@@ -677,10 +794,15 @@ async def my_profile(request: Request):
     """Личный профиль: вход, права, свои VIP-слоты, тикеты и последние действия."""
     user = _require_user(await _current_user(request))
     steam_id = user["steam_id"]
-    me = await _user_status(user)
+    me = await _client_status(request, user)
     binding = await db.get_binding(steam_id)
     activity = await db.get_player_profile(steam_id)
-    steam_profile = (await steam_mod.fetch_profiles([steam_id])).get(steam_id) or {}
+    # Свой профиль не ждёт Steam дольше секунды: данные придут в кэш и появятся при следующем открытии.
+    steam_lookup = asyncio.ensure_future(steam_mod.fetch_profiles([steam_id]))
+    try:
+        steam_profile = (await asyncio.wait_for(asyncio.shield(steam_lookup), 1.0)).get(steam_id) or {}
+    except asyncio.TimeoutError:
+        steam_profile = {}
     now = time.time()
     vip_slots = await db.list_player_vip_slots(steam_id)
     server_names = {srv.id: srv.name for srv in POOL.values()}
@@ -831,7 +953,9 @@ async def donate_checkout(request: Request):
     except Exception:
         body = {}
     product = str((body or {}).get("product") or "")
-    if product not in donate.SITE_PRODUCTS:
+    await vip_catalog.refresh()
+    catalog_item = vip_catalog.PRODUCTS.get(product)
+    if not catalog_item or catalog_item["kind"] != "personal" or vip_catalog.price_kopecks(product) is None:
         raise HTTPException(status_code=400, detail="неизвестный тариф")
     binding = await db.get_binding(user["steam_id"])
     discord_id = str((binding or {}).get("discord_id") or "")
@@ -851,7 +975,7 @@ async def donate_checkout(request: Request):
 @router.get("/system/status")
 async def system_status(request: Request):
     """Единый снимок зависимостей с историей смены состояния процесса."""
-    await _require_any_perm(request, {"audit", "roles", "config_view"})
+    await _require_perm(request, dmod.OWNER_PERM)
     services = []
     try:
         version = await db.schema_version()
@@ -891,10 +1015,99 @@ async def system_status(request: Request):
     return {"ok": all(item["ok"] for item in services), "services": services, "history": list(_service_history)}
 
 
+@router.get("/public/vip-catalog")
+async def public_vip_catalog():
+    """Действующие тарифы для страницы «Поддержать»."""
+    await vip_catalog.refresh()
+    return {"ok": True, "perks": vip_catalog.TIER_PERKS, "items": vip_catalog.items(include_disabled=False)}
+
+
+@router.get("/dev/vip-prices")
+async def dev_vip_prices(request: Request):
+    await _require_perm(request, dmod.OWNER_PERM)
+    await vip_catalog.refresh(force=True)
+    return {"ok": True, "items": vip_catalog.items(), "max_rub": vip_catalog.MAX_RUB}
+
+
+@router.put("/dev/vip-prices")
+async def dev_vip_prices_save(request: Request):
+    """Сохраняет цены и обновляет сообщение с VIP в Discord. Сайт подхватывает их сразу."""
+    user = await _require_perm(request, dmod.OWNER_PERM)
+    body = await _json_object(request)
+    try:
+        changes = await vip_catalog.save(body.get("items"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if changes:
+        await db.log_site_audit(user["steam_id"], None, "dev.vip_prices", json.dumps(changes, ensure_ascii=False))
+    # Цены уже сохранены: сбой Discord возвращается предупреждением, а не ошибкой.
+    result, error = await dmod.bot_panel_request("POST", "/api/vip-panel-refresh")
+    discord_status = result if result is not None else {"ok": False, "error": error or "Бот недоступен"}
+    return {"ok": True, "items": vip_catalog.items(), "changes": changes, "discord": discord_status}
+
+
+@router.get("/maintenance")
+async def maintenance_state(request: Request):
+    """Закрытые на техработы разделы — для экрана вместо раздела в панели."""
+    user = await _current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="нужен вход через Steam")
+    if not await _request_permissions(request, user):
+        raise HTTPException(status_code=403, detail="недостаточно прав")
+    return {"ok": True, "closed": await maintenance.closed_sections()}
+
+
+@router.get("/dev/sections")
+async def dev_sections(request: Request):
+    """Все разделы и их состояние для вкладки Dev."""
+    await _require_perm(request, dmod.OWNER_PERM)
+    closed = await maintenance.closed_sections()
+    return {
+        "ok": True,
+        "default_message": maintenance.DEFAULT_MESSAGE,
+        "sections": [
+            {
+                "id": section["id"],
+                "label": section["label"],
+                "group": section["group"],
+                "closed": section["id"] in closed,
+                "message": (closed.get(section["id"]) or {}).get("message") or "",
+                "until_utc": (closed.get(section["id"]) or {}).get("until_utc"),
+                "closed_utc": (closed.get(section["id"]) or {}).get("closed_utc"),
+            }
+            for section in maintenance.SECTIONS
+        ],
+    }
+
+
+@router.put("/dev/sections/{section_id}")
+async def dev_section_update(section_id: str, request: Request):
+    """Закрывает раздел на техработы, меняет текст или открывает его снова."""
+    user = await _require_perm(request, dmod.OWNER_PERM)
+    if section_id not in maintenance.SECTIONS_BY_ID:
+        raise HTTPException(status_code=404, detail="неизвестный раздел")
+    body = await _json_object(request)
+    enabled = body.get("closed")
+    if not isinstance(enabled, bool):
+        raise HTTPException(status_code=400, detail="поле closed")
+    message = body.get("message") or ""
+    if not isinstance(message, str) or len(message) > maintenance.MAX_MESSAGE_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Текст не длиннее {maintenance.MAX_MESSAGE_LENGTH} символов")
+    until_utc = body.get("until_utc")
+    if until_utc is not None and (
+        isinstance(until_utc, bool) or not isinstance(until_utc, (int, float))
+        or not math.isfinite(until_utc) or until_utc <= 0
+    ):
+        raise HTTPException(status_code=400, detail="Некорректное время окончания")
+    closed = await maintenance.set_section(section_id, enabled, message, until_utc)
+    await db.log_site_audit(user["steam_id"], None, "dev.maintenance", f"{section_id}:{'closed' if enabled else 'open'}")
+    return {"ok": True, "closed": closed}
+
+
 @router.post("/discord/log-test")
 async def discord_log_test(request: Request):
     """Диагностика Discord-логов: токен бота, доступ к каналу, тестовая отправка."""
-    await _require_any_perm(request, {"audit", "roles", "config_view"})
+    await _require_perm(request, dmod.OWNER_PERM)
     result = await disclog.test_channel()
     return JSONResponse(result, status_code=200 if result["ok"] else 400)
 
@@ -1009,7 +1222,7 @@ async def auth_refresh(request: Request):
                     user["steam_id"], binding["discord_id"], binding["discord_name"], roles, member
                 )
                 session_rotated = old_roles != list(roles or []) or old_member != bool(member)
-    result = await _user_status(user)
+    result = await _client_status(request, user)
     if not session_rotated:
         return result
     await db.revoke_user_sessions(user["steam_id"])
@@ -1037,10 +1250,7 @@ PLAYER_ACTION_PERMS = {"players_view", "kick", "kill", "message", "move_faction"
 
 async def _can_view_players(request: Request):
     user = await _current_user(request)
-    if not user:
-        return False
-    me = await _user_status(user)
-    return bool(PLAYER_ACTION_PERMS.intersection(me["permissions"]))
+    return bool(PLAYER_ACTION_PERMS.intersection(await _request_permissions(request, user)))
 
 
 async def _require_view_players(request: Request):
@@ -1052,8 +1262,7 @@ async def _require_view_players(request: Request):
     user = await _current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="нужен вход через Steam")
-    me = await _user_status(user)
-    if not PLAYER_ACTION_PERMS.intersection(me["permissions"]):
+    if not PLAYER_ACTION_PERMS.intersection(await _request_permissions(request, user)):
         raise HTTPException(status_code=403, detail="список игроков доступен только разрешённым ролям")
     return user
 
@@ -1067,49 +1276,52 @@ async def server_overview(sid: str, request: Request):
     bans_count = player_count = None
     err = None
     status = 200
-    try:
-        st = await _cached(srv.id, "status", srv.api.status)
-    except RCONError as e:
+    ban_meta = None
+    # Кнопка «Обновить» просит свежие данные, фоновый опрос получает последние сразу.
+    cache_options = {
+        "stale": 0.0 if request.query_params.get("fresh") else STALE_SECONDS,
+        "remember_failure": True,
+    }
+    # Запросы к RCON идут одновременно: их общее время — самый медленный, а не сумма всех.
+    results = await asyncio.gather(
+        _cached(srv.id, "status", srv.api.status, **cache_options),
+        _cached_players(srv, attempts=1, **cache_options),
+        _cached(srv.id, "rotation", srv.api.rotation, **cache_options),
+        _cached(srv.id, "health", srv.api.health, **cache_options),
+        _cached(srv.id, "bans", srv.api.bans, **cache_options),
+        srv.ensure_caps(),
+        return_exceptions=True,
+    )
+    for result in results:
+        if isinstance(result, Exception) and not isinstance(result, RCONError):
+            raise result
+    st_result, players_result, rotation_result, health_result, bans_result, _caps = results
+    if isinstance(st_result, RCONError):
         err = {
-            "code": e.code,
-            "message": e.message if isinstance(e.status, int) and e.status >= 400 else "RCON-сервер временно недоступен",
+            "code": st_result.code,
+            "message": st_result.message if isinstance(st_result.status, int) and st_result.status >= 400 else "RCON-сервер временно недоступен",
         }
-        status = e.status or 502
-    if err is None:
-        try:
-            players = await _cached_players(srv)
+        status = st_result.status or 502
+    else:
+        st = st_result
+        if not isinstance(players_result, RCONError):
+            players = players_result
             player_count = players.get("count", len(players.get("players") or []))
-        except RCONError:
-            player_count = None
-        for name, f in (("rotation", srv.api.rotation), ("health", srv.api.health)):
-            try:
-                data = await _cached(srv.id, name, f)
-                if name == "rotation":
-                    rotation = data
-                else:
-                    health = data
-            except RCONError:
-                pass
-        try:
-            ban_meta = await _cached(srv.id, "bans", srv.api.bans)
+        if not isinstance(rotation_result, RCONError):
+            rotation = rotation_result
+        if not isinstance(health_result, RCONError):
+            health = health_result
+        if not isinstance(bans_result, RCONError):
+            ban_meta = bans_result
             bans_count = ban_meta.get("count") if isinstance(ban_meta, dict) else None
-        except RCONError:
-            pass
-    await srv.ensure_caps()
     can_view_players = await _can_view_players(request)
     current_user = await _current_user(request)
-    current_status = await _user_status(current_user) if current_user else {}
-    can_view_bans = bool({"ban_view", "ban_add", "ban_remove"}.intersection(current_status.get("permissions", [])))
-    if can_view_bans:
-        try:
-            bans = await _cached(srv.id, "bans", srv.api.bans)
-            bans = await _enrich_bans(srv.id, bans)
-        except RCONError:
-            pass
-    can_view_server_id = False
-    if current_user:
-        can_view_server_id = bool(current_status.get("permissions"))
-    if "GET /v1/server-id" in srv.routes:
+    current_permissions = await _request_permissions(request, current_user)
+    can_view_bans = bool({"ban_view", "ban_add", "ban_remove"}.intersection(current_permissions))
+    if can_view_bans and ban_meta is not None:
+        bans = await _enrich_bans(srv.id, ban_meta)
+    can_view_rotation = bool(current_permissions)
+    if err is None and "GET /v1/server-id" in srv.routes:
         try:
             server_identity = await _cached(srv.id, "server-id", lambda: srv.api.get("/v1/server-id"), ttl=60.0)
         except RCONError:
@@ -1156,7 +1368,7 @@ async def server_overview(sid: str, request: Request):
         "players_visible": can_view_players,
         "player_count": player_count,
         # Полная ротация доступна только сотрудникам с правами панели.
-        "rotation": rotation if can_view_server_id else None,
+        "rotation": rotation if can_view_rotation else None,
         "bans": bans if can_view_bans else None,
         "bans_count": bans_count,
         "health": health,
@@ -1235,6 +1447,126 @@ async def players_directory(request: Request, q: str = "", limit: int = 50, offs
     }
 
 
+_REPORT_PAGE_SIZES = {25, 50, 100}
+_PLAYER_STATS_SORTS = {
+    "name", "online_seconds", "seed_seconds", "kills", "deaths", "teamkills", "kd", "cash", "wins", "losses", "matches",
+}
+
+
+def _page_window(page, per_page):
+    size = per_page if per_page in _REPORT_PAGE_SIZES else 50
+    number = max(1, page)
+    return number, size, (number - 1) * size
+
+
+def _report_day(value):
+    value = str(value or "").strip()
+    if not value:
+        return None
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Дата должна быть в формате ГГГГ-ММ-ДД") from exc
+    return value
+
+
+async def _admin_steam_ids():
+    role_map = await dmod.guild_roles()
+    perms_map = await db.get_role_perms_all()
+    admins = {steam_id for steam_id in config.OWNER_STEAM_IDS}
+    for binding in await db.list_bindings():
+        permissions = dmod.compute_permissions(
+            {"discord_id": binding["discord_id"], "guild_member": binding["guild_member"], "roles": binding["role_ids"]},
+            role_map, perms_map,
+        )
+        if permissions:
+            admins.add(binding["steam_id"])
+    return admins
+
+
+@router.get("/players/stats")
+async def players_stats(
+    request: Request, first_day: str = "", last_day: str = "", server: str = "", q: str = "",
+    scope: str = "all", sort: str = "online_seconds", direction: str = "desc", page: int = 1, per_page: int = 50,
+):
+    """Статистика игроков за период: время, сид, убийства, победы."""
+    await _require_perm(request, "players_view")
+    if server and not _get_server(server):
+        return _not_found(server)
+    rows = list((await db.player_period_stats(_report_day(first_day), _report_day(last_day), server or None)).values())
+    if scope == "admins":
+        admins = await _admin_steam_ids()
+        rows = [row for row in rows if row["steam_id"] in admins]
+    elif scope == "regular":
+        privileged = await _admin_steam_ids() | await db.active_vip_steam_ids()
+        rows = [row for row in rows if row["steam_id"] not in privileged]
+    needle = str(q or "").strip().casefold()[:120]
+    if needle:
+        discord_ids = {item["steam_id"]: str(item["discord_id"] or "") for item in await db.list_bindings()}
+        rows = [
+            row for row in rows
+            if needle in row["name"].casefold() or needle in row["steam_id"]
+            or needle in discord_ids.get(row["steam_id"], "") or needle in row["clan_tag"].casefold()
+        ]
+    key = sort if sort in _PLAYER_STATS_SORTS else "online_seconds"
+    rows.sort(key=lambda row: row[key].casefold() if key == "name" else row[key], reverse=direction != "asc")
+    number, size, start = _page_window(page, per_page)
+    return {"ok": True, "total": len(rows), "page": number, "per_page": size, "items": rows[start:start + size]}
+
+
+@router.get("/players/names")
+async def players_names(request: Request, q: str = "", page: int = 1, per_page: int = 50):
+    """История ников: находит игрока по имени, которое он уже сменил."""
+    await _require_perm(request, "players_view")
+    number, size, start = _page_window(page, per_page)
+    result = await db.list_player_names(str(q or "").strip()[:120], size, start)
+    return {"ok": True, "page": number, "per_page": size, **result}
+
+
+@router.get("/matches")
+async def matches_list(request: Request, server: str = "", player: str = "", page: int = 1, per_page: int = 50):
+    """Завершённые матчи и, на первой странице, матчи, идущие прямо сейчас."""
+    await _require_perm(request, "players_view")
+    if server and not _get_server(server):
+        return _not_found(server)
+    number, size, start = _page_window(page, per_page)
+    query = str(player or "").strip()[:120]
+    result = await db.list_matches(server or None, query, size, start)
+    live = []
+    if number == 1 and not query:
+        live = await _live_matches(server)
+    return {"ok": True, "page": number, "per_page": size, "live": live, **result}
+
+
+async def _live_matches(server_filter):
+    servers = [srv for srv in POOL.values() if not server_filter or srv.id == server_filter]
+    statuses = await asyncio.gather(
+        *(_cached(srv.id, "status", srv.api.status, stale=STALE_SECONDS, remember_failure=True) for srv in servers),
+        return_exceptions=True,
+    )
+    starts = await db.current_match_starts()
+    now = time.time()
+    live = []
+    for srv, status in zip(servers, statuses):
+        if isinstance(status, Exception) or not isinstance(status, dict) or not status.get("map"):
+            continue
+        started = starts.get(srv.id)
+        seconds = status.get("matchSeconds")
+        if not started and isinstance(seconds, (int, float)) and not isinstance(seconds, bool):
+            started = now - seconds
+        live.append({
+            "server_id": srv.id, "id": f"live-{srv.id}", "map": str(status.get("map") or ""),
+            "started_utc": started, "ended_utc": None, "winning_faction": "",
+            "scores": [
+                {"faction": str(item.get("name") or ""), "score": item.get("score"), "color": item.get("colorHex")}
+                for item in (status.get("factionScores") or []) if isinstance(item, dict)
+            ],
+            "players": (status.get("players") or {}).get("current"),
+            "in_progress": True,
+        })
+    return live
+
+
 @router.get("/players/{steam_id}")
 async def player_profile(steam_id: str, request: Request):
     """Return an aggregated, permission-protected player profile."""
@@ -1248,7 +1580,8 @@ async def player_profile(steam_id: str, request: Request):
         {"audit", "ban_view", "ban_add", "ban_remove"}.intersection(status["permissions"])
     )
     profile["punishments"] = (
-        await db.list_player_punishments(steam_id) if can_view_punishments else []
+        _with_punishment_details(await db.list_player_punishments(steam_id), await db.list_punishment_details(steam_id))
+        if can_view_punishments else []
     )
     profile["can_view_punishments"] = can_view_punishments
     profile["can_manage_punishments"] = "audit" in status["permissions"]
@@ -1264,21 +1597,105 @@ async def player_profile(steam_id: str, request: Request):
     for vip in profile["vip_slots"]:
         vip["active"] = vip["expires_utc"] is None or vip["expires_utc"] > now
     profile["can_view_vip"] = can_view_vip
-    steam_profiles = await steam_mod.fetch_profiles([steam_id])
-    steam_profile = steam_profiles.get(steam_id) or {}
-    steam_bans = (await steam_mod.fetch_player_bans([steam_id])).get(steam_id) or {}
-    profile["avatar_url"] = steam_profile.get("avatar_url") or ""
-    profile["steam_profile_url"] = steam_profile.get("profile_url") or f"https://steamcommunity.com/profiles/{steam_id}"
-    profile["steam"] = {
-        "visibility": steam_profile.get("visibility", 0),
-        "time_created_utc": steam_profile.get("time_created_utc"),
-        "vac_banned": bool(steam_bans.get("vac_banned")),
-        "vac_bans": int(steam_bans.get("vac_bans") or 0),
-        "game_bans": int(steam_bans.get("game_bans") or 0),
-        "days_since_last_ban": int(steam_bans.get("days_since_last_ban") or 0),
-        "community_banned": bool(steam_bans.get("community_banned")),
-    }
+    # Данные Steam приходят отдельным запросом: карточка не ждёт внешний сервис.
+    profile["avatar_url"] = ""
+    profile["steam_profile_url"] = f"https://steamcommunity.com/profiles/{steam_id}"
+    profile["steam"] = None
     return {"ok": True, "profile": profile}
+
+
+_DETAIL_KINDS = {"ban.add": "ban", "rcon.kick": "kick", "rcon.message": "warn"}
+
+
+def _with_punishment_details(punishments, history):
+    """Дополняет записи журнала причиной, сроком и статусом; журнал отсортирован от новых к старым."""
+    now = time.time()
+    unused = list(history)
+    for index, item in enumerate(punishments):
+        item["reason"] = ""
+        item["expires_utc"] = None
+        item["status"] = ""
+        kind = _DETAIL_KINDS.get(item["event"])
+        details = next(
+            (
+                entry for entry in unused
+                if kind and entry["kind"] == kind
+                and entry["server_id"] == item["server_id"]
+                and abs(float(entry["created_utc"]) - float(item["timestamp_utc"])) <= 120
+            ),
+            None,
+        )
+        if details:
+            # Два варна подряд не должны получить один и тот же текст.
+            unused.remove(details)
+            item["reason"] = details["reason"]
+            item["expires_utc"] = details["expires_utc"]
+        if item["event"] != "ban.add":
+            continue
+        newer = punishments[:index]
+        if any(entry["event"] == "ban.remove" for entry in newer):
+            item["status"] = "removed"
+        elif any(entry["event"] == "ban.add" for entry in newer):
+            item["status"] = "replaced"
+        elif item["expires_utc"] and float(item["expires_utc"]) <= now:
+            item["status"] = "expired"
+        else:
+            item["status"] = "active"
+    return punishments
+
+
+@router.get("/players/{steam_id}/activity")
+async def player_activity(steam_id: str, request: Request):
+    """График, сессии, игры и убийства. Отдельный запрос: карточка открывается не дожидаясь его."""
+    user = await _require_perm(request, "players_view")
+    steam_id = _validate_steam_id(steam_id)
+    activity = await db.get_player_card_activity(steam_id)
+    activity["names"] = await db.names_of_player(steam_id)
+    binding = await db.get_binding(steam_id)
+    try:
+        summary = seed_store.get_player_summary(steam_id, str((binding or {}).get("discord_id") or ""))
+    except Exception:
+        # Таблицы принадлежат ботам: их отсутствие не должно ломать карточку.
+        log.warning("Не удалось прочитать данные бота для %s", steam_id, exc_info=True)
+        summary = {"balance": None, "seed_seconds": 0, "clan_vip_until": None, "paid_tier": 0, "paid_until": None}
+    # Бот сидинга считает время дольше, чем панель: берём большее из двух значений.
+    activity["seed_seconds"] = max(activity["seed_seconds"], summary["seed_seconds"])
+    can_view_vip = {"vip_view", "vip_edit"}.intersection((await _user_status(user))["permissions"])
+    activity["seed_balance"] = summary["balance"] if can_view_vip else None
+    activity["clan_vip_until"] = summary["clan_vip_until"] if can_view_vip else None
+    activity["paid_tier"] = summary["paid_tier"] if can_view_vip else 0
+    activity["paid_until"] = summary["paid_until"] if can_view_vip else None
+    return {"ok": True, **activity}
+
+
+@router.get("/players/{steam_id}/steam")
+async def player_steam(steam_id: str, request: Request):
+    """Аватар и баны из Steam. Отдельный запрос, чтобы карточка открывалась сразу."""
+    await _require_perm(request, "players_view")
+    steam_id = _validate_steam_id(steam_id)
+    profiles, bans, game_hours = await asyncio.gather(
+        steam_mod.fetch_profiles([steam_id]),
+        steam_mod.fetch_player_bans([steam_id]),
+        steam_mod.fetch_game_hours(steam_id),
+    )
+    steam_profile = profiles.get(steam_id) or {}
+    steam_bans = bans.get(steam_id) or {}
+    return {
+        "ok": True,
+        "avatar_url": steam_profile.get("avatar_url") or "",
+        "steam_profile_url": steam_profile.get("profile_url") or f"https://steamcommunity.com/profiles/{steam_id}",
+        "game_hours": game_hours,
+        "steam": {
+            "available": bool(steam_bans),
+            "visibility": steam_profile.get("visibility", 0),
+            "time_created_utc": steam_profile.get("time_created_utc"),
+            "vac_banned": bool(steam_bans.get("vac_banned")),
+            "vac_bans": int(steam_bans.get("vac_bans") or 0),
+            "game_bans": int(steam_bans.get("game_bans") or 0),
+            "days_since_last_ban": int(steam_bans.get("days_since_last_ban") or 0),
+            "community_banned": bool(steam_bans.get("community_banned")),
+        },
+    }
 
 
 @router.get("/players/{steam_id}/cheatercheck")
@@ -1559,6 +1976,12 @@ async def public_clan_sync(request: Request):
         if not re.fullmatch(r"\d{17,20}", clan_id) or not 2 <= len(name) <= 48:
             continue
         clans.append(item)
+    rejected = len(body["clans"]) - len(clans)
+    if rejected:
+        log.warning("clan-sync: отброшено записей: %s из %s", rejected, len(body["clans"]))
+    if body["clans"] and not clans:
+        # Формат бота не подошёл: сообщаем ему об ошибке и не затираем уже показанные кланы.
+        raise HTTPException(status_code=422, detail="ни один клан не прошёл проверку: нужны id из 17-20 цифр и name от 2 до 48 символов")
     feed = {
         "version": 1,
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
@@ -1566,20 +1989,86 @@ async def public_clan_sync(request: Request):
         "clans": clans,
     }
     await db.save_public_registry("clans", json.dumps(feed, ensure_ascii=False))
-    return {"ok": True, "clans": len(clans)}
+    return {"ok": True, "clans": len(clans), "rejected": rejected}
+
+
+# Адреса от бота попадают в HTML и CSS страницы, поэтому принимаем только ожидаемые форматы.
+_BOT_CLAN_LOGO_RE = re.compile(
+    r"https://(?:cdn\.discordapp\.com|media\.discordapp\.net)/attachments/\d{17,20}/\d{17,20}/"
+    r"[A-Za-z0-9_.\-]{1,200}(?:\?[A-Za-z0-9_.\-=&%]{1,300})?"
+)
+_BOT_CLAN_INVITE_RE = re.compile(r"https://(?:discord\.gg|discord\.com/invite)/[A-Za-z0-9\-]{2,64}")
+_BOT_CLAN_LINK_RE = re.compile(r"https://[^\s\"'<>\\]{1,500}")
+BOT_CLAN_PREFIX = "bot-"
+
+
+def _matching_url(pattern, value):
+    value = value if isinstance(value, str) else ""
+    return value if pattern.fullmatch(value) else ""
+
+
+def _member_total(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        return 0
+    return max(0, int(value))
+
+
+def _public_bot_clan(item):
+    """Клан из реестра бота в формате витрины; у него нет состава, только лидер и число участников."""
+    return {
+        "id": f"{BOT_CLAN_PREFIX}{item['id']}",
+        "source": "bot",
+        "name": str(item.get("name") or "").strip()[:48],
+        "tag": str(item.get("tag") or "").strip()[:16],
+        "color": "#c51b32",
+        "description": str(item.get("description") or "")[:1000],
+        "goals": str(item.get("goals") or "")[:1000],
+        "emblem_url": _matching_url(_BOT_CLAN_LOGO_RE, item.get("logo_source_url")),
+        "cover_url": "",
+        "member_count": _member_total(item.get("server_members")) or _member_total(item.get("declared_members")),
+        "leader": str(item.get("leader_name") or "").strip()[:80] or "Не назначен",
+        "members": [],
+        "discord_url": _matching_url(_BOT_CLAN_INVITE_RE, item.get("discord_url")),
+        "recruitment_open": item.get("recruitment_status") == "open",
+        "recruitment_url": _matching_url(_BOT_CLAN_LINK_RE, item.get("recruitment_url")),
+    }
+
+
+async def _bot_clans():
+    entry = await db.load_public_registry("clans")
+    feed = (entry or {}).get("payload")
+    items = feed.get("clans") if isinstance(feed, dict) else None
+    return [_public_bot_clan(item) for item in items or [] if isinstance(item, dict) and item.get("id")]
 
 
 @router.get("/public/clans")
 async def public_clans_list():
-    return {"ok": True, "clans": [_public_clan(item) for item in await db.list_clans()]}
+    clans = [_public_clan(item) for item in await db.list_clans()]
+    # Клан может быть и в панели, и у бота: запись панели главнее, её правят вручную.
+    tags = {clan["tag"].lower() for clan in clans if clan["tag"]}
+    names = {clan["name"].lower() for clan in clans}
+    extra = [
+        clan for clan in await _bot_clans()
+        if clan["tag"].lower() not in tags and clan["name"].lower() not in names
+    ]
+    return {"ok": True, "clans": clans + extra}
 
 
 @router.get("/public/clans/{clan_id}")
 async def public_clan_get(clan_id: str):
+    if clan_id.startswith(BOT_CLAN_PREFIX):
+        for clan in await _bot_clans():
+            if clan["id"] == clan_id:
+                return {"ok": True, "clan": clan}
+        raise HTTPException(status_code=404, detail="Клан не найден")
     item = await db.get_clan(_clan_id(clan_id))
     if not item:
         raise HTTPException(status_code=404, detail="Клан не найден")
     return {"ok": True, "clan": _public_clan(item, detail=True)}
+
+
+_CLAN_APPLICATION_COOLDOWN_SECONDS = 600
+_clan_application_times = {}
 
 
 @router.post("/public/clan-applications")
@@ -1588,16 +2077,31 @@ async def public_clan_application_create(request: Request):
     if not user:
         raise HTTPException(status_code=401, detail="Войдите через Steam, чтобы отправить заявку")
     payload = await _validated(request, PublicClanApplication)
+    # Подать заявку может любой вошедший через Steam, а каждая заявка — тикет у команды.
+    now = time.monotonic()
+    previous = _clan_application_times.get(user["steam_id"])
+    if previous is not None and now - previous < _CLAN_APPLICATION_COOLDOWN_SECONDS:
+        raise HTTPException(status_code=429, detail="Заявка уже отправлена. Новую можно подать через 10 минут")
+    if len(_clan_application_times) >= 10000:
+        _clan_application_times.clear()
+    _clan_application_times[user["steam_id"]] = now
     name = payload.name
     tag = payload.tag
     description = payload.description
     title = f"Заявка на клан [{tag}] {name}"
-    discord_name = ((await _user_status(user)).get("discord") or {}).get("discord_name") or "не привязан"
-    ticket_text = f"{description}\n\nЛидер: {user.get('persona') or user['steam_id']}\nSteamID: {user['steam_id']}\nDiscord: {discord_name}"
-    item = await db.create_ticket(title, ticket_text, "normal", user["steam_id"], user["steam_id"])
+    status = await _user_status(user)
+    leader = status.get("persona") or user["steam_id"]
+    discord_name = (status.get("discord") or {}).get("discord_name") or "не привязан"
+    ticket_text = f"{description}\n\nЛидер: {leader}\nSteamID: {user['steam_id']}\nDiscord: {discord_name}"
+    try:
+        item = await db.create_ticket(title, ticket_text, "normal", user["steam_id"], user["steam_id"])
+    except Exception:
+        # Заявка не создана: кулдаун не должен мешать повторить её.
+        _clan_application_times.pop(user["steam_id"], None)
+        raise
     bridge_payload = {
         "ticket_id": item["id"], "name": name, "tag": tag, "description": description,
-        "leader": user.get("persona") or user["steam_id"], "steam_id": user["steam_id"],
+        "leader": leader, "steam_id": user["steam_id"],
         "discord_name": discord_name,
     }
     bridge_response, delivery_error = await dmod.bot_panel_request("POST", "/api/clan-applications", bridge_payload)
@@ -1951,7 +2455,13 @@ def _public_ticket_type(row: dict) -> dict:
 @router.get("/ticket-types")
 async def ticket_types_list(request: Request):
     await _require_any_perm(request, {"tickets_view", "tickets_edit"})
-    return {"ok": True, "types": [_public_ticket_type(r) for r in bot_db.list_ticket_types(include_disabled=True)]}
+    try:
+        rows = bot_db.list_ticket_types(include_disabled=True)
+    except sqlite3.OperationalError:
+        # Таблицы создаёт бот при запуске. Без бота раздел пуст, а не падает с 500.
+        log.warning("Типы тикетов недоступны: база бота ещё не инициализирована")
+        return {"ok": True, "types": [], "available": False}
+    return {"ok": True, "types": [_public_ticket_type(r) for r in rows], "available": True}
 
 
 @router.post("/ticket-types")
@@ -2022,12 +2532,47 @@ async def server_players(sid: str, request: Request):
     return {"ok": True, "count": data.get("count", len(listed_players)), "players": listed_players}
 
 
+@router.get("/server/{sid}/players/meta")
+async def server_players_meta(sid: str, request: Request):
+    """Дополнения к списку игроков: часы, клан, VIP и админы. Не ждёт Steam: часы приходят позже."""
+    await _require_view_players(request)
+    srv = _get_server(sid)
+    if not srv:
+        return _not_found(sid)
+    try:
+        listing = await _cached_players(srv, attempts=1, stale=STALE_SECONDS, remember_failure=True)
+    except RCONError:
+        return {"ok": True, "players": {}}
+    ids = [
+        str(player.get("steamId")) for player in listing.get("players") or []
+        if isinstance(player, dict) and player.get("steamId")
+    ]
+
+    async def build():
+        meta = await db.live_player_meta(ids)
+        admins = await _admin_steam_ids()
+        for steam_id, item in meta.items():
+            item["admin"] = steam_id in admins
+        return meta
+
+    meta = await _cached(srv.id, "players-meta", build, ttl=20.0)
+    steam_mod.start_game_hours_fill(ids)
+    hours = steam_mod.cached_game_hours(ids)
+    return {
+        "ok": True,
+        "players": {
+            steam_id: {**item, "game_hours": hours.get(steam_id)}
+            for steam_id, item in meta.items() if steam_id in ids
+        },
+    }
+
+
 @router.get("/server/{sid}/rotation")
 async def server_rotation(sid: str, request: Request):
     user = await _current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="нужен вход через Steam")
-    if not (await _user_status(user)).get("permissions"):
+    if not await _request_permissions(request, user):
         raise HTTPException(status_code=403, detail="ротация доступна только разрешённым ролям")
     srv = _get_server(sid)
     if not srv:
@@ -2426,14 +2971,14 @@ async def staff_list(request: Request):
 
 @router.get("/discord/bots")
 async def discord_bots_list(request: Request):
-    await _require_perm(request, "roles")
+    await _require_perm(request, dmod.OWNER_PERM)
     items = [_public_bot(item) for item in await db.list_bot_integrations()]
     return {"ok": True, "items": items, "capacity": 64, "scopes": sorted(BOT_SCOPES)}
 
 
 @router.post("/discord/bots")
 async def discord_bots_create(request: Request):
-    user = await _require_perm(request, "roles")
+    user = await _require_perm(request, dmod.OWNER_PERM)
     payload = await _validated(request, DiscordBotCreate)
     name = str(payload.name or "").strip()[:80]
     requested_id = str(payload.bot_id or "").strip().lower()
@@ -2468,7 +3013,7 @@ async def discord_bots_create(request: Request):
 
 @router.patch("/discord/bots/{bot_id}")
 async def discord_bots_update(bot_id: str, request: Request):
-    user = await _require_perm(request, "roles")
+    user = await _require_perm(request, dmod.OWNER_PERM)
     if not BOT_ID_RE.fullmatch(bot_id):
         raise HTTPException(status_code=400, detail="Некорректный ID бота")
     payload = await _validated(request, DiscordBotUpdate)
@@ -2492,7 +3037,7 @@ async def discord_bots_update(bot_id: str, request: Request):
 
 @router.post("/discord/bots/{bot_id}/rotate-token")
 async def discord_bot_rotate_token(bot_id: str, request: Request):
-    user = await _require_perm(request, "roles")
+    user = await _require_perm(request, dmod.OWNER_PERM)
     item = await db.get_bot_integration(bot_id)
     if not item:
         raise HTTPException(status_code=404, detail="Бот не найден")
@@ -2504,7 +3049,7 @@ async def discord_bot_rotate_token(bot_id: str, request: Request):
 
 @router.delete("/discord/bots/{bot_id}")
 async def discord_bots_delete(bot_id: str, request: Request):
-    user = await _require_perm(request, "roles")
+    user = await _require_perm(request, dmod.OWNER_PERM)
     if not BOT_ID_RE.fullmatch(bot_id):
         raise HTTPException(status_code=400, detail="Некорректный ID бота")
     if not await db.get_bot_integration(bot_id):
@@ -2516,7 +3061,7 @@ async def discord_bots_delete(bot_id: str, request: Request):
 
 @router.get("/discord/bots/{bot_id}/events")
 async def discord_bot_events(bot_id: str, request: Request, limit: int = 100):
-    await _require_perm(request, "roles")
+    await _require_perm(request, dmod.OWNER_PERM)
     if not await db.get_bot_integration(bot_id):
         raise HTTPException(status_code=404, detail="Бот не найден")
     return {"ok": True, "items": await db.list_bot_events(bot_id, limit)}
@@ -2557,7 +3102,7 @@ async def bot_v1_events(request: Request):
 @router.get("/discord/overview")
 async def discord_overview(request: Request):
     """Единая диагностика привязок, ролей и голосовых комнат Discord."""
-    await _require_perm(request, "roles")
+    await _require_perm(request, dmod.OWNER_PERM)
     role_map = await dmod.guild_roles()
     perms_map = await db.get_role_perms_all()
     bindings = []
@@ -2608,7 +3153,7 @@ async def discord_overview(request: Request):
 
 @router.post("/discord/tempvoice/{channel_id}/delete")
 async def discord_tempvoice_delete(channel_id: str, request: Request):
-    user = await _require_perm(request, "roles")
+    user = await _require_perm(request, dmod.OWNER_PERM)
     if not re.fullmatch(r"\d{1,20}", channel_id):
         raise HTTPException(status_code=400, detail="Некорректный ID комнаты")
     data, error = await dmod.bot_panel_request("POST", f"/api/tempvoice/{channel_id}/delete", {})
@@ -2620,7 +3165,7 @@ async def discord_tempvoice_delete(channel_id: str, request: Request):
 
 @router.post("/discord/tempvoice/{channel_id}/transfer")
 async def discord_tempvoice_transfer(channel_id: str, request: Request):
-    user = await _require_perm(request, "roles")
+    user = await _require_perm(request, dmod.OWNER_PERM)
     payload = await _validated(request, TempvoiceTransfer)
     owner_id = payload.owner_id
     if not re.fullmatch(r"\d{1,20}", channel_id):
@@ -2745,6 +3290,15 @@ async def site_audit_list(request: Request, limit: int = 100):
     return {"ok": True, "entries": await db.get_site_audit(limit)}
 
 
+@router.get("/audit/search")
+async def site_audit_search(request: Request, q: str = "", section: str = "", server: str = "", page: int = 1, per_page: int = 50):
+    """Журнал действий с поиском и постраничным выводом."""
+    await _require_perm(request, "audit")
+    number, size, start = _page_window(page, per_page)
+    result = await db.search_site_audit(str(q or "").strip()[:120], section, server, size, start)
+    return {"ok": True, "page": number, "per_page": size, "sections": sorted(db.AUDIT_SECTIONS), **result}
+
+
 @router.get("/audit/integrity")
 async def site_audit_integrity(request: Request):
     await _require_perm(request, "audit")
@@ -2779,6 +3333,60 @@ def _short_kill_tags(raw):
         if short not in ("Local.Kill", "Local.Death") and short not in out:
             out.append(short)
     return out
+
+
+def _match_start_time(raw):
+    """Время начала из match_state: PreMatch и PostMatch началом матча не считаются."""
+    if not isinstance(raw, dict) or raw.get("type") != "match_state":
+        return None
+    event_time = raw.get("eventTime")
+    if isinstance(event_time, bool) or not isinstance(event_time, (int, float)):
+        return None
+    return float(event_time) if str(raw.get("state") or "").startswith("MatchState.Playing") else None
+
+
+def _parse_match_results(body):
+    """События match_ended из батча фида: победитель и счёт сторон."""
+    results = []
+    for raw in body.get("events") or []:
+        if not isinstance(raw, dict) or raw.get("type") != "match_ended":
+            continue
+        event_time = raw.get("eventTime")
+        if isinstance(event_time, bool) or not isinstance(event_time, (int, float)):
+            continue
+        scores = raw.get("factionScores") if isinstance(raw.get("factionScores"), list) else []
+        results.append({
+            "event_id": str(raw.get("eventId") or f"ended-{event_time}")[:64],
+            "match_id": str(raw.get("matchId") or "")[:64],
+            "map": str(raw.get("mapName") or "")[:64],
+            "ended_utc": float(event_time),
+            "winning_faction": str(raw.get("winningFaction") or "").strip()[:80],
+            "faction_scores": [
+                {"faction": str(item.get("faction") or "")[:80], "score": item.get("score")}
+                for item in scores[:8] if isinstance(item, dict)
+            ],
+            "players_count": raw.get("players") if type(raw.get("players")) is int else None,
+        })
+    return results
+
+
+async def _record_match_results(server_id, srv, results):
+    """Сторону игрока знает только список игроков: в самом событии участников нет."""
+    if not results:
+        return
+    try:
+        listing = await srv.api.players()
+        players = {
+            str(player.get("steamId")): str(player.get("faction") or "")
+            for player in (listing or {}).get("players") or []
+            if isinstance(player, dict) and _STEAM_ID_RE.match(str(player.get("steamId") or ""))
+        }
+    except Exception:
+        players = {}
+    if not players:
+        players = await db.recent_server_factions(server_id)
+    for result in results:
+        await db.record_match_result(server_id, result, players)
 
 
 def _parse_killfeed_batch(body):
@@ -2881,6 +3489,17 @@ async def killfeed_ingest(server_id: str, request: Request):
                 and kill["killer_faction"] == kill["victim_faction"]
             )
     accepted = await db.record_kill_events(server_id, kills)
+    # По порядку: в одном батче конец прошлого матча может идти раньше начала следующего.
+    for raw in body.get("events") or []:
+        started = _match_start_time(raw)
+        if started is not None:
+            await db.note_match_started(server_id, started)
+        elif isinstance(raw, dict) and raw.get("type") == "player_joined":
+            joined_id = str(raw.get("playerSteamId") or "")
+            if _STEAM_ID_RE.match(joined_id):
+                await announce_vip_join(srv, joined_id, raw.get("playerName"))
+        else:
+            await _record_match_results(server_id, srv, _parse_match_results({"events": [raw]}))
     return {
         "ok": True,
         "accepted": accepted,
@@ -2922,7 +3541,7 @@ async def killfeed_status(request: Request, server: str = ""):
 @router.get("/killfeed/setup")
 async def killfeed_setup(request: Request, server: str = ""):
     """Строки для ServerSettings.ini, чтобы сервер начал слать килфид на панель."""
-    await _require_perm(request, "config_edit")
+    await _require_perm(request, dmod.OWNER_PERM)
     srv = _get_server(server)
     if not srv:
         raise _not_found(server)
@@ -3316,8 +3935,13 @@ async def vip_slots_list(sid: str, request: Request):
         return _not_found(sid)
     now = time.time()
     items = await db.list_vip_slots(sid)
+    names = {}
     for item in items:
         item["active"] = item["expires_utc"] is None or item["expires_utc"] > now
+        author = item.get("created_by") or ""
+        if author and author not in names:
+            names[author] = ((await db.get_user(author)) or {}).get("persona") or ""
+        item["changed_by_name"] = names.get(author, "")
     return {"ok": True, "items": items, "count": len(items)}
 
 
@@ -3340,14 +3964,14 @@ async def vip_slot_save(sid: str, request: Request):
     # Административный путь: прямая перезапись срока (admin_set_vip_slot),
     # чтобы можно было как продлить, так и сократить VIP через панель.
     item = await db.admin_set_vip_slot(
-        sid, steam_id, display_name, expires_utc, note, user["steam_id"]
+        sid, steam_id, display_name, expires_utc, note, user["steam_id"], payload.tier
     )
     synced, error = await _sync_vip_record(item, add=True)
     # VIP действует на все серверы: дублируем entitlement и managed-запись.
     mirrored = []
     for other in _other_servers(sid):
         other_item = await db.admin_set_vip_slot(
-            other.id, steam_id, display_name, expires_utc, note, user["steam_id"]
+            other.id, steam_id, display_name, expires_utc, note, user["steam_id"], payload.tier
         )
         other_synced, other_error = await _sync_vip_record(other_item, add=True)
         if other_synced:
@@ -3368,12 +3992,133 @@ async def vip_slot_save(sid: str, request: Request):
             f"зеркало: {', '.join(mirrored)}" if mirrored else "",
         ) if x),
     )
+    ticket = None
+    if item and item.get("tier", 1) >= 2:
+        # VIP уже выдан: неудача с тикетом не отменяет его, а возвращается предупреждением.
+        ticket = await _open_vip_ticket(steam_id, item["tier"])
     response = {
         "ok": True, "item": item, "synced": synced,
-        "warning": error or None, "mirrored": mirrored,
+        "warning": error or None, "mirrored": mirrored, "ticket": ticket,
     }
     await _idempotency_complete(user["steam_id"], idem_key, response)
     return response
+
+
+async def close_lapsed_vip_tickets():
+    """Закрывает личные тикеты тех, у кого больше нет VIP Tier 2 или выше.
+
+    При любом сомнении в сроке тикет остаётся открытым до следующей проверки: закрыть позже
+    не страшно, а закрыть канал у игрока с оплаченным VIP нельзя.
+    """
+    if not config.DISCORD_BOT_TOKEN:
+        return 0
+    tickets, _error = await dmod.bot_panel_request("GET", "/api/vip-tickets")
+    closed = 0
+    for ticket in tickets or []:
+        if not ticket.get("paid_known") or ticket.get("paid_tier", 0) >= 2:
+            continue
+        steam_id = await db.get_steam_by_discord(ticket["discord_id"])
+        if not steam_id:
+            log.warning("Личный тикет %s: нет привязки Steam, срок VIP не проверить", ticket["channel_id"])
+            continue
+        if await db.get_active_vip_tier(steam_id) >= 2:
+            continue
+        result, error = await dmod.bot_panel_request("POST", "/api/vip-ticket/close", {"channel_id": ticket["channel_id"]})
+        if result is None or not result.get("ok"):
+            log.warning("Личный тикет %s не закрыт: %s", ticket["channel_id"], error or (result or {}).get("error"))
+            continue
+        if result.get("closed"):
+            closed += 1
+            await db.log_site_audit(None, None, "vip.ticket.close", steam_id)
+    return closed
+
+
+async def _vip_tier_for(steam_id, server_id=None):
+    """Наибольший уровень: выданный в панели или купленный через Discord и сайт."""
+    tier = await db.get_active_vip_tier(steam_id, server_id)
+    try:
+        binding = await db.get_binding(steam_id)
+        summary = seed_store.get_player_summary(steam_id, str((binding or {}).get("discord_id") or ""))
+    except Exception:
+        log.warning("Не удалось прочитать купленный VIP %s", steam_id, exc_info=True)
+        return tier
+    return max(tier, summary["paid_tier"])
+
+
+async def _open_vip_ticket(steam_id, tier):
+    binding = await db.get_binding(steam_id)
+    discord_id = str((binding or {}).get("discord_id") or "")
+    if not discord_id.isdigit():
+        return {"ok": False, "error": "Игрок не привязал Discord"}
+    result, error = await dmod.bot_panel_request("POST", "/api/vip-ticket", {"discord_id": discord_id, "tier": tier})
+    if result is None:
+        return {"ok": False, "error": error or "Бот недоступен"}
+    return result
+
+
+@router.post("/players/{steam_id}/vip-ticket")
+async def player_vip_ticket(steam_id: str, request: Request):
+    """Открывает личный тикет повторно: прошлый закрыли или при выдаче VIP не вышло."""
+    user = await _require_perm(request, "vip_edit")
+    steam_id = _validate_steam_id(steam_id)
+    tier = await _vip_tier_for(steam_id)
+    if tier < 2:
+        raise HTTPException(status_code=409, detail="Личный тикет доступен с VIP Tier 2")
+    ticket = await _open_vip_ticket(steam_id, tier)
+    if ticket.get("created"):
+        await db.log_site_audit(user["steam_id"], None, "vip.ticket", steam_id)
+    return {"ok": True, "ticket": ticket}
+
+
+_VIP_JOIN_COOLDOWN_SECONDS = 600
+_vip_join_announced = {}
+_vip_join_roster = {}
+
+
+def _vip_join_text(name):
+    # Ник задаёт сам игрок: убираем переводы строк и ограничиваем длину.
+    clean = " ".join(str(name or "").split())[:48] or "Игрок"
+    return config.VIP_JOIN_MESSAGE.replace("{name}", clean)[:500]
+
+
+async def announce_vip_join(srv, steam_id, name):
+    """Объявление о входе игрока с VIP Tier 3. Смена карты и перезаход не повторяют его."""
+    if not config.VIP_JOIN_MESSAGE:
+        return False
+    key = (srv.id, steam_id)
+    now = time.monotonic()
+    previous = _vip_join_announced.get(key)
+    if previous is not None and now - previous < _VIP_JOIN_COOLDOWN_SECONDS:
+        return False
+    if await _vip_tier_for(steam_id, srv.id) < 3:
+        return False
+    if len(_vip_join_announced) >= 5000:
+        _vip_join_announced.clear()
+    _vip_join_announced[key] = now
+    try:
+        await srv.api.request("POST", "/v1/broadcast", json_body={"message": _vip_join_text(name)})
+    except RCONError as error:
+        log.warning("Не удалось объявить вход VIP %s на %s: %s", steam_id, srv.id, error)
+        return False
+    return True
+
+
+async def announce_vip_joins(srv, players):
+    """Запасной путь без фида событий: сравниваем списки игроков двух проверок сервера."""
+    roster = {
+        str(player.get("steamId")): player.get("name")
+        for player in players if isinstance(player, dict) and player.get("steamId")
+    }
+    previous = _vip_join_roster.get(srv.id)
+    _vip_join_roster[srv.id] = set(roster)
+    # Первая проверка после запуска панели: все уже на сервере, это не входы.
+    if previous is None:
+        return
+    for steam_id in set(roster) - previous:
+        try:
+            await announce_vip_join(srv, steam_id, roster[steam_id])
+        except Exception:
+            log.exception("Сбой объявления о входе VIP %s", steam_id)
 
 
 @router.post("/server/{sid}/vip-slots/{vip_id}/sync")
@@ -3806,6 +4551,11 @@ async def server_ban_add(sid: str, request: Request):
             managed = saved
         await _invalidate(applied_sid)
     await db.log_site_audit(user["steam_id"], sid, "ban.add", steam_id)
+    try:
+        await db.add_punishment_details("ban", steam_id, sid, reason, expires_utc, user["steam_id"])
+    except Exception:
+        # Бан уже выдан: сбой записи подробностей не должен превращать его в ошибку.
+        log.exception("Не удалось сохранить подробности бана %s", steam_id)
     mirrored = [s for s in applied if s != sid]
     disclog.emit(
         "ban.add", actor=await _actor_label(user["steam_id"]), server=srv.name, steam_id=steam_id,
@@ -4023,6 +4773,14 @@ async def _server_action(sid, request, perm, action, detail=""):
     return result
 
 
+async def _note_punishment(kind, steam_id, sid, text):
+    """Текст для истории карточки. Команда уже выполнена, поэтому сбой записи не отменяет её."""
+    try:
+        await db.add_punishment_details(kind, steam_id, sid, text)
+    except Exception:
+        log.exception("Не удалось сохранить подробности наказания %s", steam_id)
+
+
 @router.post("/server/{sid}/players/{steam_id}/kick")
 async def server_kick(sid: str, steam_id: str, request: Request):
     steam_id = _validate_steam_id(steam_id)
@@ -4033,6 +4791,7 @@ async def server_kick(sid: str, steam_id: str, request: Request):
         if reason:
             payload["reason"] = reason
         await srv.api.request("POST", f"/v1/players/{steam_id}/kick", json_body=payload)
+        await _note_punishment("kick", steam_id, sid, reason)
 
     return await _server_action(sid, request, "kick", action, steam_id)
 
@@ -4055,6 +4814,7 @@ async def server_message(sid: str, steam_id: str, request: Request):
         if not message or len(message) > 2000:
             return JSONResponse({"error": {"code": "missing_field", "message": "поле message"}}, status_code=400)
         await srv.api.request("POST", f"/v1/players/{steam_id}/message", json_body={"message": message})
+        await _note_punishment("warn", steam_id, sid, message)
 
     return await _server_action(sid, request, "message", action, steam_id)
 

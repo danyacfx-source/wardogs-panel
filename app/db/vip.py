@@ -27,6 +27,7 @@ def _vip_row(row):
         "synced_utc": row[9],
         "sync_state": row[10],
         "sync_error": row[11] or "",
+        "tier": int(row[12] or 1) if len(row) > 12 else 1,
     }
 
 
@@ -58,7 +59,7 @@ async def save_vip_slot(server_id, steam_id, display_name, expires_utc, note, cr
         )
         cur = await db.execute(
             "SELECT id, server_id, steam_id, display_name, expires_utc, note, created_by, "
-            "created_utc, updated_utc, synced_utc, sync_state, sync_error "
+            "created_utc, updated_utc, synced_utc, sync_state, sync_error, tier "
             "FROM vip_slots WHERE server_id = ? AND steam_id = ?",
             (server_id, steam_id),
         )
@@ -67,7 +68,30 @@ async def save_vip_slot(server_id, steam_id, display_name, expires_utc, note, cr
     return _vip_row(row)
 
 
-async def admin_set_vip_slot(server_id, steam_id, display_name, expires_utc, note, created_by):
+async def raise_vip_tier(server_id, steam_id, tier):
+    """Повышает уровень после оплаты. Покупка меньшего тарифа не понижает уже имеющийся."""
+    async with _conn() as db:
+        await db.execute(
+            "UPDATE vip_slots SET tier = ? WHERE server_id = ? AND steam_id = ? AND tier < ?",
+            (tier, server_id, steam_id, tier),
+        )
+        await db.commit()
+
+
+async def get_active_vip_tier(steam_id, server_id=None):
+    """Наибольший уровень действующего VIP игрока; 0, если VIP нет."""
+    server_clause = " AND server_id = ?" if server_id else ""
+    async with _conn() as db:
+        cur = await db.execute(
+            "SELECT MAX(tier) FROM vip_slots WHERE steam_id = ? AND (expires_utc IS NULL OR expires_utc > ?)"
+            + server_clause,
+            (steam_id, _now(), *((server_id,) if server_id else ())),
+        )
+        row = await cur.fetchone()
+    return int(row[0] or 0) if row else 0
+
+
+async def admin_set_vip_slot(server_id, steam_id, display_name, expires_utc, note, created_by, tier=None):
     """Создаёт или обновляет VIP-слот с принудительной перезаписью срока.
 
     Используется из административного интерфейса, где явное сокращение срока
@@ -87,9 +111,14 @@ async def admin_set_vip_slot(server_id, steam_id, display_name, expires_utc, not
             "synced_utc=NULL, sync_state='pending', sync_error=''",
             (vip_id, server_id, steam_id, display_name, expires_utc, note, created_by, now, now),
         )
+        if tier is not None:
+            await db.execute(
+                "UPDATE vip_slots SET tier = ? WHERE server_id = ? AND steam_id = ?",
+                (tier, server_id, steam_id),
+            )
         cur = await db.execute(
             "SELECT id, server_id, steam_id, display_name, expires_utc, note, created_by, "
-            "created_utc, updated_utc, synced_utc, sync_state, sync_error "
+            "created_utc, updated_utc, synced_utc, sync_state, sync_error, tier "
             "FROM vip_slots WHERE server_id = ? AND steam_id = ?",
             (server_id, steam_id),
         )
@@ -102,7 +131,7 @@ async def list_vip_slots(server_id):
     async with _conn() as db:
         cur = await db.execute(
             "SELECT id, server_id, steam_id, display_name, expires_utc, note, created_by, "
-            "created_utc, updated_utc, synced_utc, sync_state, sync_error "
+            "created_utc, updated_utc, synced_utc, sync_state, sync_error, tier "
             "FROM vip_slots WHERE server_id = ? "
             "ORDER BY CASE WHEN expires_utc IS NULL THEN 1 ELSE 0 END, expires_utc, display_name, steam_id",
             (server_id,),
@@ -120,7 +149,7 @@ async def list_active_vip_slots(now=None):
     async with _conn() as db:
         cur = await db.execute(
             "SELECT id, server_id, steam_id, display_name, expires_utc, note, created_by, "
-            "created_utc, updated_utc, synced_utc, sync_state, sync_error "
+            "created_utc, updated_utc, synced_utc, sync_state, sync_error, tier "
             "FROM vip_slots WHERE expires_utc IS NULL OR expires_utc > ?",
             (now,),
         )
@@ -132,7 +161,7 @@ async def list_player_vip_slots(steam_id):
     async with _conn() as db:
         cur = await db.execute(
             "SELECT id, server_id, steam_id, display_name, expires_utc, note, created_by, "
-            "created_utc, updated_utc, synced_utc, sync_state, sync_error "
+            "created_utc, updated_utc, synced_utc, sync_state, sync_error, tier "
             "FROM vip_slots WHERE steam_id = ? ORDER BY server_id",
             (steam_id,),
         )
@@ -143,7 +172,7 @@ async def list_player_vip_slots(steam_id):
 async def get_vip_slot(vip_id, server_id=None):
     query = (
         "SELECT id, server_id, steam_id, display_name, expires_utc, note, created_by, "
-        "created_utc, updated_utc, synced_utc, sync_state, sync_error "
+        "created_utc, updated_utc, synced_utc, sync_state, sync_error, tier "
         "FROM vip_slots WHERE id = ?"
     )
     params = [vip_id]
@@ -204,7 +233,7 @@ async def list_expired_vip_slots(now=None, limit=200):
     async with _conn() as db:
         cur = await db.execute(
             "SELECT id, server_id, steam_id, display_name, expires_utc, note, created_by, "
-            "created_utc, updated_utc, synced_utc, sync_state, sync_error "
+            "created_utc, updated_utc, synced_utc, sync_state, sync_error, tier "
             "FROM vip_slots WHERE expires_utc IS NOT NULL AND expires_utc <= ? "
             "AND sync_state <> 'expired' ORDER BY expires_utc LIMIT ?",
             (now, limit),

@@ -1,5 +1,7 @@
 """РњРѕРЅРёС‚РѕСЂРёРЅРі РѕРЅР»Р°Р№РЅР°, Р°РєС‚РёРІРЅРѕСЃС‚СЊ РёРіСЂРѕРєРѕРІ, Р»РёРґРµСЂР±РѕСЂРґ."""
 
+from datetime import datetime, timezone
+
 try:
     from .. import config
 except ImportError:
@@ -11,9 +13,15 @@ except ImportError:
     import core
 
 
+SEED_PLAYER_THRESHOLD = 20
+
+
 async def record_monitoring(server_id, current, maximum, players):
     now = core._now()
     bucket = int(now // 60) * 60
+    day = datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m-%d")
+    # Тот же порог, что у метки «Сид» в интерфейсе: пока сервер не набрал игроков.
+    seeding = int(current or 0) < SEED_PLAYER_THRESHOLD
     async with core._conn() as db:
         await db.execute(
             "INSERT INTO population_samples (server_id, bucket_utc, players, max_players) VALUES (?, ?, ?, ?) "
@@ -54,10 +62,27 @@ async def record_monitoring(server_id, current, maximum, players):
             total_seconds = previous["total_seconds"] if previous else 0.0
             session_count = previous["session_count"] if previous else 0
             session_started = previous["session_started"] if continuous else now
+            elapsed = 0.0
             if continuous:
-                total_seconds += min(120.0, max(0.0, now - previous["last_seen"]))
+                elapsed = min(120.0, max(0.0, now - previous["last_seen"]))
+                total_seconds += elapsed
             else:
                 session_count += 1
+            seed_elapsed = elapsed if seeding else 0.0
+            await db.execute(
+                "INSERT INTO player_daily_activity (steam_id, day, server_id, play_seconds, seed_seconds) "
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(steam_id, day, server_id) DO UPDATE SET "
+                "play_seconds=player_daily_activity.play_seconds+excluded.play_seconds, "
+                "seed_seconds=player_daily_activity.seed_seconds+excluded.seed_seconds",
+                (steam_id, day, server_id, elapsed, seed_elapsed),
+            )
+            await db.execute(
+                "INSERT INTO player_sessions (server_id, steam_id, started_utc, last_seen_utc, seed_seconds) "
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(server_id, steam_id, started_utc) DO UPDATE SET "
+                "last_seen_utc=excluded.last_seen_utc, "
+                "seed_seconds=player_sessions.seed_seconds+excluded.seed_seconds",
+                (server_id, steam_id, session_started or now, now, seed_elapsed),
+            )
             await db.execute(
                 "INSERT INTO player_presence "
                 "(server_id, steam_id, total_seconds, session_count, "
@@ -72,6 +97,13 @@ async def record_monitoring(server_id, current, maximum, players):
                     session_started, now,
                 ),
             )
+            player_name = str(player.get("name") or "").strip()[:80]
+            if player_name:
+                await db.execute(
+                    "INSERT INTO player_names (steam_id, name, first_seen_utc, last_seen_utc) VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT(steam_id, name) DO UPDATE SET last_seen_utc=excluded.last_seen_utc",
+                    (steam_id, player_name, now, now),
+                )
             await db.execute(
                 "INSERT INTO player_activity "
                 "(server_id, steam_id, name, kills, deaths, cash, ping_ms, faction, seen_utc, first_seen_utc, last_seen_utc) "
@@ -81,13 +113,19 @@ async def record_monitoring(server_id, current, maximum, players):
                 "ping_ms=excluded.ping_ms, faction=excluded.faction, seen_utc=excluded.seen_utc, "
                 "last_seen_utc=excluded.last_seen_utc",
                 (
-                    server_id, steam_id, str(player.get("name") or "РРіСЂРѕРє")[:80],
+                    server_id, steam_id, str(player.get("name") or "Игрок")[:80],
                     int(player.get("kills") or 0), int(player.get("deaths") or 0),
                     int(player.get("cash") or 0), int(player.get("pingMs") or 0),
                     str(player.get("faction") or "")[:40], now, now, now,
                 ),
             )
         await db.execute("DELETE FROM population_samples WHERE bucket_utc < ?", (int(now - 31 * 86400),))
+        retention_cutoff = max(0.0, now - config.PLAYER_ACTIVITY_RETENTION_DAYS * 86400)
+        await db.execute("DELETE FROM player_sessions WHERE last_seen_utc < ?", (retention_cutoff,))
+        await db.execute(
+            "DELETE FROM player_daily_activity WHERE day < ?",
+            (datetime.fromtimestamp(retention_cutoff, timezone.utc).strftime("%Y-%m-%d"),),
+        )
         await db.execute(
             "DELETE FROM player_activity WHERE seen_utc < ?",
             (int(now - config.PLAYER_ACTIVITY_RETENTION_DAYS * 86400),),
@@ -213,7 +251,7 @@ def _aggregate_player_rows(rows):
             steam_id,
             {
                 "steam_id": steam_id,
-                "name": str(row[2] or "РРіСЂРѕРє"),
+                "name": str(row[2] or "Игрок"),
                 "kills": 0,
                 "deaths": 0,
                 "servers": [],

@@ -49,7 +49,7 @@
     submit.hidden = false;
   }
 
-  document.querySelectorAll('.support-plan').forEach((button) => {
+  const bindPlan = (button) => {
     button.onclick = () => {
       plan = { product: button.dataset.product || '', seats: Number(button.dataset.seats || 1) };
       title.textContent = button.dataset.plan;
@@ -67,7 +67,54 @@
       dialog.showModal();
       checkAccess();
     };
-  });
+  };
+
+  const formatRub = (rub) => `${Number(rub).toLocaleString('ru-RU')} ₽`;
+
+  function planCard(item, perks) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'support-plan';
+    button.dataset.plan = item.name;
+    button.dataset.price = formatRub(item.rub);
+    button.dataset.seats = String(item.seats);
+    // Клановый VIP оформляется в Discord, поэтому покупка с сайта для него не создаётся.
+    if (item.kind === 'personal') button.dataset.product = item.id;
+    const add = (tag, text) => {
+      const node = document.createElement(tag);
+      node.textContent = text;
+      button.append(node);
+    };
+    add('small', item.kind === 'clan' ? 'КЛАНОВЫЙ VIP' : `VIP TIER ${item.tier}`);
+    add('b', item.term);
+    add('strong', formatRub(item.rub));
+    add('span', perks[item.tier] || '');
+    bindPlan(button);
+    return button;
+  }
+
+  // Цены приходят с сервера. Старую цену не показываем: без ответа покупку не предлагаем.
+  async function loadPlans() {
+    const grid = document.querySelector('#supportPlans');
+    try {
+      const response = await fetch('/api/public/vip-catalog', { credentials: 'same-origin' });
+      if (response.status === 503) {
+        const closed = await response.json().catch(() => null);
+        throw new Error(closed?.detail || 'Покупка временно недоступна.');
+      }
+      const data = response.ok ? await response.json() : null;
+      if (!data?.ok) throw new Error('Не удалось загрузить тарифы. Обновите страницу чуть позже.');
+      if (!data.items.length) throw new Error('Сейчас нет доступных тарифов.');
+      grid.replaceChildren(...data.items.map((item) => planCard(item, data.perks || {})));
+    } catch (error) {
+      const text = document.createElement('p');
+      text.className = 'muted';
+      text.textContent = error.message || 'Не удалось загрузить тарифы.';
+      grid.replaceChildren(text);
+    }
+  }
+
+  loadPlans();
 
   dialog.querySelector('.dialog-close').onclick = () => dialog.close();
 

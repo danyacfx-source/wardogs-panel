@@ -47,6 +47,11 @@ WARDOGS_GUILD_ID=
 WARDOGS_ADMIN_ROLES=
 # Allowlist действий админки: IP/CIDR через запятую. Пусто = без ограничений.
 WARDOGS_ADMIN_IPS=
+# SteamID64 владельцев: только они видят «Боты и Discord» и «Состояние». Пусто — закрыто для всех.
+WARDOGS_OWNER_STEAM_IDS=
+# Секрет приёма кланов от бота (POST /api/public/clan-sync). Пусто — приём выключен.
+# У бота: CLAN_SYNC_URL=<адрес сайта>/api/public/clan-sync и CLAN_SYNC_SECRET=<тот же секрет>.
+WARDOGS_CLAN_SYNC_SECRET=
 RCON_TOKEN_RU1=
 RCON_TOKEN_RU2=
 RCON_TOKEN_RU3=

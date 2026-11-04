@@ -1,6 +1,7 @@
 """Точка входа WARDOGS-сайта: FastAPI + статика + RCON-прокси."""
 
 import asyncio
+import hashlib
 import logging
 import re
 import secrets
@@ -11,21 +12,26 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 import aiohttp
 
 try:
-    from . import api, backup, config, db, donate, monitor
+    from . import api, backup, config, db, donate, maintenance, monitor, vip_catalog
+    from . import discord as dmod
 except ImportError:  # Поддержка прямого запуска: python app/main.py
     import api
     import backup
     import config
     import db
+    import discord as dmod
     import donate
+    import maintenance
     import monitor
+    import vip_catalog
 
 log = logging.getLogger("main")
 
@@ -71,6 +77,10 @@ async def maintenance_loop(stop_event):
         except Exception:
             log.exception("Ошибка очистки временных записей базы")
         try:
+            await api.close_lapsed_vip_tickets()
+        except Exception:
+            log.exception("Ошибка автозакрытия личных тикетов VIP")
+        try:
             await _giveaways.sync_giveaways()
         except Exception:
             log.exception("Ошибка синхронизации розыгрышов")
@@ -100,6 +110,7 @@ async def lifespan(app):
         config.DB_BACKEND,
         config.DB_PATH.stat().st_size if config.DB_PATH.exists() else 0,
     )
+    await vip_catalog.refresh(force=True)
     stop_health = asyncio.Event()
     health_task = None
     maintenance_task = None
@@ -107,6 +118,7 @@ async def lifespan(app):
     bot_task = None
     ban_queue_task = None
     if not config.DISABLE_BACKGROUND:
+        monitor.players_hook = api.announce_vip_joins
         health_task = asyncio.create_task(monitor.health_loop(api.POOL, stop_health))
         maintenance_task = asyncio.create_task(maintenance_loop(stop_health))
         ban_queue_task = asyncio.create_task(api.ban_queue_loop(stop_health))
@@ -166,6 +178,7 @@ app = FastAPI(
     openapi_url=None if config.ENVIRONMENT == "production" else "/openapi.json",
 )
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=config.ALLOWED_HOSTS)
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 _rate_windows = defaultdict(deque)
 
@@ -187,7 +200,7 @@ async def security_middleware(request: Request, call_next):
         script_src = "script-src 'self'"
         content_security_policy = (
             "default-src 'self'; object-src 'none'; connect-src 'self'; "
-            "img-src 'self' data: https://avatars.steamstatic.com https://avatars.cloudflare.steamstatic.com https://steamcdn-a.akamaihd.net; style-src 'self'; "
+            "img-src 'self' data: https://avatars.steamstatic.com https://avatars.cloudflare.steamstatic.com https://steamcdn-a.akamaihd.net https://cdn.discordapp.com https://media.discordapp.net; style-src 'self'; "
             "style-src-attr 'unsafe-inline'; "
             f"{script_src}; font-src 'self' data:; "
             "base-uri 'self'; frame-ancestors 'self'; "
@@ -212,6 +225,12 @@ async def security_middleware(request: Request, call_next):
             response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         if request.url.path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-store")
+        elif request.url.path.startswith("/static/") and response.status_code == 200:
+            # ?v= — хэш содержимого, поэтому такой файл не меняется никогда.
+            if request.query_params.get("v"):
+                response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+            elif request.url.path.startswith("/static/wardogs-theme/"):
+                response.headers.setdefault("Cache-Control", "public, max-age=86400")
         if request.url.path == "/api/session" and not request.cookies.get(api.CSRF_COOKIE):
             response.set_cookie(
                 api.CSRF_COOKIE,
@@ -243,7 +262,6 @@ async def security_middleware(request: Request, call_next):
             window.popleft()
         limit = {"auth": 20, "write": 90, "read": 240, "asset": 600}[scope]
         if len(window) >= limit:
-            from fastapi.responses import JSONResponse
             return finish(JSONResponse({"error": {"code": "rate_limited", "message": "Слишком много запросов, попробуйте позже"}}, status_code=429))
         window.append(now)
         if len(_rate_windows) > 5000:
@@ -255,19 +273,16 @@ async def security_middleware(request: Request, call_next):
     try:
         declared_length = int(content_length) if content_length is not None else 0
     except (TypeError, ValueError):
-        from fastapi.responses import JSONResponse
         return finish(JSONResponse(
             {"error": {"code": "invalid_content_length", "message": "Некорректный Content-Length"}},
             status_code=400,
         ))
     if declared_length < 0:
-        from fastapi.responses import JSONResponse
         return finish(JSONResponse(
             {"error": {"code": "invalid_content_length", "message": "Некорректный Content-Length"}},
             status_code=400,
         ))
     if declared_length > config.MAX_BODY_BYTES:
-        from fastapi.responses import JSONResponse
         return finish(JSONResponse(
             {"error": {"code": "request_too_large", "message": "Слишком большой запрос"}},
             status_code=413,
@@ -280,7 +295,6 @@ async def security_middleware(request: Request, call_next):
         async for chunk in request.stream():
             received += len(chunk)
             if received > config.MAX_BODY_BYTES:
-                from fastapi.responses import JSONResponse
                 return finish(JSONResponse(
                     {"error": {"code": "request_too_large", "message": "Слишком большой запрос"}},
                     status_code=413,
@@ -299,7 +313,6 @@ async def security_middleware(request: Request, call_next):
     }
     is_killfeed_ingest = re.fullmatch(r"/api/killfeed/[^/]+", path) is not None
     if protected and path not in token_exempt and not is_killfeed_ingest:
-        from fastapi.responses import JSONResponse
         fetch_site = (request.headers.get("sec-fetch-site") or "").lower()
         if fetch_site == "cross-site":
             return finish(JSONResponse({"error": {"code": "origin", "message": "Недопустимый источник запроса"}}, status_code=403))
@@ -312,6 +325,22 @@ async def security_middleware(request: Request, call_next):
             csrf_header = request.headers.get("X-CSRF-Token") or ""
             if not csrf_cookie or not secrets.compare_digest(csrf_cookie, csrf_header):
                 return finish(JSONResponse({"error": {"code": "csrf", "message": "Обновите страницу и повторите действие"}}, status_code=403))
+    closed = await maintenance.closed_section_for(path, request.method)
+    if closed:
+        section, entry, is_data = closed
+        user = await api._current_user(request)
+        me = await api._client_status(request, user) if user else None
+        permissions = (me or {}).get("permissions") or []
+        if dmod.OWNER_PERM not in permissions and not (is_data and permissions):
+            if section.get("page") and not is_data:
+                return finish(HTMLResponse(
+                    maintenance.page_html(section, entry, me), status_code=503,
+                    headers={"Cache-Control": "no-store"},
+                ))
+            return finish(JSONResponse(
+                {"detail": entry["message"], "error": {"code": "maintenance", "message": entry["message"]}},
+                status_code=503,
+            ))
     response = await call_next(request)
     return finish(response)
 
@@ -411,8 +440,7 @@ async def servers_health(request: Request):
     user = await api._current_user(request)
     if not user:
         return {"ok": False, "servers": [], "detail": "нужен вход"}
-    me = await api._user_status(user)
-    if not me.get("permissions"):
+    if not await api._request_permissions(request, user):
         return {"ok": False, "servers": [], "detail": "недостаточно прав"}
     rows = []
     for srv in api.POOL.values():
@@ -424,12 +452,49 @@ async def servers_health(request: Request):
     return {"ok": all(row["ok"] for row in rows), "servers": rows}
 
 
+_ASSET_RE = re.compile(r"""(/static/[\w./-]+\.(?:js|css))(?:\?v=[^"'\s>]*)?""")
+_TEMPLATE_RE = re.compile(r"<!-- WARDOGS_APP_TEMPLATE_START -->.*?<!-- WARDOGS_APP_TEMPLATE_END -->", re.S)
+_asset_hashes = {}
+_page_sources = {}
+
+
+def _asset_url(match):
+    """Версия файла — хэш содержимого: браузер кэширует его надолго и сам видит обновление."""
+    url = match.group(1)
+    path = STATIC_DIR / url[len("/static/"):]
+    try:
+        stat = path.stat()
+    except OSError:
+        return url
+    stamp = (stat.st_mtime_ns, stat.st_size)
+    cached = _asset_hashes.get(url)
+    if not cached or cached[0] != stamp:
+        cached = (stamp, hashlib.sha256(path.read_bytes()).hexdigest()[:12])
+        _asset_hashes[url] = cached
+    return f"{url}?v={cached[1]}"
+
+
+def _page(name):
+    """HTML страницы. Шаблон Vue уже скомпилирован в *.render.js, браузеру он не нужен."""
+    path = STATIC_DIR / name
+    stamp = path.stat().st_mtime_ns
+    cached = _page_sources.get(name)
+    if not cached or cached[0] != stamp:
+        cached = (stamp, _TEMPLATE_RE.sub("", path.read_text(encoding="utf-8")))
+        _page_sources[name] = cached
+    return Response(
+        _ASSET_RE.sub(_asset_url, cached[1]),
+        media_type="text/html; charset=utf-8",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.get("/")
 async def index():
     idx = STATIC_DIR / "index.html"
     if not idx.exists():
         return {"ok": True, "note": "статики нет, иди по /api"}
-    return FileResponse(idx, headers={"Cache-Control": "no-store"})
+    return _page("index.html")
 
 
 @app.get("/panel")
@@ -437,33 +502,38 @@ async def panel():
     p = STATIC_DIR / "panel.html"
     if not p.exists():
         return {"ok": True, "note": "панели нет"}
-    return FileResponse(p, headers={"Cache-Control": "no-store"})
+    return _page("panel.html")
 
 
 @app.get("/stats")
 async def stats_page():
-    return FileResponse(STATIC_DIR / "stats.html", headers={"Cache-Control": "no-store"})
+    return _page("stats.html")
 
 
 @app.get("/activity")
 @app.get("/activity/top")
 async def activity_page():
-    return FileResponse(STATIC_DIR / "activity.html", headers={"Cache-Control": "no-store"})
+    return _page("activity.html")
 
 
 @app.get("/clans")
 async def clans_page():
-    return FileResponse(STATIC_DIR / "clans.html", headers={"Cache-Control": "no-store"})
+    return _page("clans.html")
+
+
+@app.get("/community")
+async def community_page():
+    return _page("community.html")
 
 
 @app.get("/support")
 async def support_page():
-    return FileResponse(STATIC_DIR / "support.html", headers={"Cache-Control": "no-store"})
+    return _page("support.html")
 
 
 @app.get("/calc")
 async def calc_page():
-    return FileResponse(STATIC_DIR / "calc.html", headers={"Cache-Control": "no-store"})
+    return _page("calc.html")
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

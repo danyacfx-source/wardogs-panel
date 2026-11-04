@@ -28,14 +28,6 @@ BOT_SCOPES = {
     "tickets.read", "tickets.write", "moderation.write", "voice.manage", "commands.read",
 }
 
-VIP_PLANS = [
-    {"id": "personal-1", "name": "Личный · 1 месяц", "amount": 500, "months": 1, "seats": 1},
-    {"id": "personal-3", "name": "Личный · 3 месяца", "amount": 1200, "months": 3, "seats": 1},
-    {"id": "personal-12", "name": "Личный · 12 месяцев", "amount": 4800, "months": 12, "seats": 1},
-    {"id": "clan-10", "name": "Клан · 10 участников", "amount": 4500, "months": 1, "seats": 10},
-    {"id": "clan-20", "name": "Клан · 20 участников", "amount": 8500, "months": 1, "seats": 20},
-    {"id": "clan-30", "name": "Клан · 30 участников", "amount": 12000, "months": 1, "seats": 30},
-]
 
 
 def _clean_spaces(value: str) -> str:
@@ -101,6 +93,8 @@ class VipSlotSave(BaseModel):
     display_name: str = ""
     note: str = ""
     expires_utc: Optional[Any] = None
+    # Пусто — уровень не меняется: продление не должно сбрасывать Tier.
+    tier: Optional[int] = Field(default=None, ge=1, le=3)
 
     @model_validator(mode="after")
     def _check_steam(self):

@@ -51,7 +51,8 @@ async def _build_transcript(channel) -> str:
     """Собирает текстовый транскрипт канала. Ошибки — лог, частичный результат."""
     lines = []
     try:
-        async for msg in channel.history(oldest_first=True):
+        # limit=None: по умолчанию discord.py отдаёт только 100 сообщений, и транскрипт был бы обрезан.
+        async for msg in channel.history(limit=None, oldest_first=True):
             ts = msg.created_at.strftime("%d.%m.%Y %H:%M:%S")
             content = msg.content or ""
             if msg.embeds:
@@ -87,8 +88,9 @@ async def _ensure_site_ticket(row, channel):
         return site_id
     db = _panel_db()
     steam = await db.get_steam_by_discord(str(row["user_id"])) or ""
-    ttype = _get_type(_row_get(row, "ticket_type") or "complaint")
-    label = ttype.get("label") or "Тикет"
+    ticket_type = _row_get(row, "ticket_type") or "complaint"
+    ttype = _get_type(ticket_type)
+    label = "Личный тикет VIP" if ticket_type == VIP_TICKET_TYPE else (ttype.get("label") or "Тикет")
     created = await db.create_ticket(
         title=f"Тикет Discord — {label}",
         description=(
@@ -189,6 +191,9 @@ def _get_type(type_id: str):
         log.exception("ticket_types: не удалось прочитать тип %s", type_id)
         row = None
     return row or dict(_FALLBACK_TYPE)
+
+
+VIP_TICKET_TYPE = "vip_personal"
 
 
 class TicketPanelView(discord.ui.View):
@@ -463,6 +468,184 @@ class TicketCog(commands.Cog):
         self.bot = bot
 
     ticket_group = app_commands.Group(name="tickets", description="Управление тикетами")
+
+    def panel_list_vip_tickets(self) -> list:
+        """Открытые личные тикеты и купленный уровень их владельцев.
+
+        Срок покупки знает только бот. paid_known=False значит, что подтвердить его сейчас
+        нельзя (нет связи с журналом оплат), и закрывать такой тикет нельзя: оплата могла пройти.
+        """
+        seeding = self.bot.get_cog("SeedingCog")
+        donations = getattr(seeding, "donations", None)
+        known = donations is not None and donations.can_remove()
+        rows = get_conn().execute(
+            "SELECT user_id, channel_id FROM tickets WHERE status = 'open' AND ticket_type = ?",
+            (VIP_TICKET_TYPE,),
+        ).fetchall()
+        result = []
+        for row in rows:
+            discord_id = str(row["user_id"])
+            paid_tier = 0
+            if known and donations.active(discord_id):
+                paid_tier = int((donations.state["vip"].get(discord_id) or {}).get("tier") or 1)
+            result.append({
+                "discord_id": discord_id, "channel_id": str(row["channel_id"]),
+                "paid_tier": paid_tier, "paid_known": known,
+            })
+        return result
+
+    async def panel_close_vip_ticket(self, payload: dict) -> dict:
+        """Закрывает личный тикет: сначала сохраняет транскрипт, без него канал не закрывается."""
+        channel_id = int(payload["channel_id"])
+        guild = self.bot.get_guild(config.GUILD_ID)
+        if guild is None:
+            return {"ok": False, "error": "Бот не видит Discord-сервер"}
+        channel = guild.get_channel(channel_id)
+        conn = get_conn()
+        closed_at = datetime.utcnow().isoformat()
+        if channel is None:
+            # Канал уже удалён: сохранять нечего, остаётся снять запись с учёта.
+            conn.execute(
+                "UPDATE tickets SET status = 'closed', closed_at = ? WHERE channel_id = ? AND status = 'open'",
+                (closed_at, channel_id),
+            )
+            conn.commit()
+            return {"ok": True, "closed": True}
+        async with _channel_locks[channel_id]:
+            row = conn.execute("SELECT * FROM tickets WHERE channel_id = ?", (channel_id,)).fetchone()
+            if not row or _row_get(row, "status") == "closed":
+                return {"ok": True, "closed": False}
+            await _sync_transcript(channel, row, by_id=self.bot.user.id)
+            saved = conn.execute("SELECT transcript_saved FROM tickets WHERE channel_id = ?", (channel_id,)).fetchone()
+            if not saved or not int(_row_get(saved, "transcript_saved") or 0):
+                # Следующая проверка повторит попытку, история канала не потеряна.
+                return {"ok": False, "error": "Транскрипт не сохранён"}
+            if config.TICKET_TRANSCRIPT_CHANNEL:
+                transcript_channel = guild.get_channel(config.TICKET_TRANSCRIPT_CHANNEL)
+                if transcript_channel:
+                    try:
+                        text = await _build_transcript(channel)
+                        await transcript_channel.send(
+                            file=discord.File(fp=BytesIO(text.encode("utf-8")), filename=f"transcript-{channel.name}.txt"),
+                            allowed_mentions=discord.AllowedMentions.none(),
+                        )
+                    except discord.HTTPException:
+                        # Копия в панели уже есть: сбой канала транскриптов не мешает закрытию.
+                        log.exception("Не удалось отправить транскрипт канала %s", channel_id)
+            conn.execute(
+                "UPDATE tickets SET status = 'closed', closed_at = ?, closed_by = ? WHERE channel_id = ?",
+                (closed_at, self.bot.user.id, channel_id),
+            )
+            conn.commit()
+            try:
+                member = guild.get_member(row["user_id"])
+                if member:
+                    await channel.set_permissions(member, overwrite=None)
+                await channel.set_permissions(guild.default_role, view_channel=False)
+                for staff_role_id in config.TICKET_STAFF_ROLES:
+                    staff = guild.get_role(staff_role_id)
+                    if staff:
+                        await channel.set_permissions(
+                            staff, view_channel=True, send_messages=False, read_message_history=True
+                        )
+            except Exception:
+                log.exception("Не удалось обновить права закрытого тикета %s", channel_id)
+            try:
+                await channel.send(
+                    embed=discord.Embed(
+                        title="Тикет закрыт автоматически",
+                        description="VIP с личным тикетом закончился и не был продлён. Транскрипт сохранён.",
+                        color=discord.Color.greyple(),
+                    ),
+                    view=TicketClosedView(),
+                )
+                if config.TICKET_LOG_CHANNEL:
+                    log_channel = guild.get_channel(config.TICKET_LOG_CHANNEL)
+                    if log_channel:
+                        await log_channel.send(
+                            f"🎫 Личный тикет закрыт автоматически: {channel.mention}",
+                            allowed_mentions=discord.AllowedMentions.none(),
+                        )
+            except discord.HTTPException:
+                log.exception("Не удалось сообщить о закрытии тикета %s", channel_id)
+        return {"ok": True, "closed": True}
+
+    async def panel_open_vip_ticket(self, payload: dict) -> dict:
+        """Личный канал игрока с администрацией для VIP Tier 2 и выше. Повторно не создаётся."""
+        discord_id = int(payload["discord_id"])
+        tier = int(payload.get("tier") or 2)
+        guild = self.bot.get_guild(config.GUILD_ID)
+        if guild is None:
+            return {"ok": False, "error": "Бот не видит Discord-сервер"}
+        async with _ticket_locks[discord_id]:
+            conn = get_conn()
+            existing = conn.execute(
+                "SELECT channel_id FROM tickets WHERE user_id = ? AND status = 'open' AND ticket_type = ?",
+                (discord_id, VIP_TICKET_TYPE),
+            ).fetchone()
+            if existing:
+                return {"ok": True, "created": False, "channel_id": str(existing["channel_id"])}
+            member = guild.get_member(discord_id)
+            if member is None:
+                try:
+                    member = await guild.fetch_member(discord_id)
+                except discord.HTTPException:
+                    return {"ok": False, "error": "Игрока нет на Discord-сервере"}
+            category = guild.get_channel(config.TICKET_CATEGORY)
+            if not category:
+                return {"ok": False, "error": "Категория тикетов не настроена"}
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                member: discord.PermissionOverwrite(
+                    view_channel=True, send_messages=True, read_message_history=True,
+                    attach_files=True, embed_links=True,
+                ),
+            }
+            for staff_role_id in config.TICKET_STAFF_ROLES:
+                staff = guild.get_role(staff_role_id)
+                if staff:
+                    overwrites[staff] = discord.PermissionOverwrite(
+                        view_channel=True, send_messages=True, read_message_history=True
+                    )
+            try:
+                channel = await guild.create_text_channel(
+                    name=f"vip-{member.name}", category=category, overwrites=overwrites,
+                    topic=f"Личный тикет VIP Tier {tier}: {member} ({member.id})",
+                )
+            except discord.HTTPException as error:
+                log.warning("Не удалось создать личный тикет для %s: %s", member, error)
+                return {"ok": False, "error": "Discord не дал создать канал"}
+            embed = discord.Embed(
+                title=f"Личный тикет · VIP Tier {tier}",
+                description="Это ваш личный канал с администрацией. Пишите сюда по любому вопросу.",
+                color=discord.Color.gold(), timestamp=datetime.utcnow(),
+            )
+            staff_mention = " ".join(f"<@&{role_id}>" for role_id in config.TICKET_STAFF_ROLES)
+            mentions = discord.AllowedMentions(everyone=False, roles=True, users=True)
+            # Канал уже создан: при сбое удаляем его, иначе останется сирота.
+            try:
+                await channel.send(
+                    content=f"{staff_mention} {member.mention}", embed=embed,
+                    view=TicketCloseView(), allowed_mentions=mentions,
+                )
+                conn.execute(
+                    "INSERT INTO tickets (user_id, channel_id, ticket_type, status, created_at) VALUES (?, ?, ?, 'open', ?)",
+                    (member.id, channel.id, VIP_TICKET_TYPE, datetime.utcnow().isoformat()),
+                )
+                conn.commit()
+            except Exception:
+                log.exception("Ошибка после создания личного тикета %s, откат", channel.id)
+                try:
+                    await channel.delete()
+                except Exception:
+                    log.exception("Не удалось удалить сиротский канал %s", channel.id)
+                return {"ok": False, "error": "Не удалось создать тикет"}
+            try:
+                row = conn.execute("SELECT * FROM tickets WHERE channel_id = ?", (channel.id,)).fetchone()
+                await _ensure_site_ticket(row, channel)
+            except Exception:
+                log.exception("Не удалось создать сайт-тикет для канала %s", channel.id)
+            return {"ok": True, "created": True, "channel_id": str(channel.id)}
 
     @ticket_group.command(name="panel", description="Отправить панель создания тикетов")
     @app_commands.describe(channel="Канал для панели")

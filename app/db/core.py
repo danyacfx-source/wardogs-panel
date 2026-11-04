@@ -112,7 +112,11 @@ CREATE TABLE IF NOT EXISTS seed_shop_config (
 _audit_verify_cache = {"checked_at": 0.0, "result": None, "db_path": None}
 _pg_pool = None
 _pg_pool_lock = asyncio.Lock()
-REQUIRED_SCHEMA_VERSION = 22
+REQUIRED_SCHEMA_VERSION = 23
+
+
+def _unicode_lower(value):
+    return value.lower() if isinstance(value, str) else value
 
 
 class _ConfiguredConnection:
@@ -123,6 +127,9 @@ class _ConfiguredConnection:
 
     async def __aenter__(self):
         self._db = await self._connection.__aenter__()
+        # Встроенный LOWER в SQLite понимает только латиницу: поиск по кириллице не находил бы ники.
+        # До PRAGMA: функцию нельзя заменить, пока на соединении есть незавершённый запрос.
+        await self._db.create_function("LOWER", 1, _unicode_lower, deterministic=True)
         await self._db.execute("PRAGMA busy_timeout=5000")
         await self._db.execute("PRAGMA foreign_keys=ON")
         await self._db.execute("PRAGMA trusted_schema=OFF")

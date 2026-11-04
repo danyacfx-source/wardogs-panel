@@ -26,6 +26,27 @@ from .core import (
     _PGCursor,
 )
 
+from .reports import (
+    AUDIT_SECTIONS,
+    player_period_stats,
+    list_player_names,
+    names_of_player,
+    note_match_started,
+    current_match_starts,
+    list_matches,
+    search_site_audit,
+    live_player_meta,
+    active_vip_steam_ids,
+)
+
+from .player_card import (
+    add_punishment_details,
+    list_punishment_details,
+    record_match_result,
+    recent_server_factions,
+    get_player_card_activity,
+)
+
 from .players import (
     upsert_user,
     touch_user,
@@ -61,6 +82,8 @@ from .vip import (
     has_seed_vip_active,
     save_vip_slot,
     admin_set_vip_slot,
+    raise_vip_tier,
+    get_active_vip_tier,
     list_vip_slots,
     list_active_vip_slots,
     list_player_vip_slots,

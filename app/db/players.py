@@ -123,7 +123,7 @@ async def get_personas(steam_ids):
 
 async def list_player_punishments(steam_id, limit=100):
     limit = max(1, min(int(limit or 100), 200))
-    events = ("ban.add", "ban.remove", "rcon.kick", "rcon.kill")
+    events = PUNISHMENT_EVENTS
     placeholders = ", ".join("?" for _ in events)
     async with _conn() as db:
         cur = await db.execute(
@@ -150,7 +150,7 @@ async def list_player_punishments(steam_id, limit=100):
     ]
 
 
-PUNISHMENT_EVENTS = ("ban.add", "ban.remove", "rcon.kick", "rcon.kill")
+PUNISHMENT_EVENTS = ("ban.add", "ban.remove", "rcon.kick", "rcon.kill", "rcon.message")
 
 
 async def hide_selected_player_punishments(steam_id, audit_ids, actor_steam_id):

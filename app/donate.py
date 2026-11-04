@@ -39,6 +39,11 @@ except ImportError:  # Поддержка прямого запуска: python 
     import config
     import db
 
+try:
+    from . import vip_catalog
+except ImportError:
+    import vip_catalog
+
 log = logging.getLogger("donate")
 
 router = APIRouter(prefix="/donate")
@@ -55,23 +60,6 @@ BUYER_ID_RE = re.compile(r"^\d{17,20}\Z")
 OPERATION_ID_RE = re.compile(r"^[A-Za-z0-9-]{1,80}\Z")
 HEX64_RE = re.compile(r"^[0-9a-f]{64}\Z")
 KINDS = {"donation", "personal", "clan"}
-# Имена продуктов повторяют src/catalog.js бота — используются только для
-# отображения, решения о платеже принимаются по подписи.
-PRODUCTS = {
-    "personal_1": "Личный VIP · 1 месяц",
-    "personal_3": "Личный VIP · 3 месяца",
-    "personal_12": "Личный VIP · 12 месяцев",
-    "clan_10": "VIP для клана · 10 мест · 1 месяц",
-    "clan_20": "VIP для клана · 20 мест · 1 месяц",
-    "clan_30": "VIP для клана · 30 мест · 1 месяц",
-}
-# Тарифы, доступные для покупки с сайта. Клановый VIP здесь не продаётся:
-# для него нужны Discord-идентификаторы получателей, их выбирают в боте.
-SITE_PRODUCTS = {
-    "personal_1": ("personal", 50000),
-    "personal_3": ("personal", 120000),
-    "personal_12": ("personal", 480000),
-}
 ORDER_LIFETIME_MS = 7200 * 1000
 _LOCK = threading.Lock()
 _MSK = timezone(timedelta(hours=3))
@@ -272,11 +260,14 @@ def sign_checkout_order(order: dict) -> str:
 
 def create_site_order(product_id: str, buyer_discord_id: str) -> str:
     """Заказ, созданный самим сайтом, с подписью бота. Возвращает токен o."""
-    if product_id not in SITE_PRODUCTS:
+    # С сайта доступны только личные тарифы: для кланового нужны Discord ID получателей.
+    product = vip_catalog.PRODUCTS.get(product_id)
+    amount = vip_catalog.price_kopecks(product_id)
+    if not product or product["kind"] != "personal" or amount is None:
         raise ValueError("неизвестный тариф")
     if not BUYER_ID_RE.fullmatch(buyer_discord_id or ""):
         raise ValueError("некорректный Discord ID покупателя")
-    kind, amount = SITE_PRODUCTS[product_id]
+    kind = product["kind"]
     now = int(time.time() * 1000)
     order = {
         "id": secrets.token_hex(16),
@@ -321,7 +312,8 @@ def _fmt_rub(kopecks: int) -> str:
 def _order_title(order: dict) -> str:
     if order["kind"] == "donation":
         return "Поддержка сообщества WARDOGS"
-    return PRODUCTS.get(order.get("productId") or "", f"Заказ {order.get('productId')}")
+    product = vip_catalog.PRODUCTS.get(order.get("productId") or "")
+    return product["name"] if product else f"Заказ {order.get('productId')}"
 
 
 def _page(body: str) -> str:
@@ -400,7 +392,7 @@ def _vip_order_title(order: dict) -> str:
         from . import api as api_mod
     except ImportError:
         import api as api_mod
-    plan = next((p for p in api_mod.VIP_PLANS if p["id"] == order.get("plan_id")), None)
+    plan = vip_catalog.plan_by_id(order.get("plan_id"))
     if plan:
         return plan["name"]
     return f"VIP-заявка {order.get('id')}"

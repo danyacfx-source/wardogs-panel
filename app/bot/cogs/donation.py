@@ -9,6 +9,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import importlib
 import logging
 import re
 import secrets
@@ -34,18 +35,13 @@ from database import (
     get_feed_offset, set_feed_offset, is_top_dirty, set_top_dirty,
 )
 
+vip_catalog = importlib.import_module("app.vip_catalog")
+
 log = logging.getLogger("donation")
 
 TIERS = config.DONATION_TIERS or []
 
-PRODUCTS = {
-    "personal_1": {"name": "Личный VIP · 1 месяц", "kind": "personal", "months": 1, "seats": 1, "amount": 50000},
-    "personal_3": {"name": "Личный VIP · 3 месяца", "kind": "personal", "months": 3, "seats": 1, "amount": 120000},
-    "personal_12": {"name": "Личный VIP · 12 месяцев", "kind": "personal", "months": 12, "seats": 1, "amount": 480000},
-    "clan_10": {"name": "VIP для клана · 10 мест · 1 месяц", "kind": "clan", "months": 1, "seats": 10, "amount": 450000},
-    "clan_20": {"name": "VIP для клана · 20 мест · 1 месяц", "kind": "clan", "months": 1, "seats": 20, "amount": 850000},
-    "clan_30": {"name": "VIP для клана · 30 мест · 1 месяц", "kind": "clan", "months": 1, "seats": 30, "amount": 1200000},
-}
+PRODUCTS = vip_catalog.PRODUCTS
 
 VIP_ROLE_ID = config.DONATION_VIP_ROLE_ID
 CHANNEL_SUPPORT = config.DONATION_CHANNEL_SUPPORT
@@ -195,17 +191,7 @@ class DonationCog(commands.Cog):
                     btn.add_item(discord.ui.Button(label="Поддержать", emoji="💛", style=discord.ButtonStyle.primary, custom_id="support:open"))
                     comps = [btn]
                 else:
-                    vip_view = discord.ui.View()
-                    personal_select = discord.ui.Select(custom_id="vip:personal", placeholder="Выбрать личный VIP",
-                        options=[discord.SelectOption(label=PRODUCTS[k]["name"], value=k, description=format_rub(PRODUCTS[k]["amount"]))
-                                 for k in ["personal_1", "personal_3", "personal_12"]])
-                    clan_select = discord.ui.Select(custom_id="vip:clan", placeholder="Выбрать VIP для клана",
-                        options=[discord.SelectOption(label=PRODUCTS[k]["name"], value=k, description=format_rub(PRODUCTS[k]["amount"]))
-                                 for k in ["clan_10", "clan_20", "clan_30"]])
-                    vip_view.add_item(personal_select)
-                    vip_view2 = discord.ui.View()
-                    vip_view2.add_item(clan_select)
-                    comps = [vip_view, vip_view2]
+                    comps = self._vip_components()
                 await self._upsert_panel(guild, key, ch_id, embed_fn(), comps)
                 log.info("Панель %s обновлена на старте", key)
             except Exception as e:
@@ -550,11 +536,53 @@ class DonationCog(commands.Cog):
         embed.set_author(name="WARDOGS RU · VIP")
         if self.site_base:
             embed.set_thumbnail(url=f"{self.site_base.rstrip('/')}/static/donate/assets/vip.png?v=20261018")
-        embed.add_field(name="👤 Личный VIP", value="1 месяц — **500 ₽**\n3 месяца — **1 200 ₽**\n12 месяцев — **4 800 ₽**", inline=True)
-        embed.add_field(name="🛡️ VIP для клана", value="10 участников / 1 месяц — **4 500 ₽**\n20 участников / 1 месяц — **8 500 ₽**\n30 участников / 1 месяц — **12 000 ₽**", inline=True)
+        rows = vip_catalog.items(include_disabled=False)
+        for tier in vip_catalog.TIERS:
+            lines = [
+                f"{row['term']} — **{format_rub(row['rub'] * 100)}**"
+                for row in rows if row["kind"] == "personal" and row["tier"] == tier
+            ]
+            if lines:
+                embed.add_field(name=f"👤 VIP Tier {tier}", value=f"{vip_catalog.TIER_PERKS[tier]}\n" + "\n".join(lines), inline=True)
+        clan_lines = [f"{row['term']} — **{format_rub(row['rub'] * 100)}**" for row in rows if row["kind"] == "clan"]
+        if clan_lines:
+            embed.add_field(name="🛡️ VIP для клана", value="\n".join(clan_lines), inline=True)
         embed.add_field(name="📌 Порядок", value="Выберите вариант ниже. Для кланового пакета отметьте всех получателей до оплаты. Каждый получатель привязывает SteamID через `/steam link steam_id` и `/steam verify code`; уже привязанным повторять это не нужно. Без привязки слот не появится. Повторная покупка продлевает срок.")
         embed.set_footer(text="VIP роль действует оплаченный срок · слот сохраняется при другом действующем основании")
         return embed
+
+    def _vip_components(self):
+        """Меню покупки по действующим ценам. Выключенных тарифов в нём нет."""
+        views = []
+        rows = vip_catalog.items(include_disabled=False)
+        for kind, custom_id, placeholder in (
+            ("personal", "vip:personal", "Выбрать личный VIP"),
+            ("clan", "vip:clan", "Выбрать VIP для клана"),
+        ):
+            options = [
+                discord.SelectOption(label=row["name"], value=row["id"], description=format_rub(row["rub"] * 100))
+                for row in rows if row["kind"] == kind
+            ]
+            # Discord не принимает пустое меню.
+            if options:
+                view = discord.ui.View()
+                view.add_item(discord.ui.Select(custom_id=custom_id, placeholder=placeholder, options=options))
+                views.append(view)
+        return views
+
+    async def panel_refresh_vip(self) -> dict:
+        """Обновляет сообщение с VIP в Discord после изменения цен в панели."""
+        guild = self.bot.get_guild(config.GUILD_ID)
+        if guild is None:
+            return {"ok": False, "error": "Бот не видит Discord-сервер"}
+        if not CHANNEL_VIP:
+            return {"ok": False, "error": "Канал VIP не настроен"}
+        try:
+            await self._upsert_panel(guild, "vip", CHANNEL_VIP, self._vip_embed(), self._vip_components())
+        except Exception as error:
+            log.warning("Не удалось обновить сообщение с VIP: %s", error)
+            return {"ok": False, "error": "Discord не дал обновить сообщение"}
+        return {"ok": True}
 
     # ---- Setup ----
 
@@ -617,17 +645,7 @@ class DonationCog(commands.Cog):
         btn = discord.ui.View()
         btn.add_item(discord.ui.Button(label="Поддержать", emoji="💛", style=discord.ButtonStyle.primary, custom_id="support:open"))
         await self._upsert_panel(guild, "support", CHANNEL_SUPPORT, self._support_embed(), [btn])
-        vip_view = discord.ui.View()
-        personal_select = discord.ui.Select(custom_id="vip:personal", placeholder="Выбрать личный VIP",
-            options=[discord.SelectOption(label=PRODUCTS[k]["name"], value=k, description=format_rub(PRODUCTS[k]["amount"]))
-                     for k in ["personal_1", "personal_3", "personal_12"]])
-        clan_select = discord.ui.Select(custom_id="vip:clan", placeholder="Выбрать VIP для клана",
-            options=[discord.SelectOption(label=PRODUCTS[k]["name"], value=k, description=format_rub(PRODUCTS[k]["amount"]))
-                     for k in ["clan_10", "clan_20", "clan_30"]])
-        vip_view.add_item(personal_select)
-        vip_view2 = discord.ui.View()
-        vip_view2.add_item(clan_select)
-        await self._upsert_panel(guild, "vip", CHANNEL_VIP, self._vip_embed(), [vip_view, vip_view2])
+        await self._upsert_panel(guild, "vip", CHANNEL_VIP, self._vip_embed(), self._vip_components())
         await self._refresh_top(guild)
         return vip_role.id, sponsor_ch.id
 
@@ -740,8 +758,12 @@ class DonationCog(commands.Cog):
         product = PRODUCTS.get(product_id)
         if not product:
             return
+        amount = vip_catalog.price_kopecks(product_id)
+        if amount is None:
+            await self._respond_error(interaction, "Этот тариф сейчас недоступен. Откройте список VIP заново.")
+            return
         if product["kind"] == "personal":
-            order = create_order(interaction.user.id, "personal", product["amount"],
+            order = create_order(interaction.user.id, "personal", amount,
                                  product_id=product_id, recipients=[interaction.user.id])
             save_donation_order(order)
             await self._send_checkout(interaction, order)
@@ -757,7 +779,7 @@ class DonationCog(commands.Cog):
                                        min_values=1, max_values=min(25, left))
         view.add_item(select)
         await interaction.response.send_message(
-            content=f"**{product['name']} — {format_rub(product['amount'])}**\n"
+            content=f"**{product['name']} — {format_rub(amount)}**\n"
                     f"Выберите {product['seats']} разных участников сервера. Для 30 мест выбор проходит в два шага.",
             view=view, ephemeral=True)
 
@@ -781,7 +803,12 @@ class DonationCog(commands.Cog):
             await interaction.response.edit_message(
                 content=f"Выбрано {len(recipients)} из {product['seats']}. Выберите оставшихся участников.", view=view)
             return
-        order = create_order(interaction.user.id, "clan", product["amount"],
+        # Цена берётся в момент оплаты: за время выбора получателей она могла измениться.
+        amount = vip_catalog.price_kopecks(cart["productId"])
+        if amount is None:
+            await self._respond_error(interaction, "Этот тариф сейчас недоступен. Откройте список VIP заново.")
+            return
+        order = create_order(interaction.user.id, "clan", amount,
                              product_id=cart["productId"], recipients=recipients)
         save_donation_order(order)
         delete_donation_cart(cart_id)
@@ -790,7 +817,7 @@ class DonationCog(commands.Cog):
         view.add_item(discord.ui.Button(label="Оплатить VIP для клана", url=url, style=discord.ButtonStyle.link))
         mentions = ", ".join(f"<@{r}>" for r in recipients)
         await interaction.response.edit_message(
-            content=f"**{product['name']} · {format_rub(product['amount'])}**\n"
+            content=f"**{product['name']} · {format_rub(amount)}**\n"
                     f"Получатели ({len(recipients)}): {mentions}\n"
                     f"Проверьте список перед оплатой. Ссылка действительна до <t:{order['expiresAt'] // 1000}:F>.",
             view=view)

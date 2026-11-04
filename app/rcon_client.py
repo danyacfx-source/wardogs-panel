@@ -5,6 +5,7 @@ import logging
 import aiohttp
 
 log = logging.getLogger("rcon")
+READ_TIMEOUT_SECONDS = 12
 
 
 class RCONError(Exception):
@@ -28,6 +29,8 @@ class WardogsRCON:
         self.port = cfg.get("port", 7779)
         self.token = cfg.get("token", "")
         self.timeout = aiohttp.ClientTimeout(total=cfg.get("timeout", 30))
+        # Чтения идут постоянно: зависший сервер не должен держать их так же долго, как команды.
+        self.read_timeout = aiohttp.ClientTimeout(total=min(cfg.get("timeout", 30), READ_TIMEOUT_SECONDS))
         self.max_response_bytes = max(64 * 1024, min(8 * 1024 * 1024, int(cfg.get("max_response_bytes", 2 * 1024 * 1024))))
         self._session = None
 
@@ -77,12 +80,13 @@ class WardogsRCON:
         status = 0
         try:
             async with session.get(
-                url, headers=self._headers(), params=params, allow_redirects=False
+                url, headers=self._headers(), params=params, allow_redirects=False,
+                timeout=self.read_timeout,
             ) as resp:
                 status = resp.status
                 text = await self._read_text(resp)
         except asyncio.TimeoutError as e:
-            raise RCONError(0, "timeout", f"сервер не ответил за {self.timeout.total}s") from e
+            raise RCONError(0, "timeout", f"сервер не ответил за {self.read_timeout.total}s") from e
         except (aiohttp.ClientError, OSError) as e:
             raise RCONError(0, "network", str(e)) from e
         try:
