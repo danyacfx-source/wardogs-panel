@@ -618,3 +618,19 @@ def test_staff_page_counts_personal_access(client):
     asyncio.run(db.set_role_perms("user:111", ["kick", "change_map"]))
     item = _staff_page(client)[A]
     assert item["group"] == "Администраторы" and "change_map" in item["permissions"]
+
+
+@pytest.mark.parametrize("token, guild, disabled, expected", [
+    ("t", "1", False, []),
+    ("", "1", False, ["DISCORD_BOT_TOKEN"]),
+    ("t", "", False, ["WARDOGS_GUILD_ID"]),
+    ("", "", False, ["DISCORD_BOT_TOKEN", "WARDOGS_GUILD_ID"]),
+    ("t", "1", True, ["WARDOGS_DISABLE_BACKGROUND"]),
+])
+def test_startup_explains_why_discord_will_not_work(monkeypatch, token, guild, disabled, expected):
+    monkeypatch.setattr(config, "DISCORD_BOT_TOKEN", token)
+    monkeypatch.setattr(config, "GUILD_ID", guild)
+    monkeypatch.setattr(config, "DISABLE_BACKGROUND", disabled)
+    warnings = main.discord_config_warnings()
+    assert len(warnings) == len(expected)
+    assert all(warning.startswith(name) for warning, name in zip(warnings, expected))

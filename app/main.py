@@ -33,7 +33,24 @@ except ImportError:  # Поддержка прямого запуска: python 
     import monitor
     import vip_catalog
 
+# Без этого логгеры панели и бота молчат на INFO: виден только доступ uvicorn.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+# httpx пишет полный адрес запроса, а в адресах бывают ключи API.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 log = logging.getLogger("main")
+
+
+def discord_config_warnings():
+    """Почему бот или роли Discord не заработают. Без этого панель молчит и выглядит исправной."""
+    if config.DISABLE_BACKGROUND:
+        return ["WARDOGS_DISABLE_BACKGROUND включён: Discord-бот и фоновые задачи не запускаются"]
+    warnings = []
+    if not config.DISCORD_BOT_TOKEN:
+        warnings.append("DISCORD_BOT_TOKEN не задан: Discord-бот не запущен, роли Discord недоступны")
+    if not config.GUILD_ID:
+        warnings.append("WARDOGS_GUILD_ID не задан: роли Discord недоступны")
+    return warnings
 
 STATIC_DIR = config.BASE_DIR / "static"
 
@@ -117,6 +134,8 @@ async def lifespan(app):
     backup_task = None
     bot_task = None
     ban_queue_task = None
+    for warning in discord_config_warnings():
+        log.warning(warning)
     if not config.DISABLE_BACKGROUND:
         monitor.players_hook = api.announce_vip_joins
         health_task = asyncio.create_task(monitor.health_loop(api.POOL, stop_health))
