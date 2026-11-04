@@ -326,7 +326,34 @@ async def schema_version():
     return int(row[0] or 0)
 
 
+def _last_name_sql(steam_id_sql):
+    return f"(SELECT n.name FROM player_names n WHERE n.steam_id = {steam_id_sql} ORDER BY n.last_seen_utc DESC LIMIT 1)"
+
+
+def audit_actor_name_sql(users_alias):
+    """Ник того, кто действовал: профиль на сайте, иначе последний ник в игре."""
+    return f"COALESCE(NULLIF({users_alias}.persona, ''), {_last_name_sql('a.actor_steam_id')}, '')"
+
+
+# В detail SteamID цели идёт первым: «7656…» или «7656…:synced».
+AUDIT_TARGET_NAME_SQL = (
+    "COALESCE((SELECT NULLIF(t.persona, '') FROM users t WHERE t.steam_id = SUBSTR(a.detail, 1, 17)), "
+    f"{_last_name_sql('SUBSTR(a.detail, 1, 17)')}, '')"
+)
+
+
+def _not_developer(column="a.actor_steam_id"):
+    """Условие SQL: скрыть действия разработчиков. Старые записи остаются в цепочке хешей."""
+    ids = sorted(config.DEVELOPER_STEAM_IDS)
+    if not ids:
+        return "", ()
+    marks = ", ".join("?" for _ in ids)
+    return f"({column} IS NULL OR {column} NOT IN ({marks}))", tuple(ids)
+
+
 async def log_site_audit(actor_steam_id, server_id, event, detail=""):
+    if actor_steam_id and str(actor_steam_id) in config.DEVELOPER_STEAM_IDS:
+        return
     async with _conn() as db:
         await db.execute("BEGIN IMMEDIATE")
         if config.DATABASE_URL:
@@ -366,12 +393,20 @@ async def log_site_audit(actor_steam_id, server_id, event, detail=""):
 
 async def get_site_audit(limit=200, actor_steam_id=None):
     """Аудит; actor_steam_id — фильтр по инициатору прямо в SQL (не в памяти)."""
-    where = "WHERE a.actor_steam_id = ? " if actor_steam_id else ""
-    params = ((actor_steam_id,) if actor_steam_id else ()) + (max(1, min(int(limit), 1000)),)
+    clauses, filters = [], ()
+    if actor_steam_id:
+        clauses.append("a.actor_steam_id = ?")
+        filters = (actor_steam_id,)
+    hidden, hidden_params = _not_developer()
+    if hidden:
+        clauses.append(hidden)
+        filters += hidden_params
+    where = f"WHERE {' AND '.join(clauses)} " if clauses else ""
+    params = filters + (max(1, min(int(limit), 1000)),)
     async with _conn() as db:
         cur = await db.execute(
             "SELECT a.timestamp_utc, a.actor_steam_id, a.server_id, a.event, a.detail, "
-            "COALESCE(u.persona, '') "
+            f"{audit_actor_name_sql('u')}, {AUDIT_TARGET_NAME_SQL} "
             "FROM site_audit a "
             "LEFT JOIN users u ON u.steam_id = a.actor_steam_id "
             + where +
@@ -387,6 +422,7 @@ async def get_site_audit(limit=200, actor_steam_id=None):
             "server_id": r[2],
             "event": r[3],
             "detail": r[4],
+            "target_name": r[6] or "",
         }
         for r in rows
     ]

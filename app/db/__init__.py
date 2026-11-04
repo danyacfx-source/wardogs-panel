@@ -28,6 +28,7 @@ from .core import (
 
 from .reports import (
     AUDIT_SECTIONS,
+    player_display_name,
     player_period_stats,
     list_player_names,
     names_of_player,

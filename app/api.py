@@ -2773,6 +2773,8 @@ async def _actor_label(steam_id):
     sid = str(steam_id or "").strip()
     if not sid:
         return ""
+    if sid in config.DEVELOPER_STEAM_IDS:
+        return disclog.HIDDEN_ACTOR
     persona = ""
     try:
         row = await db.get_user(sid)
@@ -3252,16 +3254,6 @@ async def bans_export(sid: str, request: Request):
     )
 
 
-@router.get("/server/{sid}/vip-slots/history")
-async def vip_history(sid: str, request: Request):
-    await _require_any_perm(request, {"vip_view", "vip_edit"})
-    rows = [
-        row for row in await db.get_site_audit(500)
-        if row.get("server_id") == sid and str(row.get("event") or "").startswith("vip.")
-    ]
-    return {"ok": True, "items": rows}
-
-
 @router.put("/roles")
 async def roles_put(request: Request):
     user = await _require_perm(request, "roles")
@@ -3353,7 +3345,7 @@ async def site_audit_search(request: Request, q: str = "", section: str = "", se
     """Журнал действий с поиском и постраничным выводом."""
     await _require_perm(request, "audit")
     number, size, start = _page_window(page, per_page)
-    result = await db.search_site_audit(str(q or "").strip()[:120], section, server, size, start)
+    result = await db.search_site_audit(str(q or "").strip()[:120], section, server, size, start, staff_only=True)
     return {"ok": True, "page": number, "per_page": size, "sections": sorted(db.AUDIT_SECTIONS), **result}
 
 

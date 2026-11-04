@@ -184,7 +184,7 @@ const app = createApp({
       reserved: { slots: [], count: 0, max_reserved_slots: null, max_players: null, limit_supported: false, add_supported: false, remove_supported: false, loaded: false },
       reservedLimit: 0,
       reservedSteamId: "",
-      vip: { items: [], count: 0, history: [], loading: false, error: "" },
+      vip: { items: [], count: 0, loading: false, error: "" },
       vipQuery: "",
       vipFilter: "active",
       vipTierFilter: "",
@@ -798,7 +798,7 @@ const app = createApp({
       };
       return labels[event] || event;
     },
-    auditPlayerId(entry) { return /^\d{17}$/.test(entry.detail || ""); },
+    auditPlayerId(entry) { return /^(\d{17})(?::|$)/.exec(entry.detail || "")?.[1] || ""; },
     showAuditJson(entry) {
       let detail = entry.detail;
       try { detail = JSON.parse(entry.detail); } catch { /* обычный текст */ }
@@ -1779,8 +1779,6 @@ const app = createApp({
         if (status === 200 && data?.ok) {
           this.vip.items = data.items || [];
           this.vip.count = Number(data.count || this.vip.items.length);
-          const history = await this.api.request("GET", `/api/server/${this.state.sid}/vip-slots/history`);
-          this.vip.history = history.status === 200 ? (history.data?.items || []) : [];
         } else {
           this.vip.error = data?.detail || data?.error?.message || "Не удалось загрузить VIP-слоты";
         }

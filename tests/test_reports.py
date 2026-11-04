@@ -634,3 +634,110 @@ def test_startup_explains_why_discord_will_not_work(monkeypatch, token, guild, d
     warnings = main.discord_config_warnings()
     assert len(warnings) == len(expected)
     assert all(warning.startswith(name) for warning, name in zip(warnings, expected))
+
+
+def _log(*rows):
+    async def run():
+        for actor, server, event, detail in rows:
+            await db.log_site_audit(actor, server, event, detail)
+
+    asyncio.run(run())
+
+
+def _events(items):
+    return {item["event"] for item in items}
+
+
+def test_journal_keeps_only_staff_actions(client):
+    _log(
+        (STAFF, "ru1", "ban.add", A), (STAFF, "ru1", "vip.save", f"{A}:synced"), (None, "ru1", "vip.expire", A),
+        (None, "ru1", "ban.expire", A), (None, "ru1", "health.transition", "x"), (A, None, "donate.checkout", "p"),
+        (A, "ru1", "vip.order.create", "o"), (None, "ru1", "vip.order.paid", "o"), (A, None, "vip.save", f"{A}:seed:7d"),
+    )
+    _sign_in(client, ["audit"])
+    items = _audit(client, per_page=25)["items"]
+    assert _events(items) == {"ban.add", "vip.save", "vip.expire", "ban.expire"}
+    assert all(":seed:" not in item["detail"] for item in items)
+
+
+def test_site_audit_keeps_player_and_system_events(client):
+    _log((None, "ru1", "health.transition", "x"), (A, None, "donate.checkout", "p"))
+    _sign_in(client, ["audit"])
+    assert {"health.transition", "donate.checkout"} <= _events(client.get("/api/audit/site").json()["entries"])
+
+
+def test_journal_names_vip_target_from_detail_with_state(client):
+    asyncio.run(db.upsert_user(A, "Волк"))
+    _log((STAFF, "ru1", "vip.save", f"{A}:synced"))
+    _sign_in(client, ["audit"])
+    assert _audit(client, section="vip")["items"][0]["target_name"] == "Волк"
+
+
+def test_developer_actions_are_not_logged(client, monkeypatch):
+    monkeypatch.setattr(config, "DEVELOPER_STEAM_IDS", {A})
+    _log((A, "ru1", "ban.add", B), (STAFF, "ru1", "ban.add", B))
+    assert [row["actor_steam_id"] for row in asyncio.run(db.get_site_audit(10))] == [STAFF]
+    assert asyncio.run(db.verify_site_audit_chain(force=True))["ok"] is True
+
+
+def test_old_developer_records_are_hidden_but_chain_stays_valid(client, monkeypatch):
+    _log((A, "ru1", "ban.add", B), (STAFF, "ru1", "ban.add", B))
+    monkeypatch.setattr(config, "DEVELOPER_STEAM_IDS", {A})
+    _sign_in(client, ["audit"])
+    assert [item["actor_steam_id"] for item in _audit(client, per_page=25)["items"]] == [STAFF]
+    assert all(row["actor_steam_id"] != A for row in client.get("/api/audit/site").json()["entries"])
+    assert asyncio.run(db.verify_site_audit_chain(force=True))["ok"] is True
+
+
+def _discord_log(monkeypatch):
+    from app import disclog
+
+    sent = []
+
+    async def post(payload):
+        sent.append(payload["embeds"][0])
+
+    monkeypatch.setattr(config, "DISCORD_LOG_CHANNEL_ID", "1")
+    monkeypatch.setattr(config, "DISCORD_BOT_TOKEN", "t")
+    monkeypatch.setattr(disclog, "_post", post)
+    monkeypatch.setattr(disclog, "_fire", asyncio.run)
+    return disclog, sent
+
+
+def test_developer_actions_skip_discord_log(client, monkeypatch):
+    disclog, sent = _discord_log(monkeypatch)
+    monkeypatch.setattr(config, "DEVELOPER_STEAM_IDS", {A})
+    disclog.emit("ban.add", actor=A, steam_id=B)
+    disclog.emit("ban.add", actor=asyncio.run(api._actor_label(A)), steam_id=B)
+    assert sent == []
+    disclog.emit("ban.add", actor=STAFF, steam_id=B)
+    assert len(sent) == 1
+
+
+def test_discord_log_shows_nicks_instead_of_steam_ids(client, monkeypatch):
+    disclog, sent = _discord_log(monkeypatch)
+    asyncio.run(db.record_monitoring("ru1", 1, 64, [_player(B, "ghost_[RU]")]))
+    asyncio.run(db.upsert_user(STAFF, "Сотрудник"))
+    disclog.emit("vip.save", actor=STAFF, steam_id=B)
+    fields = {field["name"]: field["value"] for field in sent[0]["fields"]}
+    assert fields["Игрок"] == f"[ghostRU](https://steamcommunity.com/profiles/{B})"
+    assert fields["Кто"] == "Сотрудник"
+    assert "SteamID" not in fields
+
+
+def test_discord_log_keeps_steam_id_for_unknown_player(client, monkeypatch):
+    disclog, sent = _discord_log(monkeypatch)
+    disclog.emit("ban.add", actor="автоматически", steam_id=A)
+    fields = {field["name"]: field["value"] for field in sent[0]["fields"]}
+    assert fields["Игрок"] == f"[{A}](https://steamcommunity.com/profiles/{A})"
+    assert fields["Кто"] == "автоматически"
+
+
+def test_site_audit_names_actor_and_target_from_game_nicks(client):
+    asyncio.run(db.record_monitoring("ru1", 2, 64, [_player(A, "Волк"), _player(B, "Медведь")]))
+    _log((A, "ru1", "vip.save", f"{B}:synced"))
+    _sign_in(client, ["audit"])
+    site = next(row for row in client.get("/api/audit/site").json()["entries"] if row["event"] == "vip.save")
+    assert site["actor_name"] == "Волк" and site["target_name"] == "Медведь"
+    journal = _audit(client, section="vip")["items"][0]
+    assert journal["actor_name"] == "Волк" and journal["target_name"] == "Медведь"

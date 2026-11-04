@@ -6,6 +6,7 @@
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone
 
 import aiohttp
@@ -17,6 +18,7 @@ except ImportError:
 
 log = logging.getLogger("disclog")
 API = "https://discord.com/api/v10"
+STEAM_ID_RE = re.compile(r"\d{17}")
 
 EVENTS = {
     "ban.add": ("Бан выдан", 0xE74C3C),
@@ -54,22 +56,54 @@ async def _post(payload):
         log.exception("Не удалось отправить лог в Discord")
 
 
+# Вместо имени разработчика: его действия в Discord-лог не попадают.
+HIDDEN_ACTOR = "\0hidden"
+
+
 def emit(event, *, actor=None, server="", steam_id="", detail=""):
     """Ставит embed события в очередь Discord-лога (no-op без настройки)."""
     if not (config.DISCORD_LOG_CHANNEL_ID and config.DISCORD_BOT_TOKEN):
         return
+    if actor == HIDDEN_ACTOR or (actor and str(actor) in config.DEVELOPER_STEAM_IDS):
+        return
+    _fire(_send_event(event, actor, server, steam_id, detail))
+
+
+async def _name_of(steam_id):
+    """Ник для лога. Сбой чтения не должен терять само событие: тогда останется SteamID."""
+    try:
+        try:
+            from . import db
+        except ImportError:
+            import db
+        return await db.player_display_name(str(steam_id))
+    except Exception:
+        log.warning("Не удалось получить ник для лога", exc_info=True)
+        return ""
+
+
+def _plain(name):
+    """Ник без разметки Discord: он пойдёт в текст ссылки."""
+    return re.sub(r"[\[\]()*_~`|\\<>]", "", " ".join(str(name).split()))[:100]
+
+
+async def _send_event(event, actor, server, steam_id, detail):
     title, color = EVENTS.get(event, (event, 0x5865F2))
     fields = []
     if steam_id:
+        name = _plain(await _name_of(steam_id)) or str(steam_id)
         fields.append({
-            "name": "SteamID",
-            "value": f"[{steam_id}](https://steamcommunity.com/profiles/{steam_id})",
+            "name": "Игрок",
+            "value": f"[{name}](https://steamcommunity.com/profiles/{steam_id})",
             "inline": True,
         })
     if server:
         fields.append({"name": "Сервер", "value": str(server)[:100], "inline": True})
     if actor:
-        fields.append({"name": "Кто", "value": str(actor)[:100], "inline": True})
+        actor_text = str(actor)
+        if STEAM_ID_RE.fullmatch(actor_text):
+            actor_text = _plain(await _name_of(actor_text)) or actor_text
+        fields.append({"name": "Кто", "value": actor_text[:100], "inline": True})
     if detail:
         fields.append({"name": "Детали", "value": str(detail)[:500], "inline": False})
     embed = {
@@ -79,7 +113,7 @@ def emit(event, *, actor=None, server="", steam_id="", detail=""):
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "footer": {"text": "WARDOGS панель"},
     }
-    _fire(_post({"embeds": [embed], "allowed_mentions": {"parse": []}}))
+    await _post({"embeds": [embed], "allowed_mentions": {"parse": []}})
 
 
 async def test_channel():

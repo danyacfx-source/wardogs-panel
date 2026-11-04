@@ -4,9 +4,9 @@ import json
 from datetime import datetime, timedelta, timezone
 
 try:
-    from .core import _conn, _now
+    from .core import _conn, _not_developer, _now, audit_actor_name_sql
 except ImportError:
-    from core import _conn, _now
+    from core import _conn, _not_developer, _now, audit_actor_name_sql
 
 
 def _day_start(day):
@@ -216,8 +216,27 @@ AUDIT_SECTIONS = {
 }
 
 
-async def search_site_audit(query="", section="", server_id="", limit=50, offset=0):
+# Действия самих игроков: покупки и заявки. Они остаются в «Аудите сайта».
+JOURNAL_PLAYER_EVENTS = (
+    "donate.checkout", "vip.order.create", "vip.order.cancel", "vip.order.paid", "clan.application.create",
+)
+# Записи системы, которые относятся к модерации: истечение бана и VIP.
+JOURNAL_SYSTEM_EVENTS = ("ban.expire", "vip.expire")
+
+
+async def search_site_audit(query="", section="", server_id="", limit=50, offset=0, staff_only=False):
     clauses, params = [], []
+    hidden, hidden_params = _not_developer()
+    if hidden:
+        clauses.append(hidden)
+        params += hidden_params
+    if staff_only:
+        clauses.append(f"a.event NOT IN ({', '.join('?' for _ in JOURNAL_PLAYER_EVENTS)})")
+        params += JOURNAL_PLAYER_EVENTS
+        clauses.append(f"(a.actor_steam_id IS NOT NULL OR a.event IN ({', '.join('?' for _ in JOURNAL_SYSTEM_EVENTS)}))")
+        params += JOURNAL_SYSTEM_EVENTS
+        # Покупка VIP за бонусы записана как vip.save от имени самого игрока.
+        clauses.append("NOT (a.event = 'vip.save' AND a.detail LIKE '%:seed:%')")
     if section in AUDIT_SECTIONS:
         prefixes = AUDIT_SECTIONS[section]
         clauses.append("(" + " OR ".join("a.event LIKE ?" for _ in prefixes) + ")")
@@ -230,21 +249,21 @@ async def search_site_audit(query="", section="", server_id="", limit=50, offset
         clauses.append(
             "(LOWER(COALESCE(actor.persona, '')) LIKE ? ESCAPE '\\' OR a.actor_steam_id LIKE ? ESCAPE '\\' "
             "OR LOWER(a.detail) LIKE ? ESCAPE '\\' OR LOWER(COALESCE(target.persona, '')) LIKE ? ESCAPE '\\' "
-            "OR EXISTS (SELECT 1 FROM player_names n WHERE n.steam_id = a.detail AND LOWER(n.name) LIKE ? ESCAPE '\\'))"
+            "OR EXISTS (SELECT 1 FROM player_names n WHERE n.steam_id = SUBSTR(a.detail, 1, 17) AND LOWER(n.name) LIKE ? ESCAPE '\\'))"
         )
         params += [pattern] * 5
     source = (
         "FROM site_audit a LEFT JOIN users actor ON actor.steam_id = a.actor_steam_id "
-        "LEFT JOIN users target ON target.steam_id = a.detail"
+        "LEFT JOIN users target ON target.steam_id = SUBSTR(a.detail, 1, 17)"
     )
     where = _conditions(clauses)
     async with _conn() as db:
         cur = await db.execute(f"SELECT COUNT(*) {source}{where}", tuple(params))
         total = (await cur.fetchone())[0]
         cur = await db.execute(
-            "SELECT a.id, a.timestamp_utc, a.server_id, a.actor_steam_id, COALESCE(actor.persona, ''), "
+            f"SELECT a.id, a.timestamp_utc, a.server_id, a.actor_steam_id, {audit_actor_name_sql('actor')}, "
             "a.event, a.detail, COALESCE(target.persona, ''), "
-            "(SELECT n.name FROM player_names n WHERE n.steam_id = a.detail ORDER BY n.last_seen_utc DESC LIMIT 1) "
+            "(SELECT n.name FROM player_names n WHERE n.steam_id = SUBSTR(a.detail, 1, 17) ORDER BY n.last_seen_utc DESC LIMIT 1) "
             f"{source}{where} ORDER BY a.id DESC LIMIT ? OFFSET ?",
             (*params, limit, offset),
         )
@@ -297,6 +316,21 @@ async def live_player_meta(steam_ids):
         for (steam_id,) in await cur.fetchall():
             meta[steam_id]["vip"] = True
     return meta
+
+
+async def player_display_name(steam_id):
+    """Последний известный ник игрока или пустая строка."""
+    async with _conn() as db:
+        for query in (
+            "SELECT name FROM player_names WHERE steam_id = ? ORDER BY last_seen_utc DESC LIMIT 1",
+            "SELECT name FROM player_activity WHERE steam_id = ? ORDER BY last_seen_utc DESC LIMIT 1",
+            "SELECT persona FROM users WHERE steam_id = ?",
+        ):
+            cur = await db.execute(query, (steam_id,))
+            row = await cur.fetchone()
+            if row and str(row[0] or "").strip():
+                return str(row[0]).strip()
+    return ""
 
 
 async def active_vip_steam_ids():
