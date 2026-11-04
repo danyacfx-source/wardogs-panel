@@ -1,4 +1,14 @@
 (() => {
+  // На телефоне меню прокручивается вбок: показываем пункт текущей страницы.
+  // Двигаем только само меню, scrollIntoView прокрутил бы ещё и страницу.
+  const nav = document.querySelector(".public-nav");
+  const activeLink = nav?.querySelector(".nav-link.active");
+  if (activeLink && nav.scrollWidth > nav.clientWidth) {
+    const navBox = nav.getBoundingClientRect();
+    const linkBox = activeLink.getBoundingClientRect();
+    nav.scrollLeft += linkBox.left - navBox.left - (nav.clientWidth - linkBox.width) / 2;
+  }
+
   const actions = document.querySelector("[data-public-actions]");
   if (!actions) return;
 

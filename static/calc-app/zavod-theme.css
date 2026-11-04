@@ -57,6 +57,30 @@ header h1,
     color: #ffffff;
 }
 
+/* On a phone the title shares the row with the language picker, so it wraps instead of being cut off. */
+@media (max-width: 750px) {
+    header {
+        height: auto;
+        flex-shrink: 0;
+        padding-block: 8px;
+    }
+
+    .header-title {
+        flex: 1 1 0;
+    }
+
+    header h1 {
+        font-size: 13px;
+        line-height: 1.25;
+    }
+
+    header h1,
+    .header-title > span {
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+}
+
 /* The site has one theme; the toggle would only produce a light page that clashes with the shell. */
 #themeToggle,
 .theme-toggle,
