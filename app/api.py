@@ -1476,6 +1476,9 @@ _STAFF_GROUP_RANKS = {
 }
 
 
+_STAFF_LIST_LABELS = {"Разработчики": "Разработчик", "Основатели": "Основатель"}
+
+
 def _role_grants_access(role_id, role_map, perms_map):
     """Даёт ли роль права в панели. Клановые и прочие роли не должны влиять на ранг по названию."""
     name = role_map.get(role_id, "")
@@ -1485,23 +1488,34 @@ def _role_grants_access(role_id, role_map, perms_map):
     return role_id in config.ADMIN_ROLE_IDS or name in config.ADMIN_ROLE_NAMES
 
 
+def _classify_staff(steam_id, discord_id, guild_member, role_ids, role_map, perms_map):
+    """Группа состава и права. Списки из настроек важнее ролей Discord."""
+    permissions = dmod.compute_permissions(
+        {"discord_id": discord_id, "guild_member": guild_member, "roles": role_ids}, role_map, perms_map,
+    )
+    if steam_id in config.DEVELOPER_STEAM_IDS:
+        return "Разработчики", permissions
+    if steam_id in config.OWNER_STEAM_IDS:
+        return "Основатели", permissions
+    names = [role_map.get(role_id, "") for role_id in (role_ids if guild_member else []) if _role_grants_access(role_id, role_map, perms_map)]
+    group = _staff_group(names, permissions)
+    # Название роли может быть любым: шаблон «Администратор» отличается от модератора правом менять карту.
+    if group == "Сотрудники" and "change_map" in permissions:
+        group = "Администраторы"
+    return group, permissions
+
+
 async def _staff_ranks():
     """Состав панели: {steam_id: developer | owner | admin | moderator}."""
     role_map = await dmod.guild_roles()
     perms_map = await db.get_role_perms_all()
     ranks = {}
     for binding in await db.list_bindings():
-        permissions = dmod.compute_permissions(
-            {"discord_id": binding["discord_id"], "guild_member": binding["guild_member"], "roles": binding["role_ids"]},
-            role_map, perms_map,
+        group, permissions = _classify_staff(
+            binding["steam_id"], binding["discord_id"], binding["guild_member"], binding["role_ids"], role_map, perms_map,
         )
-        if not permissions:
-            continue
-        role_ids = binding["role_ids"] if binding["guild_member"] else []
-        names = [role_map.get(role_id, "") for role_id in role_ids if _role_grants_access(role_id, role_map, perms_map)]
-        group = _staff_group(names, permissions)
-        # Название роли может быть любым: шаблон «Администратор» отличается от модератора правом менять карту.
-        ranks[binding["steam_id"]] = "admin" if group == "Сотрудники" and "change_map" in permissions else _STAFF_GROUP_RANKS[group]
+        if permissions:
+            ranks[binding["steam_id"]] = _STAFF_GROUP_RANKS[group]
     ranks.update(dict.fromkeys(config.OWNER_STEAM_IDS, "owner"))
     ranks.update(dict.fromkeys(config.DEVELOPER_STEAM_IDS, "developer"))
     return ranks
@@ -2992,17 +3006,21 @@ async def staff_list(request: Request):
     perms_map = await db.get_role_perms_all()
     staff = []
     for item in await db.list_staff_users():
-        role_names = [role_map.get(role_id, role_id) for role_id in item["role_ids"]]
-        binding = {
-            "guild_member": True,
-            "roles": item["role_ids"],
-        }
-        permissions = dmod.compute_permissions(binding, role_map, perms_map)
+        group, permissions = _classify_staff(
+            item["steam_id"], item["discord_id"], True, item["role_ids"], role_map, perms_map,
+        )
+        # ID вместо названия показывать незачем. Первой идёт роль, дающая права: её видно в строке состава.
+        known = [role_id for role_id in item["role_ids"] if role_map.get(role_id)]
+        known.sort(key=lambda role_id: not _role_grants_access(role_id, role_map, perms_map))
+        role_names = [role_map[role_id] for role_id in known]
+        listed = _STAFF_LIST_LABELS.get(group) if item["steam_id"] in config.DEVELOPER_STEAM_IDS | config.OWNER_STEAM_IDS else None
+        if listed:
+            role_names.insert(0, listed)
         staff.append(
             {
                 **item,
                 "role_names": role_names[:20],
-                "group": _staff_group(role_names, permissions),
+                "group": group,
                 "permissions": permissions,
             }
         )

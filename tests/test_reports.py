@@ -561,3 +561,60 @@ def test_players_meta_has_rank_and_bot_vip(client, tmp_path, monkeypatch):
     players = client.get("/api/server/ru1/players/meta").json()["players"]
     assert players[A]["rank"] == "developer" and players[A]["admin"] is True and players[A]["vip"] is False
     assert players[B]["rank"] == "" and players[B]["admin"] is False and players[B]["vip"] is True
+
+
+def _staff_member(steam_id, discord_id, roles, name="Человек"):
+    async def setup():
+        await db.upsert_user(steam_id, name)
+        await db.upsert_binding(steam_id, discord_id, name, roles, True)
+
+    asyncio.run(setup())
+
+
+def _staff_page(client):
+    _sign_in(client, ["roles"])
+    response = client.get("/api/staff")
+    assert response.status_code == 200, response.text
+    return {item["steam_id"]: item for item in response.json()["staff"]}
+
+
+def test_staff_page_puts_developer_list_above_roles(client, monkeypatch):
+    monkeypatch.setattr(config, "DEVELOPER_STEAM_IDS", {A})
+    monkeypatch.setattr(config, "OWNER_STEAM_IDS", {A, B})
+    _discord_roles(monkeypatch, {"10": "Модератор"})
+    _staff_member(A, "111", ["10"])
+    _staff_member(B, "222", ["10"])
+    asyncio.run(db.set_role_perms("10", ["kick"]))
+    staff = _staff_page(client)
+    assert staff[A]["group"] == "Разработчики" and staff[A]["role_names"][0] == "Разработчик"
+    assert staff[B]["group"] == "Основатели" and staff[B]["role_names"][0] == "Основатель"
+
+
+def test_staff_page_never_shows_role_ids(client, monkeypatch):
+    _discord_roles(monkeypatch, {})
+    _staff_member(A, "111", ["123456789012345678"])
+    asyncio.run(db.set_role_perms("123456789012345678", ["kick"]))
+    item = _staff_page(client)[A]
+    assert item["role_names"] == [] and item["group"] == "Сотрудники"
+
+
+def test_staff_page_shows_founder_and_panel_role_first(client, monkeypatch):
+    _discord_roles(monkeypatch, {"10": "Клан Волки", "20": "Основатель", "30": "Devils Clan", "40": "Модератор"})
+    _staff_member(A, "111", ["10", "20"])
+    _staff_member(B, "222", ["30", "40"])
+
+    async def setup():
+        await db.set_role_perms("20", ["roles"])
+        await db.set_role_perms("40", ["kick"])
+
+    asyncio.run(setup())
+    staff = _staff_page(client)
+    assert staff[A]["group"] == "Основатели" and staff[A]["role_names"] == ["Основатель", "Клан Волки"]
+    assert staff[B]["group"] == "Модераторы" and staff[B]["role_names"][0] == "Модератор"
+
+
+def test_staff_page_counts_personal_access(client):
+    _staff_member(A, "111", [])
+    asyncio.run(db.set_role_perms("user:111", ["kick", "change_map"]))
+    item = _staff_page(client)[A]
+    assert item["group"] == "Администраторы" and "change_map" in item["permissions"]
