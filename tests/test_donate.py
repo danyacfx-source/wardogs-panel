@@ -206,7 +206,7 @@ def test_webhook_records_event_and_feed_serves_it(monkeypatch, tmp_path):
         # Пустой хвост: nextOffset >= offset, events <= 100.
         tail = client.get("/donate/feed.php", params={"offset": 1}, headers=headers)
         assert tail.status_code == 200
-        assert tail.json() == {"events": [], "nextOffset": 1}
+        assert tail.json() == {"events": [], "nextOffset": 1, "total": 1}
 
         # Тестовое уведомление принимается, но не пишется в журнал.
         test_params = dict(params)

@@ -321,7 +321,7 @@ class DonationCog(commands.Cog):
         next_offset = body.get("nextOffset")
         if not isinstance(events, list) or not isinstance(next_offset, int) or next_offset < offset or len(events) > 100:
             raise RuntimeError("Invalid donation feed")
-        return {"events": events, "nextOffset": next_offset}
+        return {"events": events, "nextOffset": next_offset, "total": body.get("total")}
 
     def _apply_payment(self, event, now_ms, checkout_secret):
         op_id = event.get("operationId", "")
@@ -382,6 +382,13 @@ class DonationCog(commands.Cog):
         for _ in range(20):
             offset = get_feed_offset()
             batch = await self._read_feed(offset)
+            total = batch.get("total")
+            if isinstance(total, int) and offset > total:
+                # Журнал начался заново. Со старым смещением новые оплаты не были бы видны,
+                # а повторно начислить нельзя: операции проверяет _apply_payment.
+                log.warning("Журнал донатов короче смещения (%s > %s): читаю сначала", offset, total)
+                set_feed_offset(0)
+                continue
             if not batch["events"]:
                 break
             for event in batch["events"]:

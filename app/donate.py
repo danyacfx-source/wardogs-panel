@@ -171,7 +171,8 @@ def read_feed(offset: int) -> dict:
             events.append(json.loads(raw))
         except ValueError:
             log.warning("Фид донатов: пропущена некорректная строка журнала")
-    return {"events": events, "nextOffset": offset + len(page)}
+    # total нужен читателям: смещение больше длины значит, что журнал начался заново.
+    return {"events": events, "nextOffset": offset + len(page), "total": len(lines)}
 
 
 def _operation_seen(operation_id: str) -> bool:

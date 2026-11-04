@@ -454,6 +454,13 @@ class DonationFeedService:
                     batch = json.loads(raw)
                     events = batch.get("events")
                     next_offset = batch.get("nextOffset")
+                    total = batch.get("total")
+                    if isinstance(total, int) and self.state["offset"] > total:
+                        # Журнал начался заново: со старым смещением новые оплаты не были бы видны.
+                        log.warning("Журнал донатов короче смещения (%s > %s): читаю сначала", self.state["offset"], total)
+                        self.state["offset"] = 0
+                        seed_set_state("donation_feed", self.state)
+                        continue
                     if (
                         not isinstance(events, list)
                         or len(events) > 100
