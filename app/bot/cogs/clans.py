@@ -121,8 +121,14 @@ class ClansCog(commands.Cog):
 
     async def _site_sync_with_retries(self, attempts: int = 10, delay: float = 20.0):
         for attempt in range(1, attempts + 1):
+            # Сайт заменяет реестр присланным списком. Пустое состояние при старте
+            # не должно стирать кланы, которые прислал другой источник.
+            clans = list(self.store.state.get("clans", {}).values())
+            if not clans:
+                log.info("Синк кланов при старте пропущен: у бота нет кланов")
+                return
             try:
-                await sync_site(list(self.store.state.get("clans", {}).values()))
+                await sync_site(clans)
                 if attempt > 1:
                     log.info("Синк кланов в сайт выполнен (попытка %d)", attempt)
                 return
