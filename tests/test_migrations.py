@@ -1,5 +1,7 @@
 import asyncio
+import re
 import sqlite3
+from pathlib import Path
 
 from app import config, db
 from app.db.core import REQUIRED_SCHEMA_VERSION
@@ -51,3 +53,15 @@ def test_upgrade_from_previous_release(tmp_path, monkeypatch):
             ).fetchone()[0] == 10
 
     asyncio.run(run())
+
+
+def test_postgres_migrations_never_store_time_as_real():
+    """REAL в PostgreSQL — 4 байта: время округлялось бы примерно до двух минут."""
+    folder = Path(__file__).resolve().parent.parent / "migrations" / "postgres"
+    # 017 уже применена на рабочих базах, её файл менять нельзя: там это только отметка времени реестра.
+    applied = {"017_public_registry.sql"}
+    offenders = [
+        path.name for path in folder.glob("*.sql")
+        if path.name not in applied and re.search(r"\bREAL\b", path.read_text(encoding="utf-8"))
+    ]
+    assert offenders == []
