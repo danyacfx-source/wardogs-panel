@@ -343,7 +343,7 @@ const app = createApp({
           ...bar,
           height: Math.min(100, (bar.hours / top) * 100),
           seedShare: bar.hours ? Math.min(100, (bar.seed / bar.hours) * 100) : 0,
-          showLabel: bar.offset % 2 === 0,
+          showLabel: bar.offset % 7 === 0,
           title: `${bar.label}: ${bar.hours.toFixed(1)} ч, сид ${bar.seed.toFixed(1)} ч`,
         })),
       };

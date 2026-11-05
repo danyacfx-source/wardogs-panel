@@ -45,7 +45,7 @@
       return;
     }
     note.textContent =
-      'Получатель — ваш Discord-аккаунт. После оплаты привяжите слот к Steam командой /steam link в Discord.';
+      'Получатель — ваш Discord-аккаунт. После оплаты привяжите слот к Steam кнопкой «Привязать Steam» в канале правил Discord.';
     submit.hidden = false;
   }
 

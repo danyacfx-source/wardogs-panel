@@ -24,7 +24,7 @@ log = logging.getLogger("swap")
 FALLBACK_FACTIONS = list(config.FACTION_MARKS)
 from app.swap_cooldown import SW_COOLDOWN, remember as _sw_remember
 CARD_REFRESH_SECONDS = 60
-LINK_HINT = "Привяжите Steam: `/steam link` → получите код в игре → `/steam verify`."
+LINK_HINT = "Привяжите Steam кнопкой «Привязать Steam» в канале правил."
 
 
 def _server_index(sid: str) -> int | None:

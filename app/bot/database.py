@@ -9,6 +9,10 @@ try:
     import db_backend
 except ImportError:  # package import (app.bot.database)
     from . import db_backend
+try:
+    import seed_rates
+except ImportError:  # package import (app.bot.database)
+    from . import seed_rates
 
 _log = logging.getLogger(__name__)
 
@@ -1590,16 +1594,8 @@ def seed_get_vip_identity_by_id(user_id: str) -> dict | None:
     return d
 
 
-def seed_prepare_link_challenge(
-    discord_id: str,
-    steam_id: str,
-    display_name: str,
-    code_hash: str,
-    expires_at: int,
-    purpose: str = "seeding",
-):
-    conn = get_conn()
-    now = _now_ms()
+def _check_link_identity(conn, discord_id: str, steam_id: str, purpose: str) -> None:
+    """Проверки перед привязкой: Discord и Steam не заняты другой парой."""
     if conn.execute(
         "SELECT id FROM seed_users WHERE linked = 1 AND discord_id = ?", (discord_id,)
     ).fetchone():
@@ -1624,80 +1620,11 @@ def seed_prepare_link_challenge(
         or (donor_steam and donor_steam["discord_id"] != discord_id)
     ):
         raise SeedDomainError("steam_taken", "Discord или Steam уже привязан к другой паре аккаунтов.")
-    conn.execute(
-        """
-        INSERT INTO seed_link_challenges (discord_id, steam_id, display_name, code_hash, purpose, attempts, created_at, expires_at)
-        VALUES (?, ?, ?, ?, ?, 0, ?, ?)
-        ON CONFLICT(discord_id) DO UPDATE SET
-            steam_id=excluded.steam_id,
-            display_name=excluded.display_name,
-            code_hash=excluded.code_hash,
-            purpose=excluded.purpose,
-            attempts=0,
-            created_at=excluded.created_at,
-            expires_at=excluded.expires_at
-        """,
-        (discord_id, steam_id, display_name[:80], code_hash, purpose, now, expires_at),
-    )
-    seed_audit("link_challenge_created", discord_id, {"steam_id": steam_id, "purpose": purpose})
-    conn.commit()
 
 
-def seed_cancel_link_challenge(discord_id: str):
-    conn = get_conn()
-    conn.execute("DELETE FROM seed_link_challenges WHERE discord_id = ?", (str(discord_id),))
-    seed_audit("link_challenge_cancelled", discord_id, {})
-    conn.commit()
-
-
-def seed_verify_link_challenge(
-    discord_id: str,
-    code: str,
-    max_attempts: int,
-    purpose: str = "seeding",
-) -> dict:
-    import hmac as _hmac
-
-    conn = get_conn()
-    now = _now_ms()
-    row = conn.execute(
-        "SELECT * FROM seed_link_challenges WHERE discord_id = ?", (discord_id,)
-    ).fetchone()
-    command = "/vip-link link" if purpose == "donation" else "/steam link"
-    if not row:
-        raise SeedDomainError("challenge_missing", f"Активный код не найден. Сначала выполните {command}.")
-    if row["expires_at"] < now:
-        conn.execute("DELETE FROM seed_link_challenges WHERE discord_id = ?", (discord_id,))
-        seed_audit("link_challenge_expired", discord_id, {})
-        conn.commit()
-        raise SeedDomainError("challenge_expired", f"Код истёк. Запросите новый через {command}.")
-    if (row["purpose"] or "seeding") != purpose:
-        raise SeedDomainError(
-            "wrong_link_purpose",
-            f"Этот код создан для другой привязки. Подтвердите его нужной командой или начните заново через {command}.",
-        )
-    supplied_hash = _hash_code(discord_id, code)
-    if not _hmac.compare_digest(str(row["code_hash"]), supplied_hash):
-        # Счётчик увеличиваем атомарно: параллельные неверные коды не теряют попытки.
-        with _write_tx(conn):
-            conn.execute(
-                "UPDATE seed_link_challenges SET attempts = attempts + 1 WHERE discord_id = ?",
-                (discord_id,),
-            )
-            attempts = int(_scalar(conn.execute(
-                "SELECT attempts FROM seed_link_challenges WHERE discord_id = ?", (discord_id,)
-            )))
-            if attempts >= max_attempts:
-                conn.execute("DELETE FROM seed_link_challenges WHERE discord_id = ?", (discord_id,))
-                seed_audit("link_challenge_locked", discord_id, {})
-                locked = True
-            else:
-                locked = False
-        if locked:
-            raise SeedDomainError("challenge_locked", "Слишком много попыток. Запросите новый код.")
-        raise SeedDomainError("bad_code", f"Неверный код. Осталось попыток: {max_attempts - attempts}.")
-
-    steam_id = row["steam_id"]
+def _finalize_link(conn, discord_id: str, steam_id: str, display_name: str, purpose: str, now: int) -> dict:
+    """Записывает привязку после подтверждения: кодом или через модалку."""
+    import uuid as _uuid
     if conn.execute(
         "SELECT id FROM seed_users WHERE linked = 1 AND (discord_id = ? OR steam_id = ?)",
         (discord_id, steam_id),
@@ -1735,7 +1662,7 @@ def seed_verify_link_challenge(
             with _write_tx(conn):
                 conn.execute(
                     "INSERT INTO seed_donor_links (id, discord_id, steam_id, display_name, created_at) VALUES (?, ?, ?, ?, ?)",
-                    (donor_id, discord_id, steam_id, row["display_name"], now),
+                    (donor_id, discord_id, steam_id, display_name, now),
                 )
                 conn.execute("DELETE FROM seed_link_challenges WHERE discord_id = ?", (discord_id,))
                 seed_audit("donation_identity_linked", discord_id, {"id": donor_id})
@@ -1745,7 +1672,7 @@ def seed_verify_link_challenge(
             "id": donor_id,
             "discord_id": discord_id,
             "steam_id": steam_id,
-            "display_name": row["display_name"],
+            "display_name": display_name,
             "linked": True,
             "purpose": "donation",
         }
@@ -1760,7 +1687,7 @@ def seed_verify_link_challenge(
             try:
                 conn.execute(
                     "UPDATE seed_users SET discord_id = ?, steam_id = ?, display_name = ?, linked = 1, updated_at = ? WHERE id = ?",
-                    (discord_id, steam_id, row["display_name"], now, user["id"]),
+                    (discord_id, steam_id, display_name, now, user["id"]),
                 )
             except sqlite3.IntegrityError as exc:
                 raise SeedDomainError("identity_taken", "Discord или Steam уже привязан. Обратитесь к администратору.") from exc
@@ -1777,7 +1704,7 @@ def seed_verify_link_challenge(
                     INSERT INTO seed_users (id, discord_id, steam_id, display_name, balance, total_seconds, lifetime_points, linked, created_at, updated_at)
                     VALUES (?, ?, ?, ?, 0, 0, 0, 1, ?, ?)
                     """,
-                    (user_id, discord_id, steam_id, row["display_name"], now, now),
+                    (user_id, discord_id, steam_id, display_name, now, now),
                 )
             except sqlite3.IntegrityError as exc:
                 # Параллельная привязка выиграла гонку между проверкой и вставкой.
@@ -1794,7 +1721,7 @@ def seed_verify_link_challenge(
         "id": user_id,
         "discord_id": discord_id,
         "steam_id": steam_id,
-        "display_name": row["display_name"],
+        "display_name": display_name,
         "balance": balance,
         "total_seconds": total_seconds,
         "lifetime_points": lifetime_points,
@@ -1802,16 +1729,13 @@ def seed_verify_link_challenge(
     }
 
 
-def seed_hash_code(discord_id: str, code: str) -> str:
-    return _hash_code(discord_id, code)
-
-
-def _hash_code(discord_id: str, code: str) -> str:
-    import hashlib as _hashlib
-    import config as _config
-
-    key = (_config.SEED_CHALLENGE_KEY or "wardogs-seeding-v1").encode()
-    return _hashlib.sha256(key + b"\0" + str(discord_id).encode() + b"\0" + str(code).strip().upper().encode()).hexdigest()
+def seed_link_steam_direct(discord_id: str, steam_id: str, display_name: str, purpose: str = "seeding") -> dict:
+    """Привязка SteamID через модалку. Подтверждение в игре не требуется:
+    кнопку нажимает сам игрок, а вход на сервер проверяет бот до вызова."""
+    conn = get_conn()
+    now = _now_ms()
+    _check_link_identity(conn, discord_id, steam_id, purpose)
+    return _finalize_link(conn, discord_id, steam_id, display_name, purpose, now)
 
 
 def seed_unlink_discord(discord_id: str, actor_id: str | None = None, reason: str = "self_unlink"):
@@ -1972,14 +1896,33 @@ def seed_apply_seeding_tick(eligible: list[dict], now_ms: int, week_key: str, gr
     return awards
 
 
-def _incremental_points(before: int, after: int) -> int:
-    def for_seconds(seconds: int) -> int:
-        safe = max(0, int(seconds))
-        first = min(safe, 3600)
-        later = max(0, safe - 3600)
-        return first // 360 + later // 180
+def seed_grant_bonus(steam_id: str, points: int, reason: str, key: str) -> bool:
+    """Бонус баллами по SteamID. Повтор с тем же ключом не начисляет дважды."""
+    if points <= 0:
+        return False
+    conn = get_conn()
+    now = _now_ms()
+    user = seed_get_user_by_steam(steam_id)
+    if not user:
+        return False
+    ref = f"bonus:{key}"
+    if conn.execute("SELECT id FROM seed_point_ledger WHERE ref = ?", (ref,)).fetchone():
+        return False
+    with _write_tx(conn):
+        conn.execute(
+            "UPDATE seed_users SET balance = balance + ?, lifetime_points = lifetime_points + ?, updated_at = ? WHERE id = ?",
+            (points, points, now, user["id"]),
+        )
+        new_balance = _scalar(conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user["id"],)))
+        conn.execute(
+            "INSERT INTO seed_point_ledger (user_id, ref, delta, balance_after, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (user["id"], ref, points, new_balance, reason[:100], now),
+        )
+    return True
 
-    return for_seconds(after) - for_seconds(before)
+
+def _incremental_points(before: int, after: int) -> int:
+    return seed_rates.incremental_points(before, after)
 
 
 def seed_get_leaderboard(week_key: str) -> list[dict]:
@@ -2224,7 +2167,7 @@ def seed_purchase_vip(discord_id: str, sku: str, cost: int, duration_seconds: in
         return order
     user = seed_get_user_by_discord(discord_id)
     if not user:
-        raise SeedDomainError("not_linked", "Сначала привяжите Steam через /steam link.")
+        raise SeedDomainError("not_linked", "Сначала привяжите Steam кнопкой «Привязать Steam» в канале правил.")
     with _write_tx(conn):
         # Повторный запрос с тем же ключом (параллельный двойной клик) уже записан в
         # seed_vip_orders под этим же ключом — проверяем внутри транзакции.
