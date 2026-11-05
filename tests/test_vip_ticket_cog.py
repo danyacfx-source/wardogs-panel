@@ -292,3 +292,217 @@ def test_list_is_unknown_when_payment_log_is_unreachable(database):
 
 def test_list_is_unknown_without_seeding_cog(database):
     assert _listing(database, None)[0]["paid_known"] is False
+
+
+class _TicketMessage:
+    def __init__(self, error=None):
+        self.edits = []
+        self.error = error
+
+    async def edit(self, **kwargs):
+        if self.error:
+            raise self.error
+        self.edits.append(kwargs)
+
+
+def _not_found():
+    response = type("Response", (), {"status": 404, "reason": "Not Found"})()
+    return discord.NotFound(response, "Unknown Message")
+
+
+class _Interaction:
+    def __init__(self, guild):
+        self.guild = guild
+        self.channel = guild.channel
+        self.user = type("User", (), {"id": 7, "mention": "<@7>", "__str__": lambda self: "mod"})()
+        # Подтверждение эфемерное: Discord не даёт менять его обычным запросом.
+        self.message = _TicketMessage(error=_not_found())
+        self.original_edits = []
+        self.response = type("Response", (), {"defer": self._defer})()
+
+    async def _defer(self, **kwargs):
+        pass
+
+    async def edit_original_response(self, **kwargs):
+        self.original_edits.append(kwargs)
+
+
+def _confirm_close(guild, ticket_message):
+    interaction = _Interaction(guild)
+
+    async def run():
+        view = tickets.TicketCloseConfirmView(ticket_message)
+        await view.confirm.callback(interaction)
+
+    tickets._channel_locks.clear()
+    asyncio.run(run())
+    return interaction
+
+
+class _PanelDb:
+    def __init__(self, status="open"):
+        self.ticket = {
+            "title": "Тикет Discord", "description": "текст", "status": status,
+            "priority": "normal", "player_steam_id": None, "assigned_to": None,
+        }
+        self.updates = []
+
+    async def get_ticket(self, site_id):
+        return self.ticket
+
+    async def update_ticket(self, *args):
+        self.updates.append(args)
+
+
+def _button_setup(database, monkeypatch, panel=None):
+    _save_ok(database, monkeypatch)
+    monkeypatch.setattr(tickets.config, "TICKET_LOG_CHANNEL", 0)
+    monkeypatch.setattr(tickets, "_panel_db", lambda: panel or _PanelDb())
+    _insert_open(database)
+    return _CloseGuild(_HistoryChannel())
+
+
+def test_close_button_updates_ticket_message_not_the_ephemeral_one(database, monkeypatch):
+    guild = _button_setup(database, monkeypatch)
+    message = _TicketMessage()
+    interaction = _confirm_close(guild, message)
+    assert database.execute("SELECT status, closed_by FROM tickets").fetchone()[0] == "closed"
+    assert message.edits[0]["embed"].title == "Тикет закрыт"
+    assert interaction.original_edits == [{"content": "Тикет закрыт.", "view": None}]
+
+
+def test_close_button_posts_new_message_when_ticket_message_is_gone(database, monkeypatch):
+    guild = _button_setup(database, monkeypatch)
+    _confirm_close(guild, _TicketMessage(error=_not_found()))
+    assert guild.channel.sent[0]["embed"].title == "Тикет закрыт"
+
+
+def test_close_button_closes_panel_ticket(database, monkeypatch):
+    panel = _PanelDb()
+    guild = _button_setup(database, monkeypatch, panel)
+    database.execute("UPDATE tickets SET site_ticket_id = 'site-1'")
+    _confirm_close(guild, _TicketMessage())
+    assert panel.updates == [("site-1", "Тикет Discord", "текст", "closed", "normal", None, None)]
+
+
+def test_second_close_does_not_touch_panel_ticket_again(database, monkeypatch):
+    panel = _PanelDb()
+    guild = _button_setup(database, monkeypatch, panel)
+    database.execute("UPDATE tickets SET site_ticket_id = 'site-1', status = 'closed'")
+    message = _TicketMessage()
+    _confirm_close(guild, message)
+    assert panel.updates == [] and message.edits
+
+
+def test_panel_ticket_failure_does_not_stop_closing(database, monkeypatch):
+    class Broken(_PanelDb):
+        async def get_ticket(self, site_id):
+            raise RuntimeError("панель недоступна")
+
+    guild = _button_setup(database, monkeypatch, Broken())
+    database.execute("UPDATE tickets SET site_ticket_id = 'site-1'")
+    message = _TicketMessage()
+    _confirm_close(guild, message)
+    assert message.edits and database.execute("SELECT status FROM tickets").fetchone()[0] == "closed"
+
+
+def test_resolved_panel_ticket_keeps_its_status(database, monkeypatch):
+    panel = _PanelDb(status="resolved")
+    guild = _button_setup(database, monkeypatch, panel)
+    database.execute("UPDATE tickets SET site_ticket_id = 'site-1'")
+    _confirm_close(guild, _TicketMessage())
+    assert panel.updates == []
+
+
+def test_automatic_close_closes_panel_ticket(database, monkeypatch):
+    panel = _PanelDb()
+    guild = _button_setup(database, monkeypatch, panel)
+    database.execute("UPDATE tickets SET site_ticket_id = 'site-1'")
+    assert asyncio.run(_cog(guild).panel_close_vip_ticket({"channel_id": "900"}))["closed"] is True
+    assert panel.updates[0][3] == "closed"
+
+
+OPEN_CATEGORY = 111
+CLOSED_CATEGORY = 222
+
+
+class _MovingChannel(_HistoryChannel):
+    def __init__(self, channel_id=900, category_id=1, edit_error=None):
+        super().__init__()
+        self.id = channel_id
+        self.category_id = category_id
+        self.edit_error = edit_error
+        self.moves = []
+
+    async def edit(self, category, sync_permissions):
+        if self.edit_error:
+            raise self.edit_error
+        self.moves.append((category, sync_permissions))
+        self.category_id = category
+
+
+class _CategoryGuild(_CloseGuild):
+    def __init__(self, *channels):
+        super().__init__(channels[0])
+        self.channels = {channel.id: channel for channel in channels}
+
+    def get_channel(self, channel_id):
+        # Вместо объекта категории хватает её id: так тест видит, куда перенесён канал.
+        if channel_id in (OPEN_CATEGORY, CLOSED_CATEGORY):
+            return channel_id
+        return self.channels.get(channel_id)
+
+
+@pytest.fixture
+def categories(monkeypatch):
+    monkeypatch.setattr(tickets.config, "TICKET_CATEGORY", OPEN_CATEGORY)
+    monkeypatch.setattr(tickets.config, "TICKET_CLOSED_CATEGORY", CLOSED_CATEGORY)
+    monkeypatch.setattr(tickets.config, "TICKET_LOG_CHANNEL", 0)
+    tickets._channel_locks.clear()
+
+
+
+def test_close_button_moves_channel_and_keeps_permissions(database, monkeypatch, categories):
+    _save_ok(database, monkeypatch)
+    monkeypatch.setattr(tickets, "_panel_db", lambda: _PanelDb())
+    _insert_open(database)
+    channel = _MovingChannel()
+    _confirm_close(_CategoryGuild(channel), _TicketMessage())
+    assert channel.moves == [(CLOSED_CATEGORY, False)]
+
+
+def test_automatic_close_moves_channel(database, monkeypatch, categories):
+    _save_ok(database, monkeypatch)
+    _insert_open(database)
+    channel = _MovingChannel()
+    guild = _CategoryGuild(channel)
+    assert asyncio.run(_cog(guild).panel_close_vip_ticket({"channel_id": "900"}))["closed"] is True
+    assert channel.moves == [(CLOSED_CATEGORY, False)]
+
+
+def test_failed_move_does_not_stop_closing(database, monkeypatch, categories):
+    _save_ok(database, monkeypatch)
+    monkeypatch.setattr(tickets, "_panel_db", lambda: _PanelDb())
+    _insert_open(database)
+    response = type("Response", (), {"status": 400, "reason": "Maximum channels"})()
+    channel = _MovingChannel(edit_error=discord.HTTPException(response, "category full"))
+    message = _TicketMessage()
+    _confirm_close(_CategoryGuild(channel), message)
+    assert message.edits and database.execute("SELECT status FROM tickets").fetchone()[0] == "closed"
+
+
+def test_existing_tickets_are_sorted_once_and_clans_stay(database, categories):
+    rows = [(1, "support", "open"), (2, "vip_personal", "closed"), (3, "clan", "open"), (4, "support", "open")]
+    for channel_id, ticket_type, status in rows:
+        database.execute(
+            "INSERT INTO tickets (user_id, channel_id, ticket_type, status) VALUES (555, ?, ?, ?)",
+            (channel_id, ticket_type, status),
+        )
+    opened, closed, clan = _MovingChannel(1), _MovingChannel(2), _MovingChannel(3)
+    already_there = _MovingChannel(4, category_id=OPEN_CATEGORY)
+    guild = _CategoryGuild(opened, closed, clan, already_there)
+    asyncio.run(tickets._move_existing_tickets(guild))
+    asyncio.run(tickets._move_existing_tickets(guild))
+    assert opened.moves == [(OPEN_CATEGORY, False)]
+    assert closed.moves == [(CLOSED_CATEGORY, False)]
+    assert clan.moves == [] and already_there.moves == []

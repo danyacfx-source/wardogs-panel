@@ -741,3 +741,14 @@ def test_site_audit_names_actor_and_target_from_game_nicks(client):
     assert site["actor_name"] == "Волк" and site["target_name"] == "Медведь"
     journal = _audit(client, section="vip")["items"][0]
     assert journal["actor_name"] == "Волк" and journal["target_name"] == "Медведь"
+
+
+def test_discord_ticket_closes_in_panel_and_stays_closed(client):
+    created = asyncio.run(db.create_ticket("Тикет Discord", "текст", "normal", None, "discord:555"))
+    _sign_in(client, ["tickets_view", "tickets_edit"])
+    client.get("/api/session")
+    headers = {"X-CSRF-Token": client.cookies.get(api.CSRF_COOKIE) or ""}
+    response = client.patch(f"/api/tickets/{created['id']}", headers=headers, json={"status": "closed"})
+    assert response.status_code == 200, response.text
+    ticket = asyncio.run(db.get_ticket(created["id"]))
+    assert ticket["status"] == "closed" and ticket["closed_utc"]

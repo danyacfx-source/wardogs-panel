@@ -162,6 +162,60 @@ async def _sync_transcript_locked(channel, by_id=None):
     except Exception:
         log.exception("Не удалось сохранить транскрипт канала %s в панель", channel.id)
 
+
+async def _close_site_ticket(channel_id):
+    """Закрывает сайт-тикет вслед за Discord-каналом. Сбой не должен мешать закрытию канала."""
+    try:
+        row = get_conn().execute(
+            "SELECT site_ticket_id FROM tickets WHERE channel_id = ?", (channel_id,)
+        ).fetchone()
+        site_id = _row_get(row, "site_ticket_id") if row else None
+        if not site_id:
+            return
+        db = _panel_db()
+        ticket = await db.get_ticket(site_id)
+        if not ticket or ticket["status"] in {"resolved", "closed"}:
+            return
+        await db.update_ticket(
+            site_id, ticket["title"], ticket["description"], "closed", ticket["priority"],
+            ticket["player_steam_id"], ticket["assigned_to"],
+        )
+    except Exception:
+        log.exception("Не удалось закрыть сайт-тикет канала %s", channel_id)
+
+
+async def _move_to_category(channel, guild, category_id):
+    """Переносит канал тикета, не трогая его права. Сбой не должен мешать закрытию."""
+    category = guild.get_channel(category_id)
+    if category is None or getattr(channel, "category_id", None) == category_id:
+        return False
+    try:
+        await channel.edit(category=category, sync_permissions=False)
+        return True
+    except discord.HTTPException:
+        # Например, в категории Discord уже 50 каналов (это его предел).
+        log.exception("Не удалось перенести канал тикета %s в категорию %s", channel.id, category_id)
+        return False
+
+
+async def _move_existing_tickets(guild):
+    """Разово раскладывает уже созданные тикеты по категориям. Заявки кланов не трогает."""
+    rows = get_conn().execute(
+        "SELECT channel_id, status FROM tickets WHERE COALESCE(ticket_type, '') <> 'clan'"
+    ).fetchall()
+    moved = 0
+    for row in rows:
+        channel = guild.get_channel(int(row["channel_id"] or 0))
+        if channel is None:
+            continue
+        target = config.TICKET_CLOSED_CATEGORY if row["status"] == "closed" else config.TICKET_CATEGORY
+        async with _channel_locks[channel.id]:
+            if await _move_to_category(channel, guild, target):
+                moved += 1
+    if moved:
+        log.info("Каналы тикетов перенесены по категориям: %s", moved)
+
+
 _FALLBACK_TYPE = {
     "type_id": "complaint",
     "label": "Жалоба",
@@ -335,13 +389,16 @@ class TicketCloseView(discord.ui.View):
     @discord.ui.button(label="Закрыть тикет", style=discord.ButtonStyle.red, custom_id="tk2_close", emoji="🔒")
     async def close_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message(
-            "Вы уверены?", view=TicketCloseConfirmView(), ephemeral=True
+            "Вы уверены?", view=TicketCloseConfirmView(interaction.message), ephemeral=True
         )
 
 
 class TicketCloseConfirmView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, ticket_message):
         super().__init__(timeout=60)
+        # Сообщение тикета с кнопкой «Закрыть». Подтверждение эфемерное: его нельзя
+        # изменить обычным запросом, Discord ответит 404 и закрытие оборвётся.
+        self.ticket_message = ticket_message
 
     @discord.ui.button(label="Да", style=discord.ButtonStyle.green, emoji="✅")
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -363,6 +420,7 @@ class TicketCloseConfirmView(discord.ui.View):
                 # Транскрипт уходит в панель сразу при закрытии — до правок прав,
                 # чтобы сбой прав не лишил нас автосохранения.
                 await _sync_transcript(channel, row, by_id=interaction.user.id)
+                await _close_site_ticket(channel.id)
                 try:
                     member = interaction.guild.get_member(row["user_id"])
                     if member:
@@ -382,13 +440,20 @@ class TicketCloseConfirmView(discord.ui.View):
                             )
                 except Exception:
                     log.exception("Не удалось обновить права закрытого тикета %s", channel.id)
+            await _move_to_category(channel, interaction.guild, config.TICKET_CLOSED_CATEGORY)
 
         embed = discord.Embed(
             title="Тикет закрыт",
             description=f"Закрыл: {interaction.user.mention}\nСохраните транскрипт или удалите канал.",
             color=discord.Color.greyple(),
         )
-        await interaction.message.edit(embed=embed, view=TicketClosedView())
+        try:
+            await self.ticket_message.edit(embed=embed, view=TicketClosedView())
+        except discord.HTTPException:
+            # Сообщение могли удалить, а кнопки удаления канала всё равно нужны.
+            log.warning("Не удалось изменить сообщение тикета %s", channel.id, exc_info=True)
+            await channel.send(embed=embed, view=TicketClosedView())
+        await interaction.edit_original_response(content="Тикет закрыт.", view=None)
 
         if not already_closed and config.TICKET_LOG_CHANNEL:
             log_ch = interaction.guild.get_channel(config.TICKET_LOG_CHANNEL)
@@ -510,6 +575,7 @@ class TicketCog(commands.Cog):
                 (closed_at, channel_id),
             )
             conn.commit()
+            await _close_site_ticket(channel_id)
             return {"ok": True, "closed": True}
         async with _channel_locks[channel_id]:
             row = conn.execute("SELECT * FROM tickets WHERE channel_id = ?", (channel_id,)).fetchone()
@@ -537,6 +603,7 @@ class TicketCog(commands.Cog):
                 (closed_at, self.bot.user.id, channel_id),
             )
             conn.commit()
+            await _close_site_ticket(channel_id)
             try:
                 member = guild.get_member(row["user_id"])
                 if member:
@@ -550,6 +617,7 @@ class TicketCog(commands.Cog):
                         )
             except Exception:
                 log.exception("Не удалось обновить права закрытого тикета %s", channel_id)
+            await _move_to_category(channel, guild, config.TICKET_CLOSED_CATEGORY)
             try:
                 await channel.send(
                     embed=discord.Embed(
@@ -673,6 +741,20 @@ class TicketCog(commands.Cog):
             log.exception("Не удалось отправить панель тикетов в %s", target.id)
             return await interaction.followup.send("❌ Не удалось отправить панель.", ephemeral=True)
         await interaction.followup.send(f"Панель отправлена в {target.mention}.", ephemeral=True)
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        # on_ready приходит и при переподключениях, а перенос нужен один раз за запуск.
+        if getattr(self, "_tickets_moved", False):
+            return
+        self._tickets_moved = True
+        guild = self.bot.get_guild(config.GUILD_ID)
+        if guild is None:
+            return
+        try:
+            await _move_existing_tickets(guild)
+        except Exception:
+            log.exception("Не удалось разложить тикеты по категориям")
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel):
