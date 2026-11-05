@@ -362,19 +362,37 @@ def _button_setup(database, monkeypatch, panel=None):
     return _CloseGuild(_HistoryChannel())
 
 
-def test_close_button_updates_ticket_message_not_the_ephemeral_one(database, monkeypatch):
+def test_close_button_posts_public_message_with_buttons_at_the_bottom(database, monkeypatch):
     guild = _button_setup(database, monkeypatch)
     message = _TicketMessage()
     interaction = _confirm_close(guild, message)
     assert database.execute("SELECT status, closed_by FROM tickets").fetchone()[0] == "closed"
-    assert message.edits[0]["embed"].title == "Тикет закрыт"
+    sent = guild.channel.sent[0]
+    assert sent["embed"].title == "Тикет закрыт" and "ephemeral" not in sent
+    assert isinstance(sent["view"], tickets.TicketClosedView)
+    assert message.edits == [{"view": None}]
     assert interaction.original_edits == [{"content": "Тикет закрыт.", "view": None}]
 
 
-def test_close_button_posts_new_message_when_ticket_message_is_gone(database, monkeypatch):
+def test_close_button_works_when_first_message_is_gone(database, monkeypatch):
     guild = _button_setup(database, monkeypatch)
-    _confirm_close(guild, _TicketMessage(error=_not_found()))
+    interaction = _confirm_close(guild, _TicketMessage(error=_not_found()))
     assert guild.channel.sent[0]["embed"].title == "Тикет закрыт"
+    assert interaction.original_edits
+
+
+def test_double_click_posts_buttons_once(database, monkeypatch):
+    guild = _button_setup(database, monkeypatch)
+    interaction = _Interaction(guild)
+
+    async def run():
+        view = tickets.TicketCloseConfirmView(_TicketMessage())
+        await view.confirm.callback(interaction)
+        await view.confirm.callback(interaction)
+
+    tickets._channel_locks.clear()
+    asyncio.run(run())
+    assert len(guild.channel.sent) == 1
 
 
 def test_close_button_closes_panel_ticket(database, monkeypatch):
@@ -506,3 +524,112 @@ def test_existing_tickets_are_sorted_once_and_clans_stay(database, categories):
     assert opened.moves == [(OPEN_CATEGORY, False)]
     assert closed.moves == [(CLOSED_CATEGORY, False)]
     assert clan.moves == [] and already_there.moves == []
+
+
+class _Followup:
+    def __init__(self):
+        self.sent = []
+
+    async def send(self, text=None, **kwargs):
+        self.sent.append((text, kwargs))
+
+
+def _reopen(guild, staff=True):
+    interaction = _Interaction(guild)
+    interaction.message = _TicketMessage()
+    interaction.followup = _Followup()
+    permissions = type("Permissions", (), {"manage_channels": staff})()
+    interaction.user.guild_permissions = permissions
+    interaction.user.roles = []
+    sent = []
+
+    async def send_message(text, **kwargs):
+        sent.append(text)
+
+    interaction.response.send_message = send_message
+
+    async def run():
+        view = tickets.TicketClosedView()
+        await view.reopen.callback(interaction)
+
+    tickets._channel_locks.clear()
+    asyncio.run(run())
+    return interaction, sent
+
+
+def _closed_ticket(database, channel_id=900, ticket_type="support"):
+    database.execute(
+        "INSERT INTO tickets (user_id, channel_id, ticket_type, status, closed_by, closed_at, transcript_saved, site_ticket_id) "
+        "VALUES (555, ?, ?, 'closed', 7, 'x', 1, 'site-1')",
+        (channel_id, ticket_type),
+    )
+
+
+def _reopen_setup(monkeypatch, categories_panel=None):
+    panel = categories_panel or _PanelDb(status="closed")
+    monkeypatch.setattr(tickets, "_panel_db", lambda: panel)
+    return panel
+
+
+def test_reopen_restores_ticket_everywhere(database, monkeypatch, categories):
+    panel = _reopen_setup(monkeypatch)
+    _closed_ticket(database)
+    channel = _MovingChannel(category_id=CLOSED_CATEGORY)
+    guild = _CategoryGuild(channel)
+    interaction, _ = _reopen(guild)
+    row = database.execute("SELECT status, closed_at, closed_by, transcript_saved FROM tickets").fetchone()
+    assert tuple(row) == ("open", None, None, 0)
+    assert panel.updates[0][3] == "open"
+    assert channel.moves == [(OPEN_CATEGORY, False)]
+    target, overwrite = channel.permissions[0]
+    assert target is guild.member and overwrite["view_channel"] and overwrite["send_messages"]
+    assert channel.sent[0]["embed"].title == "Тикет снова открыт" and "ephemeral" not in channel.sent[0]
+    assert interaction.message.edits == [{"view": None}]
+
+
+def test_reopen_needs_staff(database, monkeypatch, categories):
+    _reopen_setup(monkeypatch)
+    _closed_ticket(database)
+    _, answers = _reopen(_CategoryGuild(_MovingChannel()), staff=False)
+    assert answers == ["❌ Нет прав."]
+    assert database.execute("SELECT status FROM tickets").fetchone()[0] == "closed"
+
+
+def test_reopen_refuses_second_open_ticket(database, monkeypatch, categories):
+    _reopen_setup(monkeypatch)
+    _closed_ticket(database)
+    database.execute("INSERT INTO tickets (user_id, channel_id, ticket_type, status) VALUES (555, 901, 'support', 'open')")
+    channel = _MovingChannel()
+    interaction, _ = _reopen(_CategoryGuild(channel))
+    assert "другой открытый" in interaction.followup.sent[0][0]
+    assert database.execute("SELECT status FROM tickets WHERE channel_id = 900").fetchone()[0] == "closed"
+    assert channel.moves == [] and channel.sent == []
+
+
+def test_reopen_twice_is_harmless(database, monkeypatch, categories):
+    _reopen_setup(monkeypatch)
+    _closed_ticket(database)
+    channel = _MovingChannel()
+    guild = _CategoryGuild(channel)
+    _reopen(guild)
+    interaction, _ = _reopen(guild)
+    assert interaction.followup.sent[0][0] == "Тикет уже открыт."
+    assert len(channel.sent) == 1
+
+
+def test_reopen_when_author_left_says_so(database, monkeypatch, categories):
+    _reopen_setup(monkeypatch)
+    _closed_ticket(database)
+    channel = _MovingChannel()
+    guild = _CategoryGuild(channel)
+    guild.member = None
+    _reopen(guild)
+    assert "нет на сервере" in channel.sent[0]["embed"].description
+    assert database.execute("SELECT status FROM tickets").fetchone()[0] == "open"
+
+
+def test_closed_view_has_all_three_buttons():
+    async def run():
+        return {item.custom_id for item in tickets.TicketClosedView().children}
+
+    assert asyncio.run(run()) == {"tk2_reopen", "tk2_delete", "tk2_transcript"}

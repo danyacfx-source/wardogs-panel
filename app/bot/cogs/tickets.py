@@ -184,6 +184,27 @@ async def _close_site_ticket(channel_id):
         log.exception("Не удалось закрыть сайт-тикет канала %s", channel_id)
 
 
+async def _reopen_site_ticket(channel_id):
+    """Открывает сайт-тикет вслед за Discord-каналом."""
+    try:
+        row = get_conn().execute(
+            "SELECT site_ticket_id FROM tickets WHERE channel_id = ?", (channel_id,)
+        ).fetchone()
+        site_id = _row_get(row, "site_ticket_id") if row else None
+        if not site_id:
+            return
+        db = _panel_db()
+        ticket = await db.get_ticket(site_id)
+        if not ticket or ticket["status"] not in {"resolved", "closed"}:
+            return
+        await db.update_ticket(
+            site_id, ticket["title"], ticket["description"], "open", ticket["priority"],
+            ticket["player_steam_id"], ticket["assigned_to"],
+        )
+    except Exception:
+        log.exception("Не удалось открыть сайт-тикет канала %s", channel_id)
+
+
 async def _move_to_category(channel, guild, category_id):
     """Переносит канал тикета, не трогая его права. Сбой не должен мешать закрытию."""
     category = guild.get_channel(category_id)
@@ -399,10 +420,15 @@ class TicketCloseConfirmView(discord.ui.View):
         # Сообщение тикета с кнопкой «Закрыть». Подтверждение эфемерное: его нельзя
         # изменить обычным запросом, Discord ответит 404 и закрытие оборвётся.
         self.ticket_message = ticket_message
+        self.confirmed = False
 
     @discord.ui.button(label="Да", style=discord.ButtonStyle.green, emoji="✅")
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
+        # Двойной клик не должен присылать в канал второе сообщение с кнопками.
+        if self.confirmed:
+            return
+        self.confirmed = True
         channel = interaction.channel
         async with _channel_locks[channel.id]:
             conn = get_conn()
@@ -444,15 +470,15 @@ class TicketCloseConfirmView(discord.ui.View):
 
         embed = discord.Embed(
             title="Тикет закрыт",
-            description=f"Закрыл: {interaction.user.mention}\nСохраните транскрипт или удалите канал.",
+            description=f"Закрыл: {interaction.user.mention}\nМожно открыть тикет снова, сохранить транскрипт или удалить канал.",
             color=discord.Color.greyple(),
         )
+        # Кнопки идут новым сообщением внизу: первое сообщение тикета может быть далеко вверху.
+        await channel.send(embed=embed, view=TicketClosedView())
         try:
-            await self.ticket_message.edit(embed=embed, view=TicketClosedView())
+            await self.ticket_message.edit(view=None)
         except discord.HTTPException:
-            # Сообщение могли удалить, а кнопки удаления канала всё равно нужны.
-            log.warning("Не удалось изменить сообщение тикета %s", channel.id, exc_info=True)
-            await channel.send(embed=embed, view=TicketClosedView())
+            log.warning("Не удалось убрать кнопку закрытия тикета %s", channel.id, exc_info=True)
         await interaction.edit_original_response(content="Тикет закрыт.", view=None)
 
         if not already_closed and config.TICKET_LOG_CHANNEL:
@@ -479,6 +505,76 @@ class TicketClosedView(discord.ui.View):
             return True
         member_role_ids = {r.id for r in getattr(member, "roles", [])}
         return bool(member_role_ids & set(config.TICKET_STAFF_ROLES))
+
+    @discord.ui.button(label="Открыть снова", style=discord.ButtonStyle.green, custom_id="tk2_reopen", emoji="🔓")
+    async def reopen(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self._is_staff(interaction):
+            return await interaction.response.send_message("❌ Нет прав.", ephemeral=True)
+        await interaction.response.defer()
+        channel = interaction.channel
+        guild = interaction.guild
+        async with _channel_locks[channel.id]:
+            conn = get_conn()
+            row = conn.execute("SELECT * FROM tickets WHERE channel_id = ?", (channel.id,)).fetchone()
+            if not row or _row_get(row, "status") != "closed":
+                return await interaction.followup.send("Тикет уже открыт.", ephemeral=True)
+            # Те же правила, что при создании: иначе у игрока окажется два открытых тикета.
+            if _row_get(row, "ticket_type") == VIP_TICKET_TYPE:
+                other = conn.execute(
+                    "SELECT 1 FROM tickets WHERE user_id = ? AND status = 'open' AND ticket_type = ?",
+                    (row["user_id"], VIP_TICKET_TYPE),
+                ).fetchone()
+            else:
+                other = conn.execute(
+                    "SELECT 1 FROM tickets WHERE user_id = ? AND status = 'open'", (row["user_id"],)
+                ).fetchone()
+            if other:
+                return await interaction.followup.send(
+                    "❌ У игрока уже есть другой открытый тикет.", ephemeral=True
+                )
+            # transcript_saved сбрасываем: при следующем закрытии в панель уйдёт и новая переписка.
+            conn.execute(
+                "UPDATE tickets SET status = 'open', closed_at = NULL, closed_by = NULL, transcript_saved = 0 "
+                "WHERE channel_id = ?",
+                (channel.id,),
+            )
+            conn.commit()
+            await _reopen_site_ticket(channel.id)
+            member = guild.get_member(row["user_id"])
+            try:
+                if member:
+                    await channel.set_permissions(
+                        member, view_channel=True, send_messages=True, read_message_history=True,
+                        attach_files=True, embed_links=True,
+                    )
+                for staff_role_id in config.TICKET_STAFF_ROLES:
+                    staff = guild.get_role(staff_role_id)
+                    if staff:
+                        await channel.set_permissions(
+                            staff, view_channel=True, send_messages=True, read_message_history=True
+                        )
+            except Exception:
+                log.exception("Не удалось вернуть права открытого тикета %s", channel.id)
+            await _move_to_category(channel, guild, config.TICKET_CATEGORY)
+
+        description = f"Открыл: {interaction.user.mention}"
+        if not member:
+            description += "\nАвтора тикета нет на сервере: доступ ему не возвращён."
+        await channel.send(
+            embed=discord.Embed(title="Тикет снова открыт", description=description, color=discord.Color.green()),
+            view=TicketCloseView(),
+        )
+        try:
+            await interaction.message.edit(view=None)
+        except discord.HTTPException:
+            log.warning("Не удалось убрать кнопки закрытого тикета %s", channel.id, exc_info=True)
+        if config.TICKET_LOG_CHANNEL:
+            log_ch = guild.get_channel(config.TICKET_LOG_CHANNEL)
+            if log_ch:
+                await log_ch.send(
+                    f"🎫 Тикет снова открыт: {channel.mention} | Открыл: {interaction.user}",
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
 
     @discord.ui.button(label="Удалить канал", style=discord.ButtonStyle.danger, custom_id="tk2_delete", emoji="🗑️")
     async def delete_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
