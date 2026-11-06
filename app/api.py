@@ -1800,6 +1800,21 @@ async def player_punishments_clear(steam_id: str, request: Request):
     return {"ok": True}
 
 
+@router.post("/players/{steam_id}/seed-unlink")
+async def player_seed_unlink(steam_id: str, request: Request):
+    """Отвязка Discord от Steam по обращению в тикет. Делает только сотрудник с правом VIP."""
+    user = await _require_perm(request, "vip_edit")
+    steam_id = _validate_steam_id(steam_id)
+    body = await _json_object(request)
+    if body.get("confirm") is not True:
+        raise HTTPException(status_code=400, detail="Подтвердите отвязку")
+    result = seed_store.unlink_by_steam(steam_id, user["steam_id"])
+    if not result["ok"]:
+        raise HTTPException(status_code=409, detail=result["error"])
+    await db.log_site_audit(user["steam_id"], None, "player.seed_unlink", steam_id)
+    return {"ok": True}
+
+
 @router.get("/players/{steam_id}/notes")
 async def player_notes_list(steam_id: str, request: Request, limit: int = 100):
     """Return private staff notes for a retained player profile."""

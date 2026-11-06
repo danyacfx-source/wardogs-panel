@@ -1,4 +1,4 @@
-"""Сидинг WARDOGS: баллы за voice+RCON, VIP-магазин, weekly top-3, donation feed.
+"""Сидинг WARDOGS: баллы за RCON, VIP-магазин, weekly top-3, donation feed.
 
 Полный порт bots/seeding-bot/src/ на Python/discord.py.
 RCON-клиент в seeding_rcon.py, таблицы/CRUD в database.py (seed_*).
@@ -26,7 +26,10 @@ from discord.ext import commands, tasks
 import config
 import seed_rates
 from seed_card import CardData, render_server_card
+from rules_panel import BANNER as RULES_BANNER, SOURCES as RULES_SOURCES, load_parts as load_rules_parts
+from start_card import StartCardData, render_start_card
 from database import (
+    seed_apply_passive_tick,
     seed_grant_bonus,
     seed_link_steam_direct,
     SeedDomainError,
@@ -152,6 +155,34 @@ class SeedLinkPanelView(discord.ui.View):
             await interaction.response.send_message("Сервис временно недоступен.", ephemeral=True)
             return
         await cog._grant_seeder_role(interaction)
+
+
+class RulesPanelView(discord.ui.View):
+    """Меню правил в канале правил. Каждая часть приходит отдельным эфемерным сообщением."""
+
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.select(
+        placeholder="Выберите раздел правил",
+        custom_id="rules:panel:select",
+        options=[
+            discord.SelectOption(label="Правила Discord", value="discord", emoji="💬"),
+            discord.SelectOption(label="Правила сервера", value="game", emoji="🎮"),
+        ],
+    )
+    async def select_rules(self, interaction: discord.Interaction, select: discord.ui.Select):
+        kind = select.values[0]
+        await interaction.response.defer(ephemeral=True)
+        title = RULES_SOURCES[kind][0]
+        parts = load_rules_parts(kind)
+        for number, text in enumerate(parts, start=1):
+            embed = discord.Embed(
+                color=0xB00000,
+                title=f"{title} · часть {number} из {len(parts)}",
+                description=text,
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 # Состав тарифа определяется его ID. Цена не проверяется по таблице: её меняет владелец,
@@ -541,6 +572,8 @@ class SeedingCog(commands.Cog):
         # Данные для карточек «Зовём сидеров» по каждому серверу, заполняет тик сидинга.
         self._card_snapshot: dict[str, dict] = {}
         self._card_hashes: dict[str, int] = {}
+        # Хеш последней отрисованной карточки сбора (ключ — id сессии).
+        self._gather_card_hashes: dict[str, int] = {}
         # Последний тик, когда игрок был на сервере: нужен для бонуса вышедшим.
         self._presence: dict[str, dict[str, int]] = {}
         self._gather_sessions: dict = seed_get_state("seeding_gathers", {}) or {}
@@ -585,6 +618,7 @@ class SeedingCog(commands.Cog):
         # Правила/гайд/магазин/рейтинг — авто-pub на старте.
         asyncio.create_task(self._publish_rules_panel())
         asyncio.create_task(self._publish_shop_panel())
+        asyncio.create_task(self._publish_rules_menu())
 
     async def _publish_rules_panel(self) -> str:
         """4 эмбеда в канале правил: правила, как начать, магазин, рейтинг.
@@ -605,7 +639,6 @@ class SeedingCog(commands.Cog):
         if not isinstance(ch, discord.TextChannel):
             return "правила: это не текстовый канал"
 
-        voice = f"<#{config.SEED_VOICE_CHANNEL_ID}>" if config.SEED_VOICE_CHANNEL_ID else "голосовой канал сидинга"
         shop = f"<#{config.SEED_SHOP_CHANNEL_ID}>" if config.SEED_SHOP_CHANNEL_ID else "канал магазина"
         rank = f"<#{config.SEED_RANK_CHANNEL_ID}>" if config.SEED_RANK_CHANNEL_ID else "канал рейтинга"
         rules_ch = f"<#{config.SEED_RULES_CHANNEL_ID}>"
@@ -629,11 +662,11 @@ class SeedingCog(commands.Cog):
         rules.add_field(name="⏰ Когда начисляются баллы",
                         value=f"Ежедневно с **{start_h} до {end_h} МСК**. Вне этого времени сидинг не учитывается.")
         rules.add_field(name="🎮 Что нужно для участия",
-                        value=f"Одновременно находиться на одном из трёх серверов WARDOGS и в голосовом канале {voice} с привязанным SteamID64. Время и баллы общие; одновременное присутствие не удваивает начисление.")
+                        value="Находиться на одном из трёх серверов WARDOGS с привязанным SteamID64. Время и баллы общие; присутствие на нескольких серверах не удваивает начисление.")
         rules.add_field(name="⭐ Начисление",
                         value="Первый непрерывный час — **1 балл каждые 4 минуты** (до 15 баллов).\nСо второго часа — **1 балл каждые 3 минуты** (20 баллов в час).")
         rules.add_field(name="🧭 Баллы за обычную игру",
-                        value=f"Круглосуточно на всех трёх серверах, без Discord и голосового канала. Первый час — **1 балл за 12 минут** (5/час), затем **1 балл за 6 минут** (10/час). "
+                        value=f"Круглосуточно на всех трёх серверах, без Discord. Первый час — **1 балл за 6 минут** (10/час), затем **1 балл за 4 минуты** (15/час). "
                               f"Если выполнены условия сидинга, начисляется только сидинг. При **{stop_n}+** игроков действует обычная игра.")
         rules.add_field(name="👝 Общий баланс магазина",
                         value="Баллы игры сохраняются по SteamID без привязки и становятся доступны после кнопки «Привязать Steam» в этом канале. "
@@ -649,10 +682,9 @@ class SeedingCog(commands.Cog):
                                           f"**2. Подготовьте SteamID64.**\nЭто 17 цифр, обычно начинающихся с `7656`. Укажите именно SteamID64, а не ссылку на профиль и не игровой ник.\n\n"
                                           f"**3. Нажмите «Привязать Steam» под этим сообщением.**\nВставьте SteamID64 в окно. Бот проверит, что вы на игровом сервере, и привяжет аккаунт сразу.\n\n"
                                           f"**4. Нажмите «Взять роль сидер».**\nРоль {seeder_role} выдаётся кнопкой; действующий VIP выдаётся сразу и не слетает.\n\n"
-                                          f"**5. Перейдите в голосовой канал {voice}.**\nПока вы одновременно в игре на одном из трёх серверов и в этом голосовом канале, бот считает общее время по правилам выше.\n\n"
-                                          f"**6. Проверьте результат.**\nКоманда `/steam status` показывает баланс, время, состояние сидинга и VIP. `/seed top` показывает текущий рейтинг.\n\n"
+                                                                                    f"**5. Проверьте результат.**\nКоманда `/steam status` показывает баланс, время, состояние сидинга и VIP. `/seed top` показывает текущий рейтинг.\n\n"
                                           f"**Нужен только оплаченный VIP?** Та же кнопка «Привязать Steam» — она подходит и для оплаченного VIP (без начисления баллов, если вы не сидер).\n\n"
-                                          f"**Отвязка:** `/steam unlink confirm:true` (или `/vip-link unlink` для отдельной VIP-привязки). При действующем VIP отвязка недоступна; история сидера сохраняется.")
+                                          f"**Ошибка в SteamID?** Откройте тикет в канале поддержки: администраторы отвяжут аккаунт вручную. Баллы сохраняются, при активном VIP отвязка недоступна.")
         start.set_footer(text="Обычные сообщения в этом канале автоматически удаляются; slash-команды работают")
 
         # 3. Магазин
@@ -699,6 +731,49 @@ class SeedingCog(commands.Cog):
         except Exception as e:
             log.warning("Не удалось опубликовать rules-панель: %s", e)
             return f"правила: ошибка ({e})"
+
+    async def _publish_rules_menu(self) -> str:
+        """Меню правил в канале правил: баннер, текст и выбор раздела. Апсерт по message_id."""
+        await self.bot.wait_until_ready()
+        if not config.SEED_RULES_CHANNEL_ID:
+            return "правила-меню: канал не настроен"
+        guild = self.bot.get_guild(config.GUILD_ID)
+        if guild is None:
+            return "правила-меню: гильдия не найдена"
+        try:
+            ch = guild.get_channel(config.SEED_RULES_CHANNEL_ID)
+            if ch is None:
+                ch = await guild.fetch_channel(config.SEED_RULES_CHANNEL_ID)
+        except Exception as e:
+            log.warning("Rules channel %s недоступен: %s", config.SEED_RULES_CHANNEL_ID, e)
+            return f"правила-меню: канал недоступен ({e})"
+        if not isinstance(ch, discord.TextChannel):
+            return "правила-меню: это не текстовый канал"
+        description = (
+            "После входа на сервер вы автоматически соглашаетесь с правилами.\n"
+            "Выберите раздел в меню ниже — правила откроются только вам."
+        )
+        embed = discord.Embed(color=0xB00000, title="Правила WARDOGS RU", description=description)
+        embed.set_image(url="attachment://rules_banner.webp")
+        view = RulesPanelView()
+        prior = seed_get_state("rules_menu_message_id", "")
+        if prior:
+            try:
+                msg = await ch.fetch_message(int(prior))
+                if msg.author.id == self.bot.user.id:
+                    # Существующие вложения (баннер) сохраняются при редактировании.
+                    await msg.edit(embed=embed, view=view)
+                    return "правила-меню: обновлено"
+            except Exception:
+                pass
+        msg = await ch.send(
+            embed=embed,
+            view=view,
+            file=discord.File(RULES_BANNER, filename="rules_banner.webp"),
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+        seed_set_state("rules_menu_message_id", str(msg.id))
+        return "правила-меню: опубликовано"
 
     async def _publish_shop_panel(self) -> str:
         """Панель магазина в SEED_SHOP_CHANNEL: эмбед + постоянные кнопки VIP.
@@ -827,6 +902,12 @@ class SeedingCog(commands.Cog):
         if not interaction.data:
             return
         custom_id = interaction.data.get("custom_id", "")
+        if custom_id == "seed:summary:me":
+            await self._send_seed_status(interaction)
+            return
+        if custom_id == "seed:summary:top":
+            await self._send_top_ephemeral(interaction)
+            return
         if not custom_id.startswith("seed:gather:connect:"):
             return
         parts = custom_id.split(":")
@@ -866,11 +947,7 @@ class SeedingCog(commands.Cog):
         now = _now_ms()
         start_m = _parse_clock(config.SEED_START_TIME, 8 * 60)
         end_m = _parse_clock(config.SEED_END_TIME, 22 * 60)
-        if not seed_is_inside_window(now, start_m, end_m):
-            seed_apply_seeding_tick([], now, seed_week_key(now), config.SEED_SESSION_GRACE_SECONDS, config.SEED_TICK_SECONDS * 2)
-            self._last_status = {"state": "closed", "updatedAt": now, "servers": [], "eligibleCount": 0}
-            self._card_snapshot = {sid: {"state": "closed"} for sid, _label, _client in self._servers()}
-            return
+        in_window = seed_is_inside_window(now, start_m, end_m)
 
         active_servers: list[dict] = []
         all_snapshots: list[dict] = []
@@ -897,7 +974,7 @@ class SeedingCog(commands.Cog):
             else:
                 gate["belowSince"] = None
             seed_set_state(gate_key, gate)
-            if population >= config.SEED_STOP_PLAYER_COUNT and not was_blocked:
+            if in_window and population >= config.SEED_STOP_PLAYER_COUNT and not was_blocked:
                 self._award_match_start_bonus(sid, players, now)
             self._track_presence(sid, players, now)
             snap = {
@@ -909,33 +986,25 @@ class SeedingCog(commands.Cog):
                 "players": players,
             }
             all_snapshots.append(snap)
-            if snap["state"] == "active":
+            if snap["state"] == "active" and in_window:
                 active_servers.append(snap)
 
         eligible: dict[str, dict] = {}
         seeder_names_by_server: dict[str, list[str]] = {}
-        if active_servers and config.SEED_VOICE_CHANNEL_ID:
-            guild = self.bot.get_guild(config.GUILD_ID)
-            if guild:
-                voice_channel = guild.get_channel(config.SEED_VOICE_CHANNEL_ID)
-                voice_members = {
-                    member.id: member
-                    for member in getattr(voice_channel, "members", [])
-                    if not member.bot
+        seeders_by_server: dict[str, list[tuple[str, str]]] = {}
+        steam_by_discord: dict[str, str] = {}
+        for server in active_servers:
+            for player in server["players"]:
+                user = seed_get_user_by_steam(player["steam_id"])
+                if not user:
+                    continue
+                eligible[user["discord_id"]] = {
+                    "discord_id": user["discord_id"],
+                    "display_name": user["display_name"],
                 }
-                for server in active_servers:
-                    for player in server["players"]:
-                        user = seed_get_user_by_steam(player["steam_id"])
-                        if not user:
-                            continue
-                        member = voice_members.get(int(user["discord_id"]))
-                        if not member:
-                            continue
-                        eligible[user["discord_id"]] = {
-                            "discord_id": user["discord_id"],
-                            "display_name": member.display_name or user["display_name"],
-                        }
-                        seeder_names_by_server.setdefault(server["id"], []).append(player["name"])
+                seeder_names_by_server.setdefault(server["id"], []).append(player["name"])
+                seeders_by_server.setdefault(server["id"], []).append((player["steam_id"], player["name"]))
+                steam_by_discord[user["discord_id"]] = player["steam_id"]
 
         awards = seed_apply_seeding_tick(
             list(eligible.values()),
@@ -944,8 +1013,20 @@ class SeedingCog(commands.Cog):
             config.SEED_SESSION_GRACE_SECONDS,
             config.SEED_TICK_SECONDS * 2,
         )
+        self._track_gather_stats(now, seeders_by_server, awards, steam_by_discord)
+        # Пассивная игра: все онлайн-игроки, которым не начисляется сидинг (вне окна или сервер заполнен).
+        seeding_steam = {p["steam_id"] for s_ in active_servers for p in s_["players"]}
+        online_steam = {p["steam_id"] for snap in all_snapshots for p in snap.get("players", [])}
+        passive_credited = seed_apply_passive_tick(
+            list(online_steam - seeding_steam),
+            now,
+            config.SEED_SESSION_GRACE_SECONDS,
+            config.SEED_TICK_SECONDS * 2,
+        )
+        if passive_credited:
+            log.info("passive_points_credited users=%d", passive_credited)
         active_count = len(active_servers)
-        state = (
+        state = "closed" if not in_window else (
             "active"
             if active_count
             else ("population_limit" if any(s["state"] == "population_limit" for s in all_snapshots) else "rcon_unavailable")
@@ -961,7 +1042,7 @@ class SeedingCog(commands.Cog):
             "servers": [{k: v for k, v in s.items() if k != "players"} for s in all_snapshots],
             "population": sum(s.get("population") or 0 for s in all_snapshots),
         }
-        self._card_snapshot = {
+        self._card_snapshot = {sid: {"state": "closed"} for sid, _label, _client in self._servers()} if not in_window else {
             s["id"]: {
                 "state": s["state"],
                 "population": s.get("population") or 0,
@@ -1825,7 +1906,7 @@ class SeedingCog(commands.Cog):
 
     def _leaderboard_description(self, rows: list[dict]) -> str:
         if not rows:
-            return "Пока нет подтверждённого времени. Зайдите на сервер и в голосовой канал — первое место свободно!"
+            return "Пока нет подтверждённого времени. Зайдите на сервер — первое место свободно!"
         icons = ["🥇", "🥈", "🥉"]
         parts = []
         for i, row in enumerate(rows):
@@ -1926,6 +2007,15 @@ class SeedingCog(commands.Cog):
         sessions = seed_get_state("seeding_gathers", {}) or {}
         if not sessions:
             return
+        for server_id, session in list(sessions.items()):
+            if session.get("status") == "reached" and not session.get("summaryPosted"):
+                try:
+                    await self._post_start_summary(session)
+                except Exception as e:
+                    log.warning("start summary failed %s: %s", server_id, e)
+                sessions[server_id] = session
+                seed_set_state("seeding_gathers", sessions)
+                self._gather_sessions = sessions
         now = _now_ms()
         changed = False
         for server_id, session in list(sessions.items()):
@@ -1960,6 +2050,136 @@ class SeedingCog(commands.Cog):
             seed_set_state("seeding_gathers", sessions)
             self._gather_sessions = sessions
 
+    def _track_gather_stats(self, now: int, seeders_by_server: dict, awards: list, steam_by_discord: dict) -> None:
+        """Копит данные для итога сбора: кто сидел, с какого момента, самый долгий онлайн, баллы."""
+        sessions = seed_get_state("seeding_gathers", {}) or {}
+        pending = {
+            sid: session
+            for sid, session in sessions.items()
+            if session.get("status") in ("active", "reached") and not session.get("summaryPosted")
+        }
+        if not pending:
+            return
+        stats_all = seed_get_state("gather_stats", {}) or {}
+        grace_ms = config.SEED_SESSION_GRACE_SECONDS * 1000
+        points_by_steam: dict[str, int] = {}
+        for award in awards:
+            steam = steam_by_discord.get(award["discord_id"])
+            if steam:
+                points_by_steam[steam] = points_by_steam.get(steam, 0) + int(award["points"])
+        for sid, session in pending.items():
+            stats = stats_all.get(sid)
+            if not stats or stats.get("sessionId") != session.get("id"):
+                stats = {"sessionId": session.get("id"), "sitters": {}, "points": 0}
+            sitters = stats["sitters"]
+            for steam, name in seeders_by_server.get(sid, []):
+                entry = sitters.get(steam)
+                if entry is None:
+                    entry = {"name": name, "first": now, "runStart": now, "last": now, "maxRun": 0, "points": 0}
+                    sitters[steam] = entry
+                if now - entry["last"] > grace_ms:
+                    entry["runStart"] = now
+                entry["last"] = now
+                entry["name"] = name
+                entry["maxRun"] = max(entry["maxRun"], now - entry["runStart"])
+                earned = points_by_steam.get(steam, 0)
+                if earned:
+                    entry["points"] += earned
+                    stats["points"] += earned
+            stats_all[sid] = stats
+        seed_set_state("gather_stats", stats_all)
+
+    def _start_card_data(self, session: dict) -> StartCardData:
+        sid = str(session.get("serverId") or "")
+        stats_all = seed_get_state("gather_stats", {}) or {}
+        stats = stats_all.get(sid) or {}
+        sitters = stats.get("sitters", {}) if stats.get("sessionId") == session.get("id") else {}
+        ordered = sorted(sitters.values(), key=lambda entry: entry["first"])
+        longest = max(sitters.values(), key=lambda entry: entry["maxRun"]) if sitters else None
+        started = int(session.get("startedAt") or 0)
+        reached = int(session.get("reachedAt") or _now_ms())
+        target = int(session.get("target", 20) or 20)
+        return StartCardData(
+            server_label=str(session.get("label") or "сервер"),
+            duration_seconds=max(0, (reached - started) // 1000),
+            population=int(session.get("population") or target),
+            capacity=target,
+            sitter_names=tuple(entry["name"] for entry in ordered),
+            sitter_total=len(ordered),
+            points=int(stats.get("points", 0)),
+            first_name=ordered[0]["name"] if ordered else "",
+            longest_name=longest["name"] if longest else "",
+            longest_seconds=int(longest["maxRun"] // 1000) if longest else 0,
+        )
+
+    async def _post_start_summary(self, session: dict) -> None:
+        """Итог сбора в канал сбора: карточка и кнопки. Отправляется один раз на сбор."""
+        guild = self.bot.get_guild(config.GUILD_ID)
+        if not guild:
+            return
+        channel = guild.get_channel(int(session.get("channelId") or 0))
+        if not isinstance(channel, discord.TextChannel):
+            return
+        card = render_start_card(self._start_card_data(session))
+        server_id = str(session.get("serverId") or "")
+        view = discord.ui.View(timeout=None)
+        view.add_item(discord.ui.Button(
+            label="Подключиться", emoji="▶️", style=discord.ButtonStyle.primary,
+            custom_id=f"seed:gather:connect:{server_id}:{session.get('id', '')}",
+        ))
+        view.add_item(discord.ui.Button(label="Мой результат", style=discord.ButtonStyle.secondary, custom_id="seed:summary:me"))
+        view.add_item(discord.ui.Button(label="Топ сидеров", style=discord.ButtonStyle.secondary, custom_id="seed:summary:top"))
+        if config.SEED_RULES_CHANNEL_ID:
+            view.add_item(discord.ui.Button(
+                label="Про сидинг", emoji="🌱",
+                url=f"https://discord.com/channels/{config.GUILD_ID}/{config.SEED_RULES_CHANNEL_ID}",
+            ))
+        await channel.send(
+            file=discord.File(io.BytesIO(card), filename=f"start_{session.get('id', '')}.png"),
+            view=view,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+        session["summaryPosted"] = True
+
+    async def _send_top_ephemeral(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        key = seed_week_key(_now_ms())
+        rows = seed_get_leaderboard(key)
+        embed = self._leaderboard_card(rows, key, _now_ms())
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    def _gather_card(self, session: dict) -> CardData | None:
+        """Данные карточки сервера для сбора. None — сбор закрыт, карточку убираем."""
+        status = session.get("status")
+        if status not in ("active", "reached"):
+            return None
+        snap = self._card_snapshot.get(str(session.get("serverId") or ""), {})
+        if status == "reached":
+            state = "limit"
+        elif not session.get("sampleOk", True) or session.get("population") is None:
+            state = "offline"
+        else:
+            state = "active"
+        return CardData(
+            server_label=str(session.get("label") or "сервер"),
+            state=state,
+            population=int(session.get("population") or 0),
+            capacity=int(session.get("target", 20) or 20),
+            seeder_names=tuple(snap.get("names") or ()),
+            window_text="",
+            rates=tuple(seed_rates.rate_lines()) + tuple(seed_rates.bonus_lines()),
+        )
+
+    def _gather_message_parts(self, session: dict):
+        """Embed, карточка и её хеш. Картинку рисуем отдельно, только при изменении."""
+        embed = self._gather_embed(session)
+        card = self._gather_card(session)
+        if card is None:
+            return embed, None, None, None
+        filename = f"gather_{session.get('id', '')}.png"
+        embed.set_image(url=f"attachment://{filename}")
+        return embed, card, hash(card), filename
+
     async def _deliver_gather_card(self, session: dict):
         guild = self.bot.get_guild(config.GUILD_ID)
         if not guild:
@@ -1967,8 +2187,15 @@ class SeedingCog(commands.Cog):
         channel = guild.get_channel(int(session.get("channelId") or 0))
         if not isinstance(channel, discord.TextChannel):
             return
-        embed = self._gather_embed(session)
+        embed, card, digest, filename = self._gather_message_parts(session)
         view = self._gather_connect_view(session)
+        key = str(session.get("id") or "")
+        # Файл нужен, если карточка есть и изменилась (или сообщения ещё нет).
+        need_file = card is not None and self._gather_card_hashes.get(key) != digest
+        file_obj = None
+        if need_file:
+            png = await asyncio.to_thread(render_server_card, card)
+            file_obj = discord.File(io.BytesIO(png), filename=filename)
         msg_id = session.get("cardMessageId")
         message = None
         if msg_id:
@@ -1977,16 +2204,30 @@ class SeedingCog(commands.Cog):
             except discord.NotFound:
                 message = None
         if message:
+            kwargs = {"embed": embed, "view": view}
+            if card is None:
+                kwargs["attachments"] = []
+            elif file_obj is not None:
+                kwargs["attachments"] = [file_obj]
             try:
-                await message.edit(embed=embed, view=view)
+                await message.edit(**kwargs)
             except Exception as e:
                 log.warning("gather edit failed: %s", e)
+                return
         else:
+            kwargs = {"embed": embed, "view": view, "allowed_mentions": discord.AllowedMentions.none()}
+            if file_obj is not None:
+                kwargs["file"] = file_obj
             try:
-                message = await channel.send(embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
+                message = await channel.send(**kwargs)
                 session["cardMessageId"] = str(message.id)
             except Exception as e:
                 log.warning("gather send failed: %s", e)
+                return
+        if card is None:
+            self._gather_card_hashes.pop(key, None)
+        elif digest is not None:
+            self._gather_card_hashes[key] = digest
 
     def _gather_embed(self, session: dict) -> discord.Embed:
         status = session.get("status")
@@ -2058,10 +2299,9 @@ class SeedingCog(commands.Cog):
             title=f"🎮 Подключение · {session.get('label', '')}",
             description=f"{instructions}\n\n🆔 ID сервера:\n`{server_id}`",
         )
-        voice_ref = f"<#{config.SEED_VOICE_CHANNEL_ID}>" if config.SEED_VOICE_CHANNEL_ID else "голосовой канал сидинга"
         rules_ref = f"<#{config.SEED_RULES_CHANNEL_ID}>" if config.SEED_RULES_CHANNEL_ID else "канал правил"
         embed.add_field(name="🐾 Если участвуете в сидинге",
-                        value=f"Зайдите в голосовой канал {voice_ref}. Для начисления времени и баллов используйте подтверждённую Steam-привязку. Правила: {rules_ref} и команда `/seed help`.")
+                        value=f"Для начисления времени и баллов нужна подтверждённая Steam-привязка, войс не нужен. Правила: {rules_ref} и команда `/seed help`.")
         embed.set_footer(text="WARDOGS RU · Сидинг")
         if interaction.response.is_done():
             await interaction.followup.send(embed=embed, ephemeral=True)
@@ -2173,7 +2413,7 @@ class SeedingCog(commands.Cog):
                 f"**Steam:** {user['steam_id']}\n"
                 f"**Баланс:** {user.get('balance', 0)} баллов{vip_line}\n"
                 f"Роль сидера — кнопкой «Взять роль сидер» в канале правил.\n"
-                f"Зарабатывайте баллы: будьте в голосовом канале сидинга **и** на игровом сервере.",
+                f"Зарабатывайте баллы: будьте на игровом сервере WARDOGS.",
                 ephemeral=True,
             )
         else:
@@ -2237,41 +2477,14 @@ class SeedingCog(commands.Cog):
         embed.set_footer(text=f"ID: {user['id'][:8]}…")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    async def _unlink_common(self, interaction: discord.Interaction, confirm: bool):
-        await interaction.response.defer(ephemeral=True)
-        if not confirm:
-            await interaction.followup.send("Отвязка не выполнена (confirm=false).", ephemeral=True)
-            return
-        try:
-            user = seed_unlink_discord(str(interaction.user.id))
-        except SeedDomainError as e:
-            await interaction.followup.send(e.message, ephemeral=True)
-            return
-        await interaction.followup.send(
-            f"🔓 Привязка отменена. Steam {user['steam_id']} отвязан от вашего Discord.",
-            ephemeral=True,
-        )
-
     @steam_group.command(name="status", description="Показать баланс, время и статус VIP")
     @app_commands.guild_only()
     async def steam_status(self, interaction: discord.Interaction):
         await self._send_seed_status(interaction)
 
-    @steam_group.command(name="unlink", description="Отменить привязку Discord к Steam")
-    @app_commands.describe(confirm="Подтвердите отвязку аккаунта")
-    @app_commands.guild_only()
-    async def steam_unlink(self, interaction: discord.Interaction, confirm: bool):
-        await self._unlink_common(interaction, confirm)
-
     # ---------- Slash: /seed ----------
 
     seed_group = app_commands.Group(name="seed", description="Сидинг WARDOGS, баланс и VIP")
-
-    @seed_group.command(name="unlink", description="Отменить привязку Discord к Steam")
-    @app_commands.describe(confirm="Подтвердите отвязку аккаунта")
-    @app_commands.guild_only()
-    async def seed_unlink(self, interaction: discord.Interaction, confirm: bool):
-        await self._unlink_common(interaction, confirm)
 
     @seed_group.command(name="status", description="Показать баланс, время и статус VIP")
     @app_commands.guild_only()
@@ -2294,7 +2507,7 @@ class SeedingCog(commands.Cog):
         embed = discord.Embed(
             color=discord.Color.gold(),
             title="🛒 Магазин VIP за баллы сидинга",
-            description="Баллы начисляются за время в голосовом канале сидинга **и** на игровом сервере.",
+            description="Баллы начисляются за время на игровом сервере с привязанным SteamID.",
         )
         for sku, product in VIP_CATALOG.items():
             cost = getattr(config, product["cost_attr"])
@@ -2419,7 +2632,7 @@ class SeedingCog(commands.Cog):
             color=discord.Color.blurple(),
             title="🐺 Сидинг WARDOGS — как это работает",
             description=(
-                "1. Зайдите на игровой сервер WARDOGS **и** в голосовой канал сидинга.\n"
+                "1. Зайдите на игровой сервер WARDOGS.\n"
                 "2. Бот начисляет баллы автоматически (каждые 4 мин в первый час, далее каждые 3).\n"
                 "3. Привяжите Steam кнопкой «Привязать Steam» в канале правил и нажмите «Взять роль сидер».\n"
                 "4. Копите баллы и покупайте VIP: `/seed shop` → `/seed buy`.\n"
@@ -2464,21 +2677,6 @@ class SeedingCog(commands.Cog):
             f"**Steam:** {donor['steam_id']}\n**Оплаченный VIP:** {status}",
             ephemeral=True,
         )
-
-    @vip_link_group.command(name="unlink", description="Отменить отдельную VIP-привязку")
-    @app_commands.describe(confirm="Подтвердите отвязку")
-    @app_commands.guild_only()
-    async def vip_link_unlink(self, interaction: discord.Interaction, confirm: bool):
-        await interaction.response.defer(ephemeral=True)
-        if not confirm:
-            await interaction.followup.send("Отвязка не выполнена (confirm=false).", ephemeral=True)
-            return
-        try:
-            donor = seed_unlink_donor(str(interaction.user.id))
-        except SeedDomainError as e:
-            await interaction.followup.send(e.message, ephemeral=True)
-            return
-        await interaction.followup.send(f"🔓 VIP-привязка отменена. Steam `{donor['steam_id']}`.", ephemeral=True)
 
     # ---------- Slash: /seed-gather ----------
 
@@ -2594,11 +2792,19 @@ class SeedingCog(commands.Cog):
         self._gather_sessions = sessions
         seed_audit("gather_started", str(interaction.user.id), {"id": request_id, "server": server_id, "target": target})
         try:
+            embed, card, digest, filename = self._gather_message_parts(session)
+            send_kwargs = {
+                "embed": embed,
+                "view": self._gather_connect_view(session),
+                "allowed_mentions": discord.AllowedMentions(roles=[notify_role]),
+            }
+            if card is not None:
+                png = await asyncio.to_thread(render_server_card, card)
+                send_kwargs["file"] = discord.File(io.BytesIO(png), filename=filename)
+                self._gather_card_hashes[str(request_id)] = digest
             message = await target_channel.send(
                 content=f"<@&{notify_role.id}> 🐺 Сбор на {label.lower()}! Помогите собрать {target} игроков.",
-                embed=self._gather_embed(session),
-                view=self._gather_connect_view(session),
-                allowed_mentions=discord.AllowedMentions(roles=[notify_role]),
+                **send_kwargs,
             )
             session["cardMessageId"] = str(message.id)
             sessions[server_id] = session

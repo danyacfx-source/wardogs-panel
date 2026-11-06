@@ -83,6 +83,15 @@ class LoggingCog(commands.Cog):
             pass
         return None, None
 
+    def _attachments_text(self, message: discord.Message, limit: int = 1000) -> str:
+        """Список вложений: имя, размер и ссылка. Имя видно даже после удаления сообщения."""
+        lines = []
+        for att in message.attachments:
+            size_kb = max(1, att.size // 1024)
+            lines.append(f"• {att.filename} ({size_kb} КБ) — {att.url}")
+        text = "\n".join(lines)
+        return self._truncate(text, limit) if text else "—"
+
     def _truncate(self, text: str, limit: int) -> str:
         if not text:
             return "—"
@@ -200,13 +209,17 @@ class LoggingCog(commands.Cog):
             inline=False,
         )
         embed.add_field(name="Содержимое", value=self._truncate(message.content or "*нет текста*", 1000), inline=False)
+        if message.attachments:
+            embed.add_field(name=f"Вложения ({len(message.attachments)})", value=self._attachments_text(message), inline=False)
         await self._send(message.guild, "messages", embed)
 
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
         if before.guild is None or before.author is None or before.author.bot:
             return
-        if before.content == after.content:
+        before_files = [a.id for a in before.attachments]
+        after_files = [a.id for a in after.attachments]
+        if before.content == after.content and before_files == after_files:
             return
         embed = discord.Embed(
             title="✏️ Сообщение изменено",
@@ -217,6 +230,9 @@ class LoggingCog(commands.Cog):
         embed.add_field(name="Канал", value=f"[перейти]({after.jump_url})", inline=True)
         embed.add_field(name="Было", value=self._truncate(before.content or "*нет текста*", 500), inline=False)
         embed.add_field(name="Стало", value=self._truncate(after.content or "*нет текста*", 500), inline=False)
+        if before.attachments or after.attachments:
+            embed.add_field(name="Вложения до", value=self._attachments_text(before, 500), inline=False)
+            embed.add_field(name="Вложения после", value=self._attachments_text(after, 500), inline=False)
         await self._send(before.guild, "messages", embed)
 
     # ---------- Вход / выход ----------

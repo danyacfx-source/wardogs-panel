@@ -23,6 +23,13 @@ RATE_STAGES: tuple[RateStage, ...] = (
 )
 
 
+# Пассивная игра вне окна сидинга: 10 баллов в первый час, затем 15 в час.
+PASSIVE_STAGES: tuple[RateStage, ...] = (
+    RateStage(until_seconds=3600, seconds_per_point=360),
+    RateStage(until_seconds=None, seconds_per_point=240),
+)
+
+
 START_BONUS_POINTS = 40
 LEAVER_BONUS_POINTS = 25
 LEAVER_WINDOW_SECONDS = 600
@@ -47,12 +54,12 @@ def bonus_lines() -> list[str]:
     ]
 
 
-def points_for_seconds(seconds: int) -> int:
+def points_for_seconds(seconds: int, stages: tuple[RateStage, ...] = RATE_STAGES) -> int:
     """Всего баллов за непрерывную сессию длиной `seconds`."""
     safe = max(0, int(seconds))
     total = 0
     start = 0
-    for stage in RATE_STAGES:
+    for stage in stages:
         end = safe if stage.until_seconds is None else min(safe, stage.until_seconds)
         if end > start:
             total += (end - start) // stage.seconds_per_point

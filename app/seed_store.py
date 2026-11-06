@@ -77,6 +77,22 @@ async def save_shop_config(updates: dict) -> dict:
     return await get_shop_config()
 
 
+def unlink_by_steam(steam_id: str, actor_steam_id: str) -> dict:
+    """Отвязка Steam сотрудником из карточки игрока. Баллы остаются на старом SteamID."""
+    try:
+        from .bot import database as bot_database
+    except ImportError:
+        from bot import database as bot_database
+    user = bot_database.seed_get_user_by_steam(steam_id)
+    if not user:
+        return {"ok": False, "error": "Этот SteamID не привязан к Discord."}
+    try:
+        bot_database.seed_unlink_discord(user["discord_id"], actor_id=actor_steam_id, reason="staff_unlink")
+    except bot_database.SeedDomainError as e:
+        return {"ok": False, "error": e.message}
+    return {"ok": True, "discord_id": user["discord_id"]}
+
+
 def get_balance(discord_id: str) -> dict | None:
     c = _seed_conn()
     if not c:

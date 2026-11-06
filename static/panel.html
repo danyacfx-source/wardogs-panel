@@ -1559,6 +1559,7 @@
             <button v-if="has('ban_add')" class="pc-punish" @click="playerCardAction('ban')">Наказать</button>
             <div class="pc-action-group">
               <button v-if="has('player_notes')" @click="playerCardTab = 'notes'">Заметки · {{ playerNotes.items.length }}</button>
+              <button v-if="has('vip_edit')" class="danger" title="Отвязка по обращению в тикет" @click="unlinkSeedSteam(playerCard.profile.steam_id)">Отвязать Steam</button>
               <button v-if="has('vip_edit')" class="gold" @click="saveVipSlot({steam_id:playerCard.profile.steam_id,display_name:playerCard.profile.name,tier:Math.max(1,...(playerCard.profile.vip_slots || []).filter((slot) => slot.active).map((slot) => slot.tier || 1))})">VIP</button>
               <button v-if="has('message')" :disabled="!playerCard.live" title="Сообщение игроку, попадает в историю наказаний" @click="playerCardAction('message')">Варн</button>
               <button v-if="has('kick')" :disabled="!playerCard.live" @click="playerCardAction('kick')">Кик</button>

@@ -398,6 +398,12 @@ def init_db():
             ineligible_since INTEGER
         );
 
+        CREATE TABLE IF NOT EXISTS seed_passive_sessions (
+            user_id TEXT PRIMARY KEY,
+            continuous_seconds INTEGER NOT NULL DEFAULT 0,
+            last_seen_at INTEGER NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS seed_point_ledger (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT NOT NULL,
@@ -1894,6 +1900,58 @@ def seed_apply_seeding_tick(eligible: list[dict], now_ms: int, week_key: str, gr
                 )
                 awards.append({"discord_id": user["discord_id"], "points": points, "balance": new_balance})
     return awards
+
+
+def seed_apply_passive_tick(steam_ids: list, now_ms: int, grace_seconds: int, max_delta_seconds: int) -> int:
+    """Пассивная игра: баллы игрокам онлайн вне окна сидинга или на заполненном сервере."""
+    conn = get_conn()
+    credited = 0
+    with _write_tx(conn):
+        for steam_id in steam_ids:
+            user = conn.execute(
+                "SELECT id FROM seed_users WHERE steam_id = ? AND linked = 1", (str(steam_id),)
+            ).fetchone()
+            if not user:
+                continue
+            user_id = user["id"]
+            row = conn.execute(
+                "SELECT continuous_seconds, last_seen_at FROM seed_passive_sessions WHERE user_id = ?", (user_id,)
+            ).fetchone()
+            if not row:
+                conn.execute(
+                    "INSERT INTO seed_passive_sessions (user_id, continuous_seconds, last_seen_at) VALUES (?, 0, ?)",
+                    (user_id, now_ms),
+                )
+                continue
+            gap_ms = max(0, now_ms - int(row["last_seen_at"]))
+            continuous = int(row["continuous_seconds"])
+            if gap_ms > grace_seconds * 1000:
+                # Вышел дольше, чем на паузу: новая сессия, стаж обнуляется.
+                continuous = 0
+                delta = 0
+            else:
+                delta = min(gap_ms // 1000, max_delta_seconds)
+            after = continuous + delta
+            points = (
+                seed_rates.points_for_seconds(after, seed_rates.PASSIVE_STAGES)
+                - seed_rates.points_for_seconds(continuous, seed_rates.PASSIVE_STAGES)
+            )
+            conn.execute(
+                "UPDATE seed_passive_sessions SET continuous_seconds = ?, last_seen_at = ? WHERE user_id = ?",
+                (after, now_ms, user_id),
+            )
+            if points > 0:
+                conn.execute(
+                    "UPDATE seed_users SET balance = balance + ?, lifetime_points = lifetime_points + ?, updated_at = ? WHERE id = ?",
+                    (points, points, now_ms, user_id),
+                )
+                new_balance = _scalar(conn.execute("SELECT balance FROM seed_users WHERE id = ?", (user_id,)))
+                conn.execute(
+                    "INSERT INTO seed_point_ledger (user_id, ref, delta, balance_after, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    (user_id, f"passive:{user_id}:{now_ms}:{after}", points, new_balance, "passive", now_ms),
+                )
+                credited += 1
+    return credited
 
 
 def seed_grant_bonus(steam_id: str, points: int, reason: str, key: str) -> bool:

@@ -35,6 +35,8 @@ bot = commands.Bot(
     intents=config.intents,
     reconnect=True,
     help_command=None,
+    # Кэш последних сообщений: нужен, чтобы логировать удаления с текстом и вложениями (~3000 ≈ 6–15 МБ).
+    max_messages=3000,
 )
 
 _fresh_db = False
@@ -187,7 +189,7 @@ async def on_ready():
     for mod_name, view_names in [
         ("cogs.tickets", ["TicketPanelView", "TicketCloseView", "TicketClosedView"]),
         ("cogs.clan_tickets", ["ClanTicketPanelView", "ClanTicketCloseView", "ClanTicketClosedView"]),
-        ("cogs.seeding", ["SeedShopView", "SeedLinkPanelView"]),
+        ("cogs.seeding", ["SeedShopView", "SeedLinkPanelView", "RulesPanelView"]),
         ("cogs.temp_voice", ["VoiceControlPanelView"]),
         ("cogs.embed", ["EmbedBuilderView"]),
     ]:

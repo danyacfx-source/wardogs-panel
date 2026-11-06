@@ -43,3 +43,21 @@ def test_grant_bonus_once_per_key(bot_database):
 
 def test_grant_bonus_skips_unlinked_steam(bot_database):
     assert bot_database.seed_grant_bonus("76561190000000009", 40, "server_start_bonus", "k2") is False
+
+
+def test_passive_rates_are_10_then_15_per_hour():
+    assert seed_rates.points_for_seconds(3600, seed_rates.PASSIVE_STAGES) == 10
+    assert seed_rates.points_for_seconds(7200, seed_rates.PASSIVE_STAGES) == 25
+
+
+def test_passive_accrual_credits_hour_and_resets_after_gap(bot_database):
+    bot_database.seed_link_steam_direct("111", "76561190000000001", "Player")
+    steam = "76561190000000001"
+    t0 = 1_000_000_000_000
+    assert bot_database.seed_apply_passive_tick([steam], t0, 180, 10_000) == 0
+    # Час непрерывной игры вне окна: 10 баллов.
+    assert bot_database.seed_apply_passive_tick([steam], t0 + 3_600_000, 7_200, 10_000) == 1
+    assert bot_database.seed_get_user_by_discord("111")["balance"] == 10
+    # Ушёл дольше паузы: стаж обнуляется, баллов нет.
+    assert bot_database.seed_apply_passive_tick([steam], t0 + 3_600_000 + 600_000, 180, 10_000) == 0
+    assert bot_database.seed_get_user_by_discord("111")["balance"] == 10

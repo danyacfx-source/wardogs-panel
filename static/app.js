@@ -1913,6 +1913,19 @@ const app = createApp({
         3: "VIP, личный тикет и объявление о входе в игре",
       }[tier] || "VIP";
     },
+    async unlinkSeedSteam(steamId) {
+      const confirmed = await this.openActionDialog({
+        title: "Отвязать Steam",
+        message: "Discord будет отвязан от этого SteamID. Баллы останутся на старом SteamID, новый аккаунт начнёт с нуля. Отвязка невозможна при активном VIP.",
+        confirmText: "Отвязать",
+        danger: true,
+      });
+      if (!confirmed) return;
+      const { status, data } = await this.api.request("POST", `/api/players/${encodeURIComponent(steamId)}/seed-unlink`, { confirm: true });
+      if (status !== 200 || !data?.ok) return this.toast(data?.detail || "Не удалось отвязать Steam", "err");
+      this.toast("Steam отвязан", "ok");
+      this.openPlayerCard(steamId);
+    },
     async openVipTicket(item) {
       const { status, data } = await this.api.request("POST", `/api/players/${encodeURIComponent(item.steam_id)}/vip-ticket`, {});
       if (status !== 200 || !data?.ok) return this.toast(data?.detail || "Не удалось открыть тикет", "err");

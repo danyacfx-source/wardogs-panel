@@ -23,8 +23,8 @@ HEIGHT = 896
 TEXT = (236, 236, 236)
 MUTED = (165, 160, 160)
 ACCENT = (232, 40, 40)
-CELL_ON = (232, 40, 40)
-CELL_OFF = (52, 46, 48)
+CELL_ON = (222, 36, 36)
+CELL_OFF = (44, 38, 40)
 
 MAX_NAMES = 3
 STATES = ("active", "limit", "closed", "offline")
