@@ -989,3 +989,18 @@ body[data-panel-mode="monitor"] { background:#080809; }
 .dev-price-row input[type=number] { width:100%; box-sizing:border-box; }
 .dev-price-toggle { display:inline-flex; align-items:center; gap:5px; color:#a7a2a0; font-size:12px; white-space:nowrap; }
 .dev-price-toggle input { width:auto; }
+
+/* Юридические страницы и баннер cookie */
+.legal-page { max-width: 880px; margin: 0 auto; padding: 24px 16px 48px; line-height: 1.6; }
+.legal-page h2 { margin-top: 28px; font-size: 1.15rem; }
+.legal-page ul { padding-left: 20px; }
+.legal-table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 0.92rem; }
+.legal-table th, .legal-table td { border: 1px solid #3a2a2a; padding: 8px; vertical-align: top; text-align: left; }
+.legal-table th { background: #1d1212; }
+.site-legal { text-align: center; padding: 18px 12px 96px; font-size: 0.9rem; color: #9a9a9a; }
+.site-legal a { color: #ff6b6b; }
+.linkish { background: none; border: 0; color: #ff6b6b; cursor: pointer; font: inherit; padding: 0; text-decoration: underline; }
+.cookie-banner { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 1000; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; background: #121212; color: #eee; border: 1px solid #7a1212; border-radius: 10px; padding: 14px 16px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); font-size: 14px; }
+.cookie-banner a { color: #ff6b6b; }
+.cookie-banner-text { flex: 1 1 320px; }
+.cookie-banner-actions { display: flex; gap: 8px; }

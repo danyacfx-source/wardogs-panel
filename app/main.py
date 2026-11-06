@@ -551,6 +551,16 @@ async def support_page():
     return _page("support.html")
 
 
+@app.get("/privacy")
+async def privacy_page():
+    return _page("privacy.html")
+
+
+@app.get("/cookies")
+async def cookies_page():
+    return _page("cookies.html")
+
+
 @app.get("/calc")
 async def calc_page():
     return _page("calc.html")

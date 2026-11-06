@@ -50,3 +50,43 @@
     })
     .catch(() => {});
 })();
+
+// Баннер cookie: сайт использует только необходимые cookie, поэтому выбор информационный.
+// Выбор хранится в localStorage (не cookie), его можно сменить по ссылке в подвале.
+(() => {
+  const KEY = "wds_cookie_choice";
+  const read = () => {
+    try { return localStorage.getItem(KEY); } catch { return null; }
+  };
+  const write = (value) => {
+    try { localStorage.setItem(KEY, value); } catch { /* приватный режим: выбор не сохранится */ }
+  };
+  const showBanner = () => {
+    if (document.querySelector(".cookie-banner")) return;
+    const bar = document.createElement("div");
+    bar.className = "cookie-banner";
+    bar.setAttribute("role", "dialog");
+    bar.setAttribute("aria-label", "Выбор cookie");
+    bar.innerHTML =
+      '<span class="cookie-banner-text">Мы используем только необходимые cookie: вход и защиту форм. Аналитики и рекламы нет. ' +
+      '<a href="/cookies">Подробнее</a></span>' +
+      '<span class="cookie-banner-actions">' +
+      '<button type="button" class="btn ghost small" data-choice="declined">Отклонить</button>' +
+      '<button type="button" class="btn primary small" data-choice="accepted">Принять</button>' +
+      "</span>";
+    bar.addEventListener("click", (event) => {
+      const choice = event.target.closest("[data-choice]")?.dataset.choice;
+      if (!choice) return;
+      write(choice);
+      bar.remove();
+    });
+    document.body.appendChild(bar);
+  };
+  if (!read()) showBanner();
+  document.querySelectorAll("[data-cookie-settings]").forEach((button) => {
+    button.addEventListener("click", () => {
+      try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+      showBanner();
+    });
+  });
+})();
