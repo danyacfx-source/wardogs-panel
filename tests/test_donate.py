@@ -313,8 +313,11 @@ def test_site_checkout_creates_signed_order(monkeypatch, tmp_path):
 
     session_token = asyncio.run(seed())
     with TestClient(app) as client:
-        # Без входа — 401.
-        assert client.post("/api/donate/checkout", json={"product": "personal_1"}).status_code == 401
+        # Без SteamID — 400: оплата идёт по SteamID, который указал покупатель.
+        assert client.post("/api/donate/checkout", json={"product": "personal_1"}).status_code == 400
+        # SteamID без привязки к Discord — 409.
+        unlinked = client.post("/api/donate/checkout", json={"product": "personal_1", "steam_id": "76561190000000009"})
+        assert unlinked.status_code == 409
 
         client.cookies.set(api.SESSION_COOKIE, session_token)
         client.get("/api/session")  # ставит wds_csrf
@@ -324,7 +327,9 @@ def test_site_checkout_creates_signed_order(monkeypatch, tmp_path):
         bad = client.post("/api/donate/checkout", json={"product": "clan_10"}, headers=headers)
         assert bad.status_code == 400
 
-        response = client.post("/api/donate/checkout", json={"product": "personal_1"}, headers=headers)
+        response = client.post(
+            "/api/donate/checkout", json={"product": "personal_1", "steam_id": steam_id}, headers=headers
+        )
         assert response.status_code == 200
         url = response.json()["url"]
         assert url.startswith("/donate/index.php?o=")
@@ -363,7 +368,7 @@ def test_site_checkout_requires_discord_binding(monkeypatch, tmp_path):
         client.get("/api/session")
         headers = {"X-CSRF-Token": client.cookies.get("wds_csrf") or ""}
         response = client.post(
-            "/api/donate/checkout", json={"product": "personal_1"}, headers=headers
+            "/api/donate/checkout", json={"product": "personal_1", "steam_id": "76561190000000001"}, headers=headers
         )
         assert response.status_code == 409
         assert "Discord" in response.json()["detail"]

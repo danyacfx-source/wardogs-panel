@@ -8,12 +8,7 @@
   const price = document.querySelector('#orderPrice');
   const invite = 'https://discord.gg/wdru-ru';
   let plan = null;
-  let sessionPromise = null;
-
-  const session = () =>
-    (sessionPromise ||= fetch('/api/session', { credentials: 'same-origin' })
-      .then((response) => (response.ok ? response.json() : null))
-      .catch(() => null));
+  const steamInput = document.querySelector('#orderSteam');
 
   const csrf = () =>
     decodeURIComponent(
@@ -31,23 +26,6 @@
     message.textContent = text;
   }
 
-  async function checkAccess() {
-    const data = await session();
-    if (!data?.authed) {
-      note.innerHTML = 'Для покупки нужен <a href="/api/auth/steam/start">вход через Steam</a>.';
-      submit.hidden = true;
-      return;
-    }
-    if (!data?.me?.discord?.bound) {
-      note.innerHTML =
-        'Привяжите <a href="/api/auth/discord/start">Discord-аккаунт</a> — оплаченные роли выдаются на него.';
-      submit.hidden = true;
-      return;
-    }
-    note.textContent =
-      'Получатель — ваш Discord-аккаунт. После оплаты привяжите слот к Steam кнопкой «Привязать Steam» в канале правил Discord.';
-    submit.hidden = false;
-  }
 
   const bindPlan = (button) => {
     button.onclick = () => {
@@ -57,15 +35,17 @@
         plan.seats > 1 ? `${button.dataset.price} · получателей: ${plan.seats}` : button.dataset.price;
       setMessage('', false);
       if (plan.seats > 1) {
-        note.innerHTML = `Клановый VIP оформляется в Discord: получателей выбирают командой в канале VIP. <a href="${invite}" target="_blank" rel="noopener noreferrer">Открыть Discord</a>`;
+        note.textContent = 'Клановый VIP пока оформляется через администрацию: напишите в поддержку.';
         submit.hidden = true;
         dialog.showModal();
         return;
       }
-      note.textContent = 'Проверяем вход…';
-      submit.hidden = true;
+      note.textContent =
+        'Введите SteamID64, на который оформляется VIP. Он должен быть привязан к вашему Discord кнопкой «Привязать Steam» в канале правил.';
+      submit.hidden = false;
+      steamInput.value = '';
+      setMessage('', false);
       dialog.showModal();
-      checkAccess();
     };
   };
 
@@ -128,7 +108,7 @@
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
-        body: JSON.stringify({ product: plan.product }),
+        body: JSON.stringify({ product: plan.product, steam_id: steamInput.value.trim() }),
       });
       const data = await response.json().catch(() => null);
       if (!response.ok) {
@@ -136,14 +116,6 @@
           data?.detail || data?.error?.message || 'Не удалось создать заказ, попробуйте позже.',
           false,
         );
-        if (response.status === 401) {
-          window.location.assign('/api/auth/steam/start');
-          return;
-        }
-        if (response.status === 409) {
-          sessionPromise = null;
-          await checkAccess();
-        }
         submit.disabled = false;
         return;
       }

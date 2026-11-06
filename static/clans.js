@@ -38,12 +38,93 @@
     if (clan.recruitment_open && clan.recruitment_url) links.push(`<a class="btn primary small" href="${escape(clan.recruitment_url)}" target="_blank" rel="noopener noreferrer">Вступить</a>`);
     return `<div class="public-clan-links"><span class="public-clan-recruitment">${clan.recruitment_open ? 'Набор открыт' : 'Набор закрыт'}</span>${links.join('')}</div>`;
   }
+  // Блок «VIP клана» виден только лидеру и заместителю (сервер отдаёт 403 остальным).
+  async function renderClanVip(clanId, host) {
+    const response = await fetch(`/api/clans/${encodeURIComponent(clanId)}/vip`, { credentials: 'same-origin' }).catch(() => null);
+    if (!response || !response.ok) return;
+    const data = await response.json();
+    const pool = data.pool;
+    const fmtDate = (ts) => (ts ? new Date(ts * 1000).toLocaleDateString('ru-RU') : '—');
+    const granted = new Set(data.grants.map((g) => g.steam_id));
+    const grantItems = data.grants.length
+      ? data.grants.map((g) => `<li>${escape(g.name)} <small>${escape(g.steam_id)}</small> <button type="button" class="mini-btn danger" data-revoke="${escape(g.steam_id)}">Снять</button></li>`).join('')
+      : '<li class="muted">Мест пока не выдано</li>';
+    const options = data.members
+      .filter((m) => !granted.has(m.steam_id))
+      .map((m) => `<option value="${escape(m.steam_id)}">${escape(m.name)} (${escape(m.role || '')})</option>`)
+      .join('');
+    const packs = data.packs
+      .filter((k) => k.enabled)
+      .map((k) => `<button type="button" class="btn ghost small" data-pack="${k.pack}">${k.pack} мест · ${k.rub} ₽</button>`)
+      .join(' ');
+    const box = document.createElement('section');
+    box.className = 'clan-vip-box';
+    box.innerHTML =
+      `<h3>VIP клана</h3>` +
+      `<p>Мест: <b>${pool.used}</b> из <b>${pool.seats}</b>, свободно <b>${pool.free}</b>. ` +
+      (pool.active ? `Срок до <b>${fmtDate(pool.expires_utc)}</b>.` : 'Пакет не куплен или срок истёк.') +
+      `</p>` +
+      `<p class="clan-vip-packs">${packs || '<span class="muted">Пакеты сейчас недоступны</span>'}</p>` +
+      `<ul class="clan-vip-grants">${grantItems}</ul>` +
+      (pool.free > 0 && options
+        ? `<form class="clan-vip-grant"><select name="steam_id">${options}</select> <button class="btn primary small" type="submit">Выдать место</button></form>`
+        : '') +
+      `<p class="form-message" data-vip-msg></p>`;
+    host.appendChild(box);
+    const say = (text, ok) => {
+      const msg = box.querySelector('[data-vip-msg]');
+      msg.className = ok ? 'form-message ok' : 'form-message error';
+      msg.textContent = text;
+    };
+    const refresh = () => { box.remove(); renderClanVip(clanId, host); };
+    box.querySelectorAll('[data-pack]').forEach((button) => {
+      button.onclick = async () => {
+        button.disabled = true;
+        const result = await fetch(`/api/clans/${encodeURIComponent(clanId)}/vip/order`, {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
+          body: JSON.stringify({ pack: Number(button.dataset.pack) }),
+        });
+        const payload = await result.json().catch(() => ({}));
+        if (!result.ok) { button.disabled = false; say(payload.detail || 'Не удалось создать заявку', false); return; }
+        location.assign(payload.url);
+      };
+    });
+    const grantForm = box.querySelector('.clan-vip-grant');
+    if (grantForm) {
+      grantForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const steamId = new FormData(grantForm).get('steam_id');
+        const result = await fetch(`/api/clans/${encodeURIComponent(clanId)}/vip/grants`, {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
+          body: JSON.stringify({ steam_id: steamId }),
+        });
+        const payload = await result.json().catch(() => ({}));
+        if (!result.ok) { say(payload.detail || 'Не удалось выдать место', false); return; }
+        refresh();
+      });
+    }
+    box.querySelectorAll('[data-revoke]').forEach((button) => {
+      button.onclick = async () => {
+        if (!window.confirm('Снять место у этого игрока? Слот пропадёт на всех серверах.')) return;
+        const result = await fetch(`/api/clans/${encodeURIComponent(clanId)}/vip/grants/${encodeURIComponent(button.dataset.revoke)}`, {
+          method: 'DELETE', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf() },
+        });
+        const payload = await result.json().catch(() => ({}));
+        if (!result.ok) { say(payload.detail || 'Не удалось снять место', false); return; }
+        refresh();
+      };
+    });
+  }
+
   async function openClan(id) {
     document.querySelector('#clanDialogContent').innerHTML = '<p class="muted">Загрузка карточки…</p>'; detail.showModal();
     try {
       const response = await fetch(`/api/public/clans/${encodeURIComponent(id)}`); const data = await response.json(); if (!response.ok) throw new Error(); const clan = data.clan;
       document.querySelector('#clanDialogContent').innerHTML = `<div class="public-clan-detail" style="--clan-color:${escape(clan.color)}"><div class="public-clan-detail-cover" style="${clan.cover_url ? `background-image:url('${encodeURI(clan.cover_url)}')` : ''}"></div><div class="public-clan-detail-title">${emblem(clan, '')}<div><div class="eyebrow">КЛАН</div><h2>${clanTitle(clan)}</h2><p>${escape(clan.description || 'Описание пока не добавлено')}</p></div></div><div class="public-clan-leader">Лидер <strong>${escape(clan.leader)}</strong></div>${clan.goals ? `<h3>Цели</h3><p class="public-clan-goals">${escape(clan.goals)}</p>` : ''}${botLinks(clan)}<h3>Состав · ${clan.member_count}</h3><div class="public-roster">${clan.members.map((member) => `<div><b>${escape(member.name)}</b><span>${escape(member.member_role)}</span></div>`).join('') || `<p class="muted">${clan.source === 'bot' ? 'Состав клана ведётся в Discord.' : 'Состав ещё не заполнен.'}</p>`}</div></div>`;
       watchLogos(document.querySelector('#clanDialogContent'));
+      renderClanVip(id, document.querySelector('#clanDialogContent'));
     } catch { document.querySelector('#clanDialogContent').innerHTML = '<p class="muted">Карточка клана сейчас недоступна.</p>'; }
   }
   document.querySelector('#openClanApplication')?.addEventListener('click', async () => {

@@ -940,14 +940,13 @@ async def seed_shop_put(request: Request):
 
 @router.post("/donate/checkout")
 async def donate_checkout(request: Request):
-    """Создаёт подписанный заказ на личный VIP для входившего пользователя.
+    """Создаёт подписанный заказ на личный VIP под SteamID, который указал покупатель.
 
-    Заказ подписывается тем же секретом, что и заказы донат-бота, поэтому
-    после оплаты оба бота работают с ним как с обычным: сидер проверяет
-    подпись и выдаёт слот, донат-бот разбирает заказ в /donation-admin review
-    (он не создавал его сам, поэтому автоподтверждения ролей нет).
+    SteamID вводится вручную перед оплатой. Заказ создаётся только если этот SteamID
+    привязан к Discord через бота: иначе роль некуда выдать. Заказ подписывается тем же
+    секретом, что и заказы донат-бота, поэтому сидер и донат-бот работают с ним как с обычным.
     """
-    user = _require_user(await _current_user(request))
+    user = await _current_user(request)
     try:
         body = await request.json()
     except Exception:
@@ -957,19 +956,240 @@ async def donate_checkout(request: Request):
     catalog_item = vip_catalog.PRODUCTS.get(product)
     if not catalog_item or catalog_item["kind"] != "personal" or vip_catalog.price_kopecks(product) is None:
         raise HTTPException(status_code=400, detail="неизвестный тариф")
-    binding = await db.get_binding(user["steam_id"])
-    discord_id = str((binding or {}).get("discord_id") or "")
+    raw_steam = str((body or {}).get("steam_id") or "").strip()
+    if not raw_steam and user:
+        raw_steam = str(user["steam_id"])
+    match = re.search(r"7656119\d{10}", raw_steam)
+    if not match:
+        raise HTTPException(status_code=400, detail="Укажите SteamID64: 17 цифр или ссылку на профиль Steam")
+    steam_id = match.group(0)
+    discord_id = seed_store.discord_for_steam(steam_id)
+    if not discord_id:
+        binding = await db.get_binding(steam_id)
+        discord_id = str((binding or {}).get("discord_id") or "")
     if not re.fullmatch(r"\d{17,20}", discord_id):
         raise HTTPException(
             status_code=409,
-            detail="Привяжите Discord-аккаунт: оплаченные роли выдаются на него",
+            detail="Этот SteamID не привязан к Discord. Привяжите Steam кнопкой «Привязать Steam» в канале привязки и повторите покупку.",
         )
     try:
         token = donate.create_site_order(product, discord_id)
     except ValueError:
         raise HTTPException(status_code=503, detail="оплата временно не настроена")
-    await db.log_site_audit(user["steam_id"], None, "donate.checkout", product)
+    actor = user["steam_id"] if user else steam_id
+    await db.log_site_audit(actor, None, "donate.checkout", f"{product}:{steam_id}")
     return {"url": f"/donate/index.php?o={token}"}
+
+
+CLAN_VIP_MANAGER_ROLES = {"лидер", "заместитель", "leader", "deputy"}
+CLAN_VIP_NOTE_PREFIX = "клан:"
+CLAN_VIP_ADD_ERRORS = {
+    "no_pool": "У клана нет VIP-мест. Сначала купите пакет.",
+    "expired": "Срок VIP клана истёк. Продлите пакет, чтобы выдавать места.",
+    "full": "Все места клана заняты.",
+    "not_member": "Этот игрок не состоит в клане.",
+    "exists": "Это место уже выдано игроку.",
+}
+
+
+def _clan_vip_note(clan_id: str) -> str:
+    return f"{CLAN_VIP_NOTE_PREFIX}{clan_id}"
+
+
+async def _clan_manager_or_403(clan_id: str, user: dict) -> dict:
+    """Покупать и раздавать места может лидер или заместитель клана."""
+    clan = await db.get_clan(clan_id)
+    if not clan:
+        raise HTTPException(status_code=404, detail="Клан не найден")
+    me = next((m for m in clan.get("members", []) if m["steam_id"] == user["steam_id"]), None)
+    if not me or str(me.get("member_role") or "").casefold() not in CLAN_VIP_MANAGER_ROLES:
+        raise HTTPException(status_code=403, detail="Места VIP может выдавать лидер или заместитель клана")
+    return clan
+
+
+async def _slot_on(sid: str, steam_id: str):
+    return next((item for item in await db.list_vip_slots(sid) if item["steam_id"] == steam_id), None)
+
+
+async def _grant_pool_slot(steam_id: str, expires_utc: float, clan_id: str, actor: str) -> list:
+    """Ставит слот клана на все серверы. Срок не укорачивается: save_vip_slot берёт максимум.
+
+    Если на сервере уже есть личный VIP (запись с другой пометкой), он не перезаписывается:
+    на этом сервере клановое место пропускается, а при снятии места личный VIP не трогаем.
+    """
+    user = await db.get_user(steam_id)
+    persona = (user or {}).get("persona") or ""
+    note = _clan_vip_note(clan_id)
+    results = []
+    for sid in POOL:
+        current = await _slot_on(sid, steam_id)
+        if current and current.get("note") != note:
+            results.append({"server": sid, "synced": True, "error": "", "skipped": "личный VIP"})
+            continue
+        item = await db.save_vip_slot(sid, steam_id, persona, expires_utc, note, actor)
+        synced, error = await _sync_vip_record(item, add=True)
+        results.append({"server": sid, "synced": synced, "error": error})
+    return results
+
+
+async def _revoke_pool_slot(steam_id: str, clan_id: str) -> None:
+    """Снимает слоты клана со всех серверов; записи, выданные не кланом, не трогаем."""
+    note = _clan_vip_note(clan_id)
+    for sid in POOL:
+        for item in await db.list_vip_slots(sid):
+            if item["steam_id"] != steam_id or item.get("note") != note:
+                continue
+            synced, error = await _sync_vip_record(item, add=False, touch_role=False)
+            if synced:
+                await db.delete_vip_slot(item["id"], sid)
+            else:
+                await db.queue_vip_removal(item["id"], error)
+
+
+async def credit_clan_pool_order(order: dict) -> dict:
+    """После оплаты: места добавляются клану, срок продлевается от текущего, слоты выданных обновляются."""
+    pool = await db.credit_clan_pool(order["clan_id"], int(order["pack_seats"]), months=1)
+    for grant in await db.list_clan_grants(order["clan_id"]):
+        try:
+            await _grant_pool_slot(grant["steam_id"], pool["expires_utc"], order["clan_id"], "клан-пул")
+        except Exception:
+            log.exception("Срок слота клана не продлён для %s", grant["steam_id"])
+    await db.log_site_audit(order.get("buyer_steam_id") or None, None, "clan.vip.credit", f"{order['id']}:{pool['seats']}")
+    return pool
+
+
+async def reconcile_clan_vip() -> dict:
+    """Фоновая сверка: снимаем места у вышедших и у истёкших пулов, дозаписываем недостающие серверы."""
+    stats = {"revoked": 0, "restored": 0}
+    for orphan in await db.list_orphan_clan_grants():
+        await db.remove_clan_grant(orphan["clan_id"], orphan["steam_id"])
+        await _revoke_pool_slot(orphan["steam_id"], orphan["clan_id"])
+        stats["revoked"] += 1
+    if not POOL:
+        return stats
+    # Есть место, но слота на каком-то сервере нет — дописываем (идемпотентно).
+    # Сервер считается покрытым, если на нём уже есть любая запись игрока (клановая или личный VIP).
+    present_keys = set()
+    for sid in POOL:
+        for item in await db.list_vip_slots(sid):
+            present_keys.add((item["steam_id"], sid))
+    for grant in await _all_live_grants():
+        pool = await db.get_clan_pool(grant["clan_id"])
+        if not pool:
+            continue
+        if all((grant["steam_id"], sid) in present_keys for sid in POOL):
+            continue
+        await _grant_pool_slot(grant["steam_id"], pool["expires_utc"], grant["clan_id"], "клан-пул")
+        stats["restored"] += 1
+    if stats["revoked"] or stats["restored"]:
+        log.info("Места VIP клана: %s", stats)
+    return stats
+
+
+async def _all_live_grants() -> list:
+    rows = []
+    for pool in await db.list_clan_pools():
+        for grant in await db.list_clan_grants(pool["clan_id"]):
+            rows.append({"clan_id": pool["clan_id"], "steam_id": grant["steam_id"]})
+    return rows
+
+
+@router.get("/clans/{clan_id}/vip")
+async def clan_vip_state(clan_id: str, request: Request):
+    """Пул мест клана и выданные места. Видно только лидеру и заместителю."""
+    user = _require_user(await _current_user(request))
+    clan = await _clan_manager_or_403(clan_id, user)
+    pool = await db.get_clan_pool(clan_id)
+    grants = await db.list_clan_grants(clan_id)
+    names = {m["steam_id"]: m.get("name") or m["steam_id"] for m in clan.get("members", [])}
+    used = await db.clan_pool_usage(clan_id)
+    seats = pool["seats"] if pool else 0
+    packs = []
+    for pack in (10, 20, 30):
+        product = vip_catalog.PRODUCTS.get(f"clan_{pack}") or {}
+        rub = vip_catalog.price_kopecks(f"clan_{pack}")
+        packs.append({"pack": pack, "product_id": f"clan_{pack}", "rub": (rub // 100) if rub else None,
+                      "enabled": rub is not None, "name": product.get("name", "")})
+    return {
+        "ok": True,
+        "pool": {
+            "seats": seats,
+            "used": used,
+            "free": max(0, seats - used),
+            "expires_utc": pool["expires_utc"] if pool else None,
+            "active": bool(pool and pool["expires_utc"] > time.time()),
+        },
+        "grants": [
+            {"steam_id": g["steam_id"], "name": names.get(g["steam_id"], g["steam_id"]),
+             "granted_by": g["granted_by"], "created_utc": g["created_utc"]}
+            for g in grants
+        ],
+        "members": [
+            {"steam_id": m["steam_id"], "name": m.get("name") or m["steam_id"], "role": m.get("member_role")}
+            for m in clan.get("members", [])
+        ],
+        "packs": packs,
+    }
+
+
+@router.post("/clans/{clan_id}/vip/order")
+async def clan_vip_order(clan_id: str, request: Request):
+    """Заявка на пакет мест клана. Оплата идёт через ЮMoney, места зачисляются после перевода."""
+    user = _require_user(await _current_user(request))
+    await _clan_manager_or_403(clan_id, user)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    try:
+        pack = int((body or {}).get("pack") or 0)
+    except (TypeError, ValueError):
+        pack = 0
+    product_id = f"clan_{pack}"
+    await vip_catalog.refresh()
+    rub_kopecks = vip_catalog.price_kopecks(product_id)
+    if pack not in (10, 20, 30) or rub_kopecks is None:
+        raise HTTPException(status_code=400, detail="Пакет недоступен")
+    order_id = "WDC-" + secrets.token_hex(8).upper()
+    await db.create_clan_order({
+        "id": order_id, "clan_id": clan_id, "buyer_steam_id": user["steam_id"],
+        "product_id": product_id, "pack_seats": pack, "amount": rub_kopecks // 100,
+    })
+    await db.log_site_audit(user["steam_id"], None, "clan.vip.order", f"{clan_id}:{pack}")
+    return {"ok": True, "url": f"/donate/clan/{order_id}"}
+
+
+@router.post("/clans/{clan_id}/vip/grants")
+async def clan_vip_grant(clan_id: str, request: Request):
+    """Выдаёт место участнику клана в пределах купленных мест."""
+    user = _require_user(await _current_user(request))
+    await _clan_manager_or_403(clan_id, user)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    steam_id = str((body or {}).get("steam_id") or "").strip()
+    if not re.fullmatch(r"7656119\d{10}", steam_id):
+        raise HTTPException(status_code=400, detail="Укажите SteamID64 участника")
+    result = await db.add_clan_grant(clan_id, steam_id, user["steam_id"])
+    if result != "ok":
+        raise HTTPException(status_code=409, detail=CLAN_VIP_ADD_ERRORS.get(result, "Не удалось выдать место"))
+    pool = await db.get_clan_pool(clan_id)
+    results = await _grant_pool_slot(steam_id, pool["expires_utc"], clan_id, user["steam_id"])
+    await db.log_site_audit(user["steam_id"], None, "clan.vip.grant", f"{clan_id}:{steam_id}")
+    return {"ok": True, "slots": results}
+
+
+@router.delete("/clans/{clan_id}/vip/grants/{steam_id}")
+async def clan_vip_revoke(clan_id: str, steam_id: str, request: Request):
+    """Снимает место: слот убирается со всех серверов, место освобождается."""
+    user = _require_user(await _current_user(request))
+    await _clan_manager_or_403(clan_id, user)
+    if not await db.remove_clan_grant(clan_id, steam_id):
+        raise HTTPException(status_code=404, detail="Место не найдено")
+    await _revoke_pool_slot(steam_id, clan_id)
+    await db.log_site_audit(user["steam_id"], None, "clan.vip.revoke", f"{clan_id}:{steam_id}")
+    return {"ok": True}
 
 
 @router.get("/system/status")

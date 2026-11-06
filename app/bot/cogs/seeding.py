@@ -157,6 +157,10 @@ class SeedLinkPanelView(discord.ui.View):
             return
         await cog._toggle_seeder_role(interaction)
 
+    @discord.ui.button(label="О сидинге", emoji="🌱", style=discord.ButtonStyle.success, custom_id="seed:panel:about")
+    async def about_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await _send_rules_parts(interaction, "seeding")
+
     @discord.ui.button(label="Как найти SteamID?", emoji="❔", style=discord.ButtonStyle.secondary, custom_id="seed:panel:help")
     async def help_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(
@@ -171,6 +175,20 @@ class SeedLinkPanelView(discord.ui.View):
             ),
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+async def _send_rules_parts(interaction: discord.Interaction, kind: str) -> None:
+    """Отправляет разделы из app/bot/rules/*.md эфемерными сообщениями, которые игрок может скрыть."""
+    await interaction.response.defer(ephemeral=True)
+    title = RULES_SOURCES[kind][0]
+    parts = load_rules_parts(kind)
+    for number, text in enumerate(parts, start=1):
+        embed = discord.Embed(
+            color=0xB00000,
+            title=f"{title} · часть {number} из {len(parts)}",
+            description=text,
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 class RulesPanelView(discord.ui.View):

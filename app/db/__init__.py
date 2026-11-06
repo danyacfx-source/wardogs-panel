@@ -78,6 +78,20 @@ from .clans import (
     get_player_clan,
 )
 
+from .clan_vip import (
+    get_clan_pool,
+    list_clan_grants,
+    clan_pool_usage,
+    add_clan_grant,
+    remove_clan_grant,
+    credit_clan_pool,
+    create_clan_order,
+    get_clan_order,
+    mark_clan_order_paid,
+    reopen_clan_order,
+    list_orphan_clan_grants,
+    list_clan_pools,
+)
 from .vip import (
     queue_vip_removal,
     has_seed_vip_active,

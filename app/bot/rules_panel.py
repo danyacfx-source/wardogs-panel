@@ -16,6 +16,7 @@ PART_LIMIT = 3800
 SOURCES = {
     "discord": ("Правила Discord", RULES_DIR / "discord_rules.md"),
     "game": ("Правила игровых серверов", RULES_DIR / "game_rules.md"),
+    "seeding": ("О сидинге", RULES_DIR / "seeding_about.md"),
 }
 
 

@@ -52,6 +52,7 @@ LABEL_PREFIX = "WD2-"
 # Метка заявки панели: WD-<16 hex> (см. db.get_vip_order). Отличается от
 # метки заказов донат-бота, поэтому обрабатывается отдельной веткой.
 PANEL_LABEL_PREFIX = "WD-"
+CLAN_LABEL_PREFIX = "WDC-"
 FEED_PAGE_LIMIT = 100
 MIN_DONATION_KOPECKS = 5000
 MAX_DONATION_KOPECKS = 10_000_000
@@ -399,6 +400,42 @@ def _vip_order_title(order: dict) -> str:
     return f"VIP-заявка {order.get('id')}"
 
 
+def _clan_order_html(order: dict) -> str:
+    """Форма quickpay для пула мест клана: метка = идентификатор заявки клана."""
+    amount = int(order["amount"])
+    product = vip_catalog.PRODUCTS.get(order.get("product_id")) or {}
+    title = product.get("name") or f"VIP для клана · {order.get('pack_seats')} мест"
+    wallet = html.escape(config.YOOMONEY_WALLET, quote=True)
+    label = html.escape(str(order["id"]), quote=True)
+    sum_value = f"{amount:.2f}"
+    success_url = html.escape(f"{config.PUBLIC_URL}/donate/success", quote=True)
+    escaped_title = html.escape(title, quote=True)
+    return _page(
+        f"<title>{escaped_title} — оплата · WARDOGS</title>"
+        "<link rel=\"stylesheet\" href=\"/static/donate.css\">"
+        "</head><body class=\"donate-body\"><main class=\"donate-card\">"
+        "<p class=\"donate-brand\">WARDOGS</p>"
+        f"<h1>{escaped_title}</h1>"
+        f"<p class=\"donate-amount\">{html.escape(_fmt_rub(amount * 100))}</p>"
+        f"<p class=\"donate-meta\">Заявка <code>{html.escape(str(order['id']))}</code></p>"
+        f"<p class=\"donate-meta\">Клан <code>{html.escape(str(order.get('clan_id') or ''))}</code>"
+        f" · мест в пакете: {int(order.get('pack_seats') or 0)} · срок 1 мес.</p>"
+        "<form class=\"donate-form\" action=\"https://yoomoney.ru/quickpay/confirm\" method=\"post\" target=\"_top\">"
+        f"<input type=\"hidden\" name=\"receiver\" value=\"{wallet}\">"
+        f"<input type=\"hidden\" name=\"sum\" value=\"{sum_value}\">"
+        f"<input type=\"hidden\" name=\"label\" value=\"{label}\">"
+        f"<input type=\"hidden\" name=\"formcomment\" value=\"{escaped_title}\">"
+        f"<input type=\"hidden\" name=\"short-dest\" value=\"{escaped_title}\">"
+        "<input type=\"hidden\" name=\"quickpay-form\" value=\"shop\">"
+        f"<input type=\"hidden\" name=\"successURL\" value=\"{success_url}\">"
+        f"<button type=\"submit\" class=\"donate-button\">Перевести {html.escape(_fmt_rub(amount * 100))} через ЮMoney</button>"
+        "</form>"
+        "<p class=\"donate-note\">После поступления денег места добавятся клану, а срок продлится от текущего.</p>"
+        "<p class=\"donate-note\"><a href=\"/\">На главную</a></p>"
+        "</main></body>"
+    )
+
+
 def _vip_order_html(order: dict) -> str:
     """Форма quickpay для заявки панели: метка = идентификатор заявки."""
     amount = int(order["amount"])
@@ -495,6 +532,19 @@ _VIP_ORDER_STATUS = {
 }
 
 
+@router.get("/clan/{order_id}", response_class=HTMLResponse)
+async def clan_order_checkout(order_id: str):
+    """Страница оплаты пула мест клана: открывается только для неоплаченной заявки."""
+    if not config.YOOMONEY_WALLET:
+        return _notice_page("Оплата временно недоступна", "Платёжная форма не настроена. Сообщите администратору.", status=503)
+    order = await db.get_clan_order(order_id)
+    if order is None:
+        return _notice_page("Заявка не найдена", "Проверьте ссылку или создайте заявку заново.", status=404)
+    if order["status"] != "awaiting_payment":
+        return _notice_page("Заявка закрыта", "Эта заявка уже оплачена или отменена.", status=409)
+    return HTMLResponse(_clan_order_html(order))
+
+
 @router.get("/vip/{order_id}", response_class=HTMLResponse)
 async def vip_order_checkout(order_id: str):
     """Страница перевода по заявке панели: quickpay с меткой WD-<id>."""
@@ -518,6 +568,28 @@ async def vip_order_checkout(order_id: str):
             status=409,
         )
     return HTMLResponse(_vip_order_html(order))
+
+
+async def _settle_clan_order(order: dict, kopecks: int, operation_id: str):
+    """Зачисляет места пула клана после подтверждённого перевода ЮMoney."""
+    if kopecks != int(order["amount"]) * 100:
+        log.warning("Webhook ЮMoney: сумма заявки клана %s не совпала — зачисление отменено", order["id"])
+        return PlainTextResponse("OK")
+    try:
+        from . import api as api_mod
+    except ImportError:
+        import api as api_mod
+    if not await db.mark_clan_order_paid(order["id"]):
+        log.info("Webhook ЮMoney: заявка клана %s уже обработана", order["id"])
+        return PlainTextResponse("OK")
+    try:
+        await api_mod.credit_clan_pool_order(order)
+    except Exception:
+        # Откатываем статус, чтобы повторное уведомление ЮMoney снова зачислило места.
+        await db.reopen_clan_order(order["id"])
+        raise
+    log.info("Webhook ЮMoney: заявка клана %s оплачена (операция %s) — места зачислены", order["id"], operation_id)
+    return PlainTextResponse("OK")
 
 
 async def _settle_panel_order(order: dict, kopecks: int, operation_id: str):
@@ -571,7 +643,13 @@ async def yoomoney_webhook(request: Request):
 
     label = params.get("label") or ""
     panel_order = None
-    if label.startswith(PANEL_LABEL_PREFIX):
+    clan_order = None
+    if label.startswith(CLAN_LABEL_PREFIX):
+        clan_order = await db.get_clan_order(label)
+        if clan_order is None:
+            log.warning("Webhook ЮMoney: заявка клана %s не найдена — пропуск", label[:32])
+            return PlainTextResponse("OK")
+    elif label.startswith(PANEL_LABEL_PREFIX):
         panel_order = await db.get_vip_order(label)
         if panel_order is None:
             log.warning("Webhook ЮMoney: заявка %s не найдена — пропуск", label[:32])
@@ -610,6 +688,8 @@ async def yoomoney_webhook(request: Request):
         log.info("Webhook ЮMoney: операция %s уже в журнале", operation_id)
         return PlainTextResponse("OK")
 
+    if clan_order is not None:
+        return await _settle_clan_order(clan_order, kopecks, operation_id)
     if panel_order is not None:
         return await _settle_panel_order(panel_order, kopecks, operation_id)
 

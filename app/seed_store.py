@@ -93,6 +93,20 @@ def unlink_by_steam(steam_id: str, actor_steam_id: str) -> dict:
     return {"ok": True, "discord_id": user["discord_id"]}
 
 
+def discord_for_steam(steam_id: str) -> str:
+    """Discord-ID, привязанный к SteamID через бота сидинга; пусто, если привязки нет."""
+    c = _seed_conn()
+    if not c:
+        return ""
+    try:
+        row = c.execute(
+            "SELECT discord_id FROM seed_users WHERE steam_id = ? AND linked = 1", (str(steam_id),)
+        ).fetchone()
+        return str(row["discord_id"]) if row else ""
+    finally:
+        c.close()
+
+
 def get_balance(discord_id: str) -> dict | None:
     c = _seed_conn()
     if not c:

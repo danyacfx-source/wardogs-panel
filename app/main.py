@@ -89,6 +89,7 @@ async def maintenance_loop(stop_event):
             # Backfill RU3 for existing VIP holders and retry pending RCON sync
             # before the expiry sweep. Repeats every maintenance interval.
             await api.reconcile_vip_slots()
+            await api.reconcile_clan_vip()
             await api.expire_vip_slots()
             await api.expire_managed_bans()
         except Exception:

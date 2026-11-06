@@ -310,9 +310,10 @@ def test_menus_skip_empty_groups(client, monkeypatch):
         return _cog()._vip_components()
 
     views = asyncio.run(build())
-    assert [item.custom_id for view in views for item in view.children] == ["vip:personal"]
-    values = [option.value for option in views[0].children[0].options]
-    assert values == ["personal_1", "personal_3", "personal_12"]
+    # Оплата VIP только на сайте: в Discord нет меню тарифов, только ссылка (или ничего, если сайт не задан).
+    items = [item for view in views for item in view.children]
+    assert all(getattr(item, "custom_id", None) is None for item in items)
+    assert all(str(getattr(item, "url", "")).endswith("/support") for item in items)
 
 
 class _Channel:

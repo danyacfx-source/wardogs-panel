@@ -187,9 +187,7 @@ class DonationCog(commands.Cog):
                     continue
                 # Собираем view заново (custom_id те же — on_interaction разрулит).
                 if key == "support":
-                    btn = discord.ui.View()
-                    btn.add_item(discord.ui.Button(label="Поддержать", emoji="💛", style=discord.ButtonStyle.primary, custom_id="support:open"))
-                    comps = [btn]
+                    comps = [self._site_link_view()]
                 else:
                     comps = self._vip_components()
                 await self._upsert_panel(guild, key, ch_id, embed_fn(), comps)
@@ -533,7 +531,7 @@ class DonationCog(commands.Cog):
         embed.add_field(name="🎖️ Спонсорские роли", value=tiers_text)
         embed.add_field(name="💎 Преимущества", value="Закрытый чат спонсоров. Возможность попросить администратора выбрать команду, если он онлайн и переход не создаст явного дисбаланса. Спонсорская роль сама по себе не выдаёт reserved slot.")
         embed.add_field(name="🔗 SteamID и игровой доступ", value="Для обычной поддержки Steam-привязка не нужна. Если покупаете VIP, привяжите Steam кнопкой «Привязать Steam» в канале правил — эта единая привязка подходит и для сидинга, и для VIP.")
-        embed.add_field(name="🤝 Прозрачность", value="Поддержка добровольна. Нажмите кнопку, укажите сумму и оплатите по персональной ссылке ЮMoney. Одна подтверждённая операция учитывается один раз.")
+        embed.add_field(name="🤝 Прозрачность", value="Поддержка добровольна. Оплата на сайте: нажмите кнопку под сообщением и перейдите на страницу поддержки. Одна подтверждённая операция учитывается один раз.")
         embed.set_footer(text="WARDOGS RU · Вместе держим рубеж")
         return embed
 
@@ -554,12 +552,23 @@ class DonationCog(commands.Cog):
         clan_lines = [f"{row['term']} — **{format_rub(row['rub'] * 100)}**" for row in rows if row["kind"] == "clan"]
         if clan_lines:
             embed.add_field(name="🛡️ VIP для клана", value="\n".join(clan_lines), inline=True)
-        embed.add_field(name="📌 Порядок", value="Выберите вариант ниже. Для кланового пакета отметьте всех получателей до оплаты. Каждый получатель привязывает SteamID кнопкой «Привязать Steam» в канале правил; уже привязанным повторять это не нужно. Без привязки слот не появится. Повторная покупка продлевает срок.")
+        embed.add_field(name="📌 Порядок", value="Оплата и выбор тарифа — на сайте. Укажите SteamID64 перед оплатой; SteamID должен быть привязан к вашему Discord кнопкой «Привязать Steam». Без привязки слот не появится. Повторная покупка продлевает срок.")
         embed.set_footer(text="VIP роль действует оплаченный срок · слот сохраняется при другом действующем основании")
         return embed
 
+    def _site_link_view(self):
+        """Кнопка-ссылка на оплату на сайте. Оплата в Discord больше не принимается."""
+        view = discord.ui.View()
+        if self.site_base:
+            view.add_item(discord.ui.Button(label="Оплатить на сайте", emoji="💳", style=discord.ButtonStyle.link,
+                                            url=f"{self.site_base.rstrip('/')}/support"))
+        return view
+
     def _vip_components(self):
-        """Меню покупки по действующим ценам. Выключенных тарифов в нём нет."""
+        """Оплата VIP только на сайте: здесь одна ссылка, меню тарифов в Discord убрано."""
+        return [self._site_link_view()]
+
+    def _unused_vip_components(self):
         views = []
         rows = vip_catalog.items(include_disabled=False)
         for kind, custom_id, placeholder in (
@@ -649,9 +658,7 @@ class DonationCog(commands.Cog):
                     view_channel=True, send_messages=True, read_message_history=True)
             sponsor_ch = await guild.create_text_channel("💎・спонсоры", overwrites=overwrites, reason="Закрытый чат спонсоров")
             set_donation_meta("sponsor_channel_id", str(sponsor_ch.id))
-        btn = discord.ui.View()
-        btn.add_item(discord.ui.Button(label="Поддержать", emoji="💛", style=discord.ButtonStyle.primary, custom_id="support:open"))
-        await self._upsert_panel(guild, "support", CHANNEL_SUPPORT, self._support_embed(), [btn])
+        await self._upsert_panel(guild, "support", CHANNEL_SUPPORT, self._support_embed(), [self._site_link_view()])
         await self._upsert_panel(guild, "vip", CHANNEL_VIP, self._vip_embed(), self._vip_components())
         await self._refresh_top(guild)
         return vip_role.id, sponsor_ch.id
@@ -704,23 +711,10 @@ class DonationCog(commands.Cog):
         try:
             if interaction.type == discord.InteractionType.component:
                 cid = interaction.data.get("custom_id", "")
-                if cid == "support:open":
-                    modal = discord.ui.Modal(custom_id="support:amount", title="Поддержать WARDOGS RU")
-                    amount_input = discord.ui.TextInput(label="Сумма в рублях, от 50 ₽", placeholder="Например, 50",
-                                                        style=discord.TextStyle.short, required=True, max_length=9)
-                    modal.add_item(amount_input)
-                    await interaction.response.send_modal(modal)
-                    return
-                if cid.startswith("vip:personal") or cid.startswith("vip:clan"):
-                    select = interaction.data
-                    values = select.get("values", [])
-                    if values:
-                        await self._create_vip_selection(interaction, values[0])
-                        return
-                if cid.startswith("vip:recipients:"):
-                    cart_id = cid.split(":")[2]
-                    values = interaction.data.get("values", [])
-                    await self._select_recipients(interaction, cart_id, values)
+                if cid == "support:open" or cid.startswith("vip:"):
+                    url = f"{self.site_base.rstrip('/')}/support" if self.site_base else ""
+                    text = f"Оплата переехала на сайт: {url}" if url else "Оплата переехала на сайт."
+                    await interaction.response.send_message(text, ephemeral=True)
                     return
 
             if interaction.type == discord.InteractionType.modal_submit:
