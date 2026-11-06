@@ -139,8 +139,8 @@ def get_player_summary(steam_id: str, discord_id: str = "") -> dict:
         if discord_id.isdigit():
             vip = c.execute(
                 "SELECT MAX(ends_at) AS ends_at FROM donations_vip "
-                "WHERE user_id = ? AND product_id LIKE 'clan_%' AND ends_at > ?",
-                (int(discord_id), int(time.time() * 1000)),
+                "WHERE user_id = ? AND product_id LIKE ? AND ends_at > ?",
+                (int(discord_id), "clan_%", int(time.time() * 1000)),
             ).fetchone()
             if vip and vip["ends_at"]:
                 summary["clan_vip_until"] = int(vip["ends_at"]) / 1000

@@ -236,7 +236,8 @@ async def search_site_audit(query="", section="", server_id="", limit=50, offset
         clauses.append(f"(a.actor_steam_id IS NOT NULL OR a.event IN ({', '.join('?' for _ in JOURNAL_SYSTEM_EVENTS)}))")
         params += JOURNAL_SYSTEM_EVENTS
         # Покупка VIP за бонусы записана как vip.save от имени самого игрока.
-        clauses.append("NOT (a.event = 'vip.save' AND a.detail LIKE '%:seed:%')")
+        clauses.append("NOT (a.event = 'vip.save' AND a.detail LIKE ?)")
+        params.append("%:seed:%")
     if section in AUDIT_SECTIONS:
         prefixes = AUDIT_SECTIONS[section]
         clauses.append("(" + " OR ".join("a.event LIKE ?" for _ in prefixes) + ")")
