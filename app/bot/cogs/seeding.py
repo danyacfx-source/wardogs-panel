@@ -28,6 +28,7 @@ import seed_rates
 from seed_card import CardData, render_server_card
 from rules_panel import BANNER as RULES_BANNER, SOURCES as RULES_SOURCES, load_parts as load_rules_parts
 from start_card import StartCardData, render_start_card
+from steam_ids import extract_steam_id
 from database import (
     seed_apply_passive_tick,
     seed_grant_bonus,
@@ -120,10 +121,10 @@ class SteamLinkModal(discord.ui.Modal):
     """Форма SteamID64. Вход в игру проверяет SeedingCog._link_steam до записи."""
 
     steam_id = discord.ui.TextInput(
-        label="SteamID64 (17 цифр)",
-        placeholder="7656119XXXXXXXXXX",
-        min_length=17,
-        max_length=17,
+        label="SteamID64 или ссылка на профиль",
+        placeholder="7656119… или steamcommunity.com/profiles/7656119…",
+        min_length=1,
+        max_length=200,
     )
 
     def __init__(self, purpose: str = "seeding"):
@@ -155,6 +156,21 @@ class SeedLinkPanelView(discord.ui.View):
             await interaction.response.send_message("Сервис временно недоступен.", ephemeral=True)
             return
         await cog._grant_seeder_role(interaction)
+
+    @discord.ui.button(label="Как найти SteamID?", emoji="❔", style=discord.ButtonStyle.secondary, custom_id="seed:panel:help")
+    async def help_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = discord.Embed(
+            color=0x3498DB,
+            title="Как найти SteamID64",
+            description=(
+                "1. Откройте свой профиль Steam в браузере или в приложении.\n"
+                "2. Скопируйте ссылку на профиль из адресной строки.\n"
+                "3. Нажмите «Привязать Steam» и вставьте ссылку в окно: бот сам найдёт номер.\n\n"
+                "Если ссылка выглядит как steamcommunity.com/id/имя, номера в ней нет. "
+                "Тогда откройте любой сервис поиска SteamID64, вставьте туда ссылку и скопируйте номер из 17 цифр."
+            ),
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 class RulesPanelView(discord.ui.View):
@@ -619,6 +635,7 @@ class SeedingCog(commands.Cog):
         asyncio.create_task(self._publish_rules_panel())
         asyncio.create_task(self._publish_shop_panel())
         asyncio.create_task(self._publish_rules_menu())
+        asyncio.create_task(self._publish_link_panel())
 
     async def _publish_rules_panel(self) -> str:
         """4 эмбеда в канале правил: правила, как начать, магазин, рейтинг.
@@ -655,6 +672,7 @@ class SeedingCog(commands.Cog):
         vip_30 = getattr(config, "VIP_30_DAY_COST", 720)
 
         no_mention = discord.AllowedMentions.none()
+        link_where = f"в канале <#{config.SEED_LINK_CHANNEL_ID}>" if config.SEED_LINK_CHANNEL_ID else "под этим сообщением"
 
         # 1. Правила
         rules = discord.Embed(color=0xE74C3C, title="📜 Правила сидинга WARDOGS | RU",
@@ -669,7 +687,7 @@ class SeedingCog(commands.Cog):
                         value=f"Круглосуточно на всех трёх серверах, без Discord. Первый час — **1 балл за 6 минут** (10/час), затем **1 балл за 4 минуты** (15/час). "
                               f"Если выполнены условия сидинга, начисляется только сидинг. При **{stop_n}+** игроков действует обычная игра.")
         rules.add_field(name="👝 Общий баланс магазина",
-                        value="Баллы игры сохраняются по SteamID без привязки и становятся доступны после кнопки «Привязать Steam» в этом канале. "
+                        value=f"Баллы игры сохраняются по SteamID без привязки и становятся доступны после кнопки «Привязать Steam» {link_where}. "
                               "Баллы сидинга и игры можно тратить в одном магазине. В недельный рейтинг и награды топ-3 входит только сидинг.")
         rules.add_field(name="⏸️ Когда счётчик приостанавливается",
                         value=f"На каждом сервере отдельно при онлайне **{stop_n}+ игроков**. Возобновление — после {resume_min} минут ниже порога.\nТехническая пауза до {grace_min} минут сохраняет стаж непрерывной сессии, но время паузы не оплачивается.")
@@ -680,7 +698,7 @@ class SeedingCog(commands.Cog):
                               description=f"**Все команды можно выполнять прямо в этом канале.** Начните вводить `/seed`, затем выберите нужный пункт из меню Discord.\n\n"
                                           f"**1. Зайдите на любой из трёх игровых серверов WARDOGS.**\nОставайтесь в игре до завершения привязки — бот должен увидеть ваш SteamID среди игроков.\n\n"
                                           f"**2. Подготовьте SteamID64.**\nЭто 17 цифр, обычно начинающихся с `7656`. Укажите именно SteamID64, а не ссылку на профиль и не игровой ник.\n\n"
-                                          f"**3. Нажмите «Привязать Steam» под этим сообщением.**\nВставьте SteamID64 в окно. Бот проверит, что вы на игровом сервере, и привяжет аккаунт сразу.\n\n"
+                                          f"**3. Нажмите «Привязать Steam» {link_where}.**\nВставьте SteamID64 в окно. Бот проверит, что вы на игровом сервере, и привяжет аккаунт сразу.\n\n"
                                           f"**4. Нажмите «Взять роль сидер».**\nРоль {seeder_role} выдаётся кнопкой; действующий VIP выдаётся сразу и не слетает.\n\n"
                                                                                     f"**5. Проверьте результат.**\nКоманда `/steam status` показывает баланс, время, состояние сидинга и VIP. `/seed top` показывает текущий рейтинг.\n\n"
                                           f"**Нужен только оплаченный VIP?** Та же кнопка «Привязать Steam» — она подходит и для оплаченного VIP (без начисления баллов, если вы не сидер).\n\n"
@@ -712,7 +730,8 @@ class SeedingCog(commands.Cog):
                           value="Слоты на всех трёх серверах, отдельно защищённые администрацией, не снимаются при окончании VIP или при смене победителей рейтинга.")
         ranking.set_footer(text="Чем больше подтверждённого времени — тем выше место")
 
-        payload = {"embeds": [rules, start, rewards, ranking], "allowed_mentions": no_mention, "view": SeedLinkPanelView()}
+        link_view = None if config.SEED_LINK_CHANNEL_ID else SeedLinkPanelView()
+        payload = {"embeds": [rules, start, rewards, ranking], "allowed_mentions": no_mention, "view": link_view}
         prior = seed_get_state("rules_message_id", "")
         if prior:
             try:
@@ -731,6 +750,46 @@ class SeedingCog(commands.Cog):
         except Exception as e:
             log.warning("Не удалось опубликовать rules-панель: %s", e)
             return f"правила: ошибка ({e})"
+
+    async def _publish_link_panel(self) -> str:
+        """Панель привязки Steam и роли сидера в отдельном канале (SEED_LINK_CHANNEL_ID). Апсерт по message_id."""
+        await self.bot.wait_until_ready()
+        if not config.SEED_LINK_CHANNEL_ID:
+            return "панель-привязки: канал не настроен"
+        guild = self.bot.get_guild(config.GUILD_ID)
+        if guild is None:
+            return "панель-привязки: гильдия не найдена"
+        try:
+            ch = guild.get_channel(config.SEED_LINK_CHANNEL_ID)
+            if ch is None:
+                ch = await guild.fetch_channel(config.SEED_LINK_CHANNEL_ID)
+        except Exception as e:
+            log.warning("Link channel %s недоступен: %s", config.SEED_LINK_CHANNEL_ID, e)
+            return f"панель-привязки: канал недоступен ({e})"
+        if not isinstance(ch, discord.TextChannel):
+            return "панель-привязки: это не текстовый канал"
+        embed = discord.Embed(
+            color=0x2ECC71,
+            title="🔗 Привязка Steam и роль сидера",
+            description=(
+                "1. Нажмите «Привязать Steam» и вставьте SteamID64 или ссылку на свой профиль.\n"
+                "2. Нажмите «Взять роль сидер».\n"
+                "Не знаете, где взять SteamID? Нажмите «Как найти SteamID?»."
+            ),
+        )
+        view = SeedLinkPanelView()
+        prior = seed_get_state("link_panel_message_id", "")
+        if prior:
+            try:
+                msg = await ch.fetch_message(int(prior))
+                if msg.author.id == self.bot.user.id:
+                    await msg.edit(embed=embed, view=view)
+                    return "панель-привязки: обновлено"
+            except Exception:
+                pass
+        msg = await ch.send(embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
+        seed_set_state("link_panel_message_id", str(msg.id))
+        return "панель-привязки: опубликовано"
 
     async def _publish_rules_menu(self) -> str:
         """Меню правил в канале правил: баннер, текст и выбор раздела. Апсерт по message_id."""
@@ -2358,9 +2417,9 @@ class SeedingCog(commands.Cog):
 
     async def _link_steam(self, interaction: discord.Interaction, steam_id: str, purpose: str):
         await interaction.response.defer(ephemeral=True)
-        normalized = steam_id.strip()
-        if not STEAM_ID_RE.match(normalized):
-            await interaction.followup.send("Нужен SteamID64: 17 цифр, обычно начинается с 7656119.", ephemeral=True)
+        normalized = extract_steam_id(steam_id)
+        if not normalized:
+            await interaction.followup.send("Не нашёл SteamID64. Вставьте 17 цифр или ссылку вида steamcommunity.com/profiles/…", ephemeral=True)
             return
         clients = [c for _, _, c in self._servers()]
         if not clients:

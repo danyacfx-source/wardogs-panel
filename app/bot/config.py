@@ -171,6 +171,8 @@ SEED_RANK_CHANNEL_ID = _int("SEED_RANK_CHANNEL_ID")
 # Канал карточек «Зовём сидеров»: по одному сообщению на сервер.
 SEED_CARD_CHANNEL_ID = _int("SEED_CARD_CHANNEL_ID")
 SEED_CARD_REFRESH_SECONDS = _int("SEED_CARD_REFRESH_SECONDS", 60)
+# Канал панели привязки Steam и роли сидера. Пусто — панель остаётся в канале правил.
+SEED_LINK_CHANNEL_ID = _int("SEED_LINK_CHANNEL_ID")
 SEED_SHOP_CHANNEL_ID = _int("SEED_SHOP_CHANNEL_ID")
 SEED_RULES_CHANNEL_ID = _int("SEED_RULES_CHANNEL_ID")
 SEED_AUDIT_CHANNEL_ID = _int("SEED_AUDIT_CHANNEL_ID")
