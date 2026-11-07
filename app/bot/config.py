@@ -99,6 +99,8 @@ CLAN_BACKUP_INTERVAL_HOURS = _int("CLAN_BACKUP_INTERVAL_HOURS", 24)
 CLAN_BACKUP_RETENTION = _int("CLAN_BACKUP_RETENTION", 30)
 CLAN_ADMIN_ROLE_ID = _int("CLAN_ADMIN_ROLE_ID")
 CLAN_BACKUP_CHANNEL_ID = _int("CLAN_BACKUP_CHANNEL_ID")
+# Автовыгрузка базы в резервный канал раз в N часов; 0 — выключена (только /db-export).
+DB_EXPORT_HOURS = _int("DB_EXPORT_HOURS", 0)
 
 # ---- Seeding ----
 # VIP role -> panel synchronization must cover every configured game server,

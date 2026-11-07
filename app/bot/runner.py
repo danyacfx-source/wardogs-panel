@@ -111,6 +111,7 @@ COGS = [
     "cogs.clan_tickets",
     "cogs.seeding",
     "cogs.swap",
+    "cogs.db_export",
 ]
 
 

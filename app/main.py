@@ -122,12 +122,16 @@ async def lifespan(app):
             log.exception("Ошибка восстановления site.db из Discord")
     await db.init()
     await db.prune_sessions()
-    log.info(
-        "База данных: %s (%s, %d байт)",
-        config.DB_PATH,
-        config.DB_BACKEND,
-        config.DB_PATH.stat().st_size if config.DB_PATH.exists() else 0,
-    )
+    if config.DATABASE_URL:
+        # Данные сайта в PostgreSQL; локальный site.db не используется, поэтому путь и размер не показываем.
+        from urllib.parse import urlsplit
+        log.info("База данных: PostgreSQL, хост %s", urlsplit(config.DATABASE_URL).hostname)
+    else:
+        log.info(
+            "База данных: %s (sqlite, %d байт)",
+            config.DB_PATH,
+            config.DB_PATH.stat().st_size if config.DB_PATH.exists() else 0,
+        )
     await vip_catalog.refresh(force=True)
     stop_health = asyncio.Event()
     health_task = None

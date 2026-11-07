@@ -25,6 +25,9 @@ _DB_PREFIX = "site_"
 
 
 def _enabled() -> bool:
+    # При PostgreSQL файла site.db нет: резервные копии ведёт хостинг, в Discord ничего не шлём.
+    if config.DATABASE_URL:
+        return False
     return bool(config.DISCORD_BOT_TOKEN and config.BACKUP_CHANNEL_ID)
 
 

@@ -22,8 +22,11 @@ from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
 import config
 from config import GUILD_ID
+from database import seed_get_state_strict, seed_set_state
 
 log = logging.getLogger("clans")
+# Состояние кланов хранится в БД бота (PostgreSQL в проде); clan_state.json — только для однократного переноса.
+CLAN_STATE_KEY = "clan_state"
 
 COLORS = {"red": 0xC5162D, "dark": 0x151012, "green": 0x169B62, "grey": 0x626262}
 ROLE_KEYS = ["leader", "deputy", "officer", "fighter", "recruit"]
@@ -120,12 +123,18 @@ class ClanStore:
         return self._state
 
     async def load(self):
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        stored = seed_get_state_strict(CLAN_STATE_KEY, None)
+        if stored is not None:
+            self._state = validate_state(stored)
+            return self._state
+        # Однократный перенос: состояние из старого файла уходит в БД и дальше хранится только там.
         try:
             text = STATE_FILE.read_text(encoding="utf-8")
             self._state = validate_state(json.loads(text))
+            log.info("Состояние кланов перенесено из %s в БД", STATE_FILE)
         except FileNotFoundError:
-            await self._write_atomic()
+            pass
+        await self._write_atomic()
         return self._state
 
     def snapshot(self):
@@ -171,19 +180,8 @@ class ClanStore:
         return self._state
 
     async def _write_atomic(self):
-        temp = STATE_FILE.with_suffix(f".{os.getpid()}.tmp")
-        try:
-            with open(temp, "w", encoding="utf-8") as fh:
-                fh.write(json.dumps(self._state, ensure_ascii=False, indent=2) + "\n")
-                fh.flush()
-                os.fsync(fh.fileno())
-            temp.replace(STATE_FILE)
-        except BaseException:
-            try:
-                temp.unlink()
-            except OSError:
-                pass
-            raise
+        # Запись в БД: при ошибке исключение уходит в update(), которое откатывает состояние в памяти.
+        seed_set_state(CLAN_STATE_KEY, self._state)
 
 
 class BackupManager:
