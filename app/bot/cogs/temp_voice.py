@@ -32,6 +32,28 @@ def _split_mark(name: str) -> tuple[str, str]:
     return raw.strip(), ""
 
 
+OWNER_OVERWRITE = {
+    "view_channel": True,
+    "connect": True,
+    "speak": True,
+    "manage_channels": True,
+    "manage_roles": True,
+    "move_members": True,
+}
+
+
+async def _grant_owner(vc, member) -> None:
+    """Права владельца на Discord-канале: без них кнопки панели и перенос участников не работают."""
+    await vc.set_permissions(member, overwrite=discord.PermissionOverwrite(**OWNER_OVERWRITE), reason="Владелец временной комнаты")
+
+
+async def _revoke_owner(vc, member) -> None:
+    """Снимает права владельца со старого владельца при передаче."""
+    if member is None:
+        return
+    await vc.set_permissions(member, overwrite=None, reason="Владелец комнаты передан")
+
+
 def _is_trigger(vc) -> bool:
     return vc.id == config.VC_TRIGGER_CHANNEL
 
@@ -364,6 +386,10 @@ class TempVoiceCog(commands.Cog):
                     humans = [m for m in ch.members if not m.bot]
                     if humans:
                         temp_channel_owners[ch.id] = humans[0].id
+                        try:
+                            await _grant_owner(ch, humans[0])
+                        except Exception as e:
+                            log.error("Не удалось вернуть права владельцу %s: %s", ch.id, e)
                         log.info("Владелец восстановлен для %s → %s", ch.name, humans[0].display_name)
             trigger = guild.get_channel(config.VC_TRIGGER_CHANNEL)
             if trigger and any(not m.bot for m in trigger.members):
@@ -373,9 +399,14 @@ class TempVoiceCog(commands.Cog):
     async def _create_temp_channel(self, member: discord.Member, trigger_channel):
         category = member.guild.get_channel(config.VC_CATEGORY)
         try:
+            # Discord не наследует права категории сам: без явных overwrites канал открыт всем.
+            # Владелец получает свои права сразу при создании, иначе его не переместят в канал.
+            overwrites = dict(category.overwrites) if category else {}
+            overwrites[member] = discord.PermissionOverwrite(**OWNER_OVERWRITE)
             vc = await member.guild.create_voice_channel(
                 name=member.display_name,
                 category=category,
+                overwrites=overwrites,
                 reason="Временный канал",
             )
             temp_channel_owners[vc.id] = member.id
@@ -418,6 +449,11 @@ class TempVoiceCog(commands.Cog):
                 elif temp_channel_owners.get(vc.id) == member.id:
                     new_owner = remaining[0]
                     temp_channel_owners[vc.id] = new_owner.id
+                    try:
+                        await _revoke_owner(vc, member)
+                        await _grant_owner(vc, new_owner)
+                    except Exception as e:
+                        log.error("Не удалось передать права владельца в %s: %s", vc.id, e)
                     embed = discord.Embed(
                         title="👑 Права переданы",
                         description=f"Новый владелец: **{new_owner.display_name}**",
@@ -504,8 +540,11 @@ class TempVoiceCog(commands.Cog):
                     return {"ok": False, "channel_id": channel_id, "error": "member_not_found"}
                 if member not in ch.members:
                     return {"ok": False, "channel_id": channel_id, "error": "member_not_in_channel"}
+                previous_id = temp_channel_owners.get(channel_id)
                 temp_channel_owners[channel_id] = owner_id
-                await ch.set_permissions(member, manage_channels=True, manage_roles=True)
+                if previous_id and previous_id != owner_id:
+                    await _revoke_owner(ch, guild.get_member(previous_id))
+                await _grant_owner(ch, member)
                 return {"ok": True, "channel_id": channel_id, "owner_id": owner_id}
         return {"ok": False, "channel_id": channel_id, "error": "channel_not_found"}
 

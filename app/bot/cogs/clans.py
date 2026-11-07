@@ -521,6 +521,20 @@ class ClansCog(commands.Cog):
         if not isinstance(hq, discord.TextChannel):
             raise RuntimeError(f"Штаб клана [{clan['tag']}] не найден.")
         await hq.edit(overwrites=self._clan_hq_overwrites(guild, clan["roleIds"]), reason=f"WARDOGS headquarters permissions: {clan['name']}")
+        # Голосовые каналы клана: старые создавались без прав категории, поэтому выравниваем их с ней.
+        for key in ("voice", "creator"):
+            voice_id = clan["channelIds"].get(key)
+            if not voice_id:
+                continue
+            try:
+                voice = await guild.fetch_channel(int(voice_id))
+            except Exception:
+                voice = None
+            if isinstance(voice, discord.VoiceChannel):
+                await voice.edit(
+                    overwrites=self._clan_category_overwrites(guild, clan["roleIds"]),
+                    reason=f"WARDOGS clan voice permissions: {clan['name']}",
+                )
         panel = None
         if clan.get("controlMessageId"):
             try:
@@ -909,9 +923,9 @@ class ClansCog(commands.Cog):
                 overwrites=self._clan_hq_overwrites(guild, roles),
             )
             created_objects.append(hq)
-            voice = await guild.create_voice_channel("🔊・Общий штаб", category=category)
+            voice = await guild.create_voice_channel("🔊・Общий штаб", category=category, overwrites=category_overwrites)
             created_objects.append(voice)
-            creator = await guild.create_voice_channel("➕・Создать комнату", category=category, user_limit=1)
+            creator = await guild.create_voice_channel("➕・Создать комнату", category=category, user_limit=1, overwrites=category_overwrites)
             created_objects.append(creator)
             await member.add_roles(discord.Object(id=roles["leader"]), reason=f"Clan {app['name']} approved")
             leader_role_added = True
