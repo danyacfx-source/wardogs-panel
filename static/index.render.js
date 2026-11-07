@@ -577,7 +577,7 @@ return function render(_ctx, _cache) {
                               ? (_openBlock(), _createElementBlock("p", _hoisted_121, _toDisplayString(seedShop.buyResult), 1))
                               : _createCommentVNode("", true)
                           ], 64))
-                        : (_openBlock(), _createElementBlock("p", _hoisted_122, _toDisplayString(seedShop.data?.error || 'Нет данных. Привяжите Discord и Steam кнопкой в канале правил Discord.'), 1))])
+                        : (_openBlock(), _createElementBlock("p", _hoisted_122, _toDisplayString(seedShop.data?.error || 'Нет данных. Привяжите Discord и Steam кнопкой в канале привязки Discord.'), 1))])
                 ]))
               : _createCommentVNode("", true),
             _createElementVNode("footer", _hoisted_123, [_createElementVNode("button", {

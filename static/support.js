@@ -41,7 +41,7 @@
         return;
       }
       note.textContent =
-        'Введите SteamID64, на который оформляется VIP. Он должен быть привязан к вашему Discord кнопкой «Привязать Steam» в канале правил.';
+        'Введите SteamID64, на который оформляется VIP. Он должен быть привязан к вашему Discord кнопкой «Привязать Steam» в канале привязки.';
       submit.hidden = false;
       steamInput.value = '';
       setMessage('', false);

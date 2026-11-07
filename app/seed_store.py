@@ -188,7 +188,7 @@ def purchase_vip(discord_id: str, sku: str, cost: int, duration: int) -> dict:
     try:
         row = c.execute("SELECT id, balance FROM seed_users WHERE discord_id = ?", (discord_id,)).fetchone()
         if not row:
-            return {"ok": False, "error": "Привязка Discord↔Steam не найдена. Привяжите Steam кнопкой «Привязать Steam» в канале правил Discord."}
+            return {"ok": False, "error": "Привязка Discord↔Steam не найдена. Привяжите Steam кнопкой «Привязать Steam» в канале привязки Discord."}
         if row["balance"] < cost:
             return {"ok": False, "error": f"Недостаточно баллов: нужно {cost}, доступно {row['balance']}."}
         new_balance = row["balance"] - cost

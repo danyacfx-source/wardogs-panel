@@ -149,7 +149,7 @@ class SteamLinkModal(discord.ui.Modal):
 
 
 class SeedLinkPanelView(discord.ui.View):
-    """Постоянная панель в канале правил: привязка Steam и выдача роли сидера."""
+    """Постоянная панель в канале привязки: привязка Steam и выдача роли сидера."""
 
     def __init__(self):
         super().__init__(timeout=None)
@@ -808,7 +808,7 @@ class SeedingCog(commands.Cog):
             )
         embed.add_field(
             name="ℹ️ Как купить",
-            value="1. Привяжите Steam кнопкой «Привязать Steam» в канале правил. Накопленные за игру баллы станут доступны; проверьте общий баланс через `/steam status`.\n"
+            value="1. Привяжите Steam кнопкой «Привязать Steam» в канале привязки. Накопленные за игру баллы станут доступны; проверьте общий баланс через `/steam status`.\n"
                   "2. Нажмите кнопку нужного тарифа ниже.\n"
                   "3. Бот выдаст VIP-роль и синхронизирует Reserved slot на всех трёх серверах.\n\n"
                   "Срок VIP начинается только после появления SteamID в live reserved slots всех трёх серверов. Покупка и ответ бота видны только вам.",
@@ -2485,7 +2485,7 @@ class SeedingCog(commands.Cog):
                 f"✅ Привязка подтверждена!\n"
                 f"**Steam:** {user['steam_id']}\n"
                 f"**Баланс:** {user.get('balance', 0)} баллов{vip_line}\n"
-                f"Роль сидера — кнопкой «Взять роль сидер» в канале правил.\n"
+                f"Роль сидера — кнопкой «Взять роль сидер» в канале привязки.\n"
                 f"Зарабатывайте баллы: будьте на игровом сервере WARDOGS.",
                 ephemeral=True,
             )
@@ -2531,7 +2531,7 @@ class SeedingCog(commands.Cog):
         user = seed_get_user_by_discord(str(interaction.user.id))
         if not user:
             await interaction.followup.send(
-                "Привязка не найдена. Нажмите «Привязать Steam» в канале правил.",
+                "Привязка не найдена. Нажмите «Привязать Steam» в канале привязки.",
                 ephemeral=True,
             )
             return
@@ -2646,7 +2646,7 @@ class SeedingCog(commands.Cog):
         cost = getattr(config, product["cost_attr"])
         user = seed_get_user_by_discord(str(interaction.user.id))
         if not user:
-            await interaction.followup.send("Сначала привяжите Steam кнопкой «Привязать Steam» в канале правил.", ephemeral=True)
+            await interaction.followup.send("Сначала привяжите Steam кнопкой «Привязать Steam» в канале привязки.", ephemeral=True)
             return
         if ReservedProtectionService.is_protected(user["id"], user["steam_id"]):
             await interaction.followup.send(
@@ -2716,7 +2716,7 @@ class SeedingCog(commands.Cog):
             description=(
                 "1. Зайдите на игровой сервер WARDOGS.\n"
                 "2. Бот начисляет баллы автоматически (каждые 4 мин в первый час, далее каждые 3).\n"
-                "3. Привяжите Steam кнопкой «Привязать Steam» в канале правил и нажмите «Взять роль сидер».\n"
+                "3. Привяжите Steam кнопкой «Привязать Steam» в канале привязки и нажмите «Взять роль сидер».\n"
                 "4. Копите баллы и покупайте VIP: `/seed shop` → `/seed buy`.\n"
                 "5. Топ-3 недели получают роль Super Seeder + бесплатный Reserved slot."
             ),
@@ -2727,7 +2727,7 @@ class SeedingCog(commands.Cog):
         )
         embed.add_field(
             name="Оплаченный VIP",
-            value="С панели panel.dendich.online — та же единая привязка кнопкой «Привязать Steam» в канале правил.",
+            value="С панели panel.dendich.online — та же единая привязка кнопкой «Привязать Steam» в канале привязки.",
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -2735,7 +2735,7 @@ class SeedingCog(commands.Cog):
 
     vip_link_group = app_commands.Group(
         name="vip-link",
-        description="Steam-привязка только для оплаченного VIP (единая привязка — кнопка в канале правил)",
+        description="Steam-привязка только для оплаченного VIP (единая привязка — кнопка в канале привязки)",
     )
 
     @vip_link_group.command(name="status", description="Проверить VIP-привязку")
@@ -2751,7 +2751,7 @@ class SeedingCog(commands.Cog):
                     ephemeral=True,
                 )
                 return
-            await interaction.followup.send("Отдельной VIP-привязки нет. Используйте кнопку «Привязать Steam» в канале правил (единая привязка).", ephemeral=True)
+            await interaction.followup.send("Отдельной VIP-привязки нет. Используйте кнопку «Привязать Steam» в канале привязки (единая привязка).", ephemeral=True)
             return
         until = self.donations.until(str(interaction.user.id))
         status = f"до <t:{int(until / 1000)}:f>" if until and until > _now_ms() else "нет активного оплаченного VIP"
@@ -3418,7 +3418,7 @@ class SeedingCog(commands.Cog):
             hint = ", ".join(no_binding[:15])
             more = f" и ещё {len(no_binding) - 15}" if len(no_binding) > 15 else ""
             lines.append(
-                f"\n**Нужно привязать Steam** (роль останется незащищённой — попросите привязать Steam кнопкой в канале правил):\n{hint}{more}"
+                f"\n**Нужно привязать Steam** (роль останется незащищённой — попросите привязать Steam кнопкой в канале привязки):\n{hint}{more}"
             )
         if rcon_errors:
             lines.append("\n**Ошибки RCON:**\n" + "\n".join(f"• {e}" for e in rcon_errors[:10]))

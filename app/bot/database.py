@@ -2300,7 +2300,7 @@ def seed_purchase_vip(discord_id: str, sku: str, cost: int, duration_seconds: in
         return order
     user = seed_get_user_by_discord(discord_id)
     if not user:
-        raise SeedDomainError("not_linked", "Сначала привяжите Steam кнопкой «Привязать Steam» в канале правил.")
+        raise SeedDomainError("not_linked", "Сначала привяжите Steam кнопкой «Привязать Steam» в канале привязки.")
     with _write_tx(conn):
         # Повторный запрос с тем же ключом (параллельный двойной клик) уже записан в
         # seed_vip_orders под этим же ключом — проверяем внутри транзакции.
