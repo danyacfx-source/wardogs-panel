@@ -45,11 +45,30 @@ def test_staff_unlink_by_steam_frees_steam_and_keeps_points(bot_database):
     result = seed_store.unlink_by_steam("76561190000000001", "76561190000000099")
     assert result["ok"] is True
     assert bot_database.seed_get_user_by_steam("76561190000000001") is None
-    # Баллы остаются на старой строке, новый аккаунт начинается с нуля.
-    tombstone = bot_database.get_conn().execute(
-        "SELECT balance FROM seed_users WHERE discord_id LIKE 'unlinked:%'"
+    # Баллы остаются на той же записи без привязки, SteamID сохраняется.
+    record = bot_database.get_conn().execute(
+        "SELECT steam_id, balance, linked FROM seed_users WHERE steam_id = ?", ("76561190000000001",)
     ).fetchone()
-    assert tombstone["balance"] == 40
+    assert record["balance"] == 40
+    assert record["linked"] == 0
     # Повторная отвязка уже ничего не находит.
     again = seed_store.unlink_by_steam("76561190000000001", "76561190000000099")
     assert again["ok"] is False
+
+
+def test_relink_after_unlink_restores_current_balance(bot_database):
+    steam = "76561190000000001"
+    bot_database.seed_link_steam_direct("111", steam, "Player")
+    bot_database.seed_grant_bonus(steam, 40, "server_start_bonus", "k-before")
+    bot_database.seed_unlink_discord("111")
+    # После отвязки игра продолжает копить баллы на ту же запись.
+    t0 = 1_000_000_000_000
+    bot_database.seed_apply_passive_tick([steam], t0, 7_200, 10_000)
+    bot_database.seed_apply_passive_tick([steam], t0 + 3_600_000, 7_200, 10_000)
+    user = bot_database.seed_link_steam_direct("111", steam, "Player")
+    assert user["balance"] == 50
+    assert bot_database.seed_get_user_by_discord("111")["balance"] == 50
+    rows = bot_database.get_conn().execute(
+        "SELECT COUNT(*) AS c FROM seed_users WHERE steam_id = ?", (steam,)
+    ).fetchone()
+    assert rows["c"] == 1

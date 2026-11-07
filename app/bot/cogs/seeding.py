@@ -46,7 +46,9 @@ from database import (
     seed_get_state,
     seed_get_user_by_discord,
     seed_get_user_by_id,
+    seed_ensure_pending,
     seed_get_user_by_steam,
+    seed_purge_stale_pending,
     seed_get_vip_identity_by_discord,
     seed_get_vip_identity_by_id,
     seed_get_vip_membership,
@@ -983,16 +985,20 @@ class SeedingCog(commands.Cog):
         steam_by_discord: dict[str, str] = {}
         for server in active_servers:
             for player in server["players"]:
-                user = seed_get_user_by_steam(player["steam_id"])
+                user = seed_get_user_by_steam(player["steam_id"]) or seed_ensure_pending(player["steam_id"])
                 if not user:
                     continue
+                linked = bool(user.get("linked"))
                 eligible[user["discord_id"]] = {
                     "discord_id": user["discord_id"],
-                    "display_name": user["display_name"],
+                    "display_name": user["display_name"] if linked else player["name"],
                 }
+                steam_by_discord[user["discord_id"]] = player["steam_id"]
+                if not linked:
+                    # Баллы копятся до привязки, но в публичной карточке и итоге сбора игрок не показывается.
+                    continue
                 seeder_names_by_server.setdefault(server["id"], []).append(player["name"])
                 seeders_by_server.setdefault(server["id"], []).append((player["steam_id"], player["name"]))
-                steam_by_discord[user["discord_id"]] = player["steam_id"]
 
         awards = seed_apply_seeding_tick(
             list(eligible.values()),
@@ -1013,6 +1019,12 @@ class SeedingCog(commands.Cog):
         )
         if passive_credited:
             log.info("passive_points_credited users=%d", passive_credited)
+        # Записи без привязки старше срока хранения удаляем не чаще раза в час.
+        if now - getattr(self, "_pending_purged_at", 0) > 3_600_000:
+            self._pending_purged_at = now
+            purged = seed_purge_stale_pending(now)
+            if purged:
+                log.info("seed_pending_purged records=%d", purged)
         active_count = len(active_servers)
         state = "closed" if not in_window else (
             "active"

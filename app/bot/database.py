@@ -1550,11 +1550,76 @@ def seed_get_user_by_id(user_id: str) -> dict | None:
     return dict(row) if row else None
 
 
-def seed_list_users() -> list[dict]:
+PENDING_PREFIX = "pending:"
+
+
+def _pending_key(steam_id: str) -> str:
+    """Discord-ключ для записи игрока без привязки: копит баллы по SteamID до привязки."""
+    return f"{PENDING_PREFIX}{steam_id}"
+
+
+def _insert_pending(conn, steam_id: str, now: int) -> str | None:
+    """Возвращает id записи без привязки; None, если SteamID уже занят другой записью (архив, отвязка)."""
+    row = conn.execute("SELECT id FROM seed_users WHERE discord_id = ?", (_pending_key(steam_id),)).fetchone()
+    if row:
+        return row["id"]
+    if conn.execute("SELECT id FROM seed_users WHERE steam_id = ?", (steam_id,)).fetchone():
+        return None
+    import uuid as _uuid
+    user_id = _uuid.uuid4().hex
+    conn.execute(
+        """
+        INSERT INTO seed_users (id, discord_id, steam_id, display_name, balance, total_seconds, lifetime_points, linked, created_at, updated_at)
+        VALUES (?, ?, ?, 'Игрок', 0, 0, 0, 0, ?, ?)
+        """,
+        (user_id, _pending_key(steam_id), steam_id, now, now),
+    )
+    return user_id
+
+
+def seed_ensure_pending(steam_id: str) -> dict | None:
+    """Запись без привязки для игрока, которого ещё нет в seed_users. Баллы копятся, пока он не привяжет Discord."""
     conn = get_conn()
-    return [dict(r) for r in conn.execute(
-        "SELECT * FROM seed_users WHERE linked = 1 ORDER BY created_at"
-    ).fetchall()]
+    now = _now_ms()
+    with _write_tx(conn):
+        user_id = _insert_pending(conn, str(steam_id), now)
+    if not user_id:
+        return None
+    return seed_get_user_by_id(user_id)
+
+
+PENDING_RETENTION_DAYS = 30
+
+
+def seed_purge_stale_pending(now_ms: int, retention_days: int = PENDING_RETENTION_DAYS) -> int:
+    """Удаляет записи без привязки, по которым нет активности дольше срока хранения (вместе с историей баллов)."""
+    conn = get_conn()
+    cutoff = now_ms - retention_days * 86_400_000
+    with _write_tx(conn):
+        ids = [
+            r["id"] for r in conn.execute(
+                "SELECT id FROM seed_users WHERE linked = 0 AND discord_id LIKE ? AND updated_at < ?",
+                (f"{PENDING_PREFIX}%", cutoff),
+            ).fetchall()
+        ]
+        for user_id in ids:
+            for table in ("seed_weekly_stats", "seed_active_sessions", "seed_passive_sessions", "seed_point_ledger"):
+                conn.execute(f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM seed_users WHERE id = ?", (user_id,))
+    return len(ids)
+
+
+def seed_list_users(include_pending: bool = False) -> list[dict]:
+    """Привязанные игроки. include_pending=True добавляет записи без привязки (только для начисления баллов)."""
+    conn = get_conn()
+    if include_pending:
+        rows = conn.execute(
+            "SELECT * FROM seed_users WHERE linked = 1 OR (linked = 0 AND discord_id LIKE ?) ORDER BY created_at",
+            (f"{PENDING_PREFIX}%",),
+        ).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM seed_users WHERE linked = 1 ORDER BY created_at").fetchall()
+    return [dict(r) for r in rows]
 
 
 def seed_get_donor_by_discord(discord_id: str) -> dict | None:
@@ -1652,9 +1717,13 @@ def _finalize_link(conn, discord_id: str, steam_id: str, display_name: str, purp
         for r in conn.execute("SELECT * FROM seed_users WHERE linked = 0").fetchall()
         if r["discord_id"] == discord_id and r["steam_id"] == steam_id
     ]
+    # Запись без привязки (баллы до привязки) не считается архивом: её забирает сама привязка.
+    pending = conn.execute(
+        "SELECT * FROM seed_users WHERE linked = 0 AND discord_id = ?", (_pending_key(steam_id),)
+    ).fetchone()
     partial = conn.execute(
-        "SELECT id FROM seed_users WHERE linked = 0 AND (discord_id = ? OR steam_id = ?)",
-        (discord_id, steam_id),
+        "SELECT id FROM seed_users WHERE linked = 0 AND (discord_id = ? OR steam_id = ?) AND discord_id <> ?",
+        (discord_id, steam_id, _pending_key(steam_id)),
     ).fetchone()
     if len(archived) > 1 or (not archived and partial):
         raise SeedDomainError(
@@ -1688,8 +1757,9 @@ def _finalize_link(conn, discord_id: str, steam_id: str, display_name: str, purp
             conn.execute("DELETE FROM seed_donor_links WHERE id = ?", (donor_discord["id"],))
             seed_audit("donation_identity_promoted", discord_id, {"donor_id": donor_discord["id"]})
 
-        if archived:
-            user = archived[0]
+        source = archived[0] if archived else (dict(pending) if pending else None)
+        if source:
+            user = source
             try:
                 conn.execute(
                     "UPDATE seed_users SET discord_id = ?, steam_id = ?, display_name = ?, linked = 1, updated_at = ? WHERE id = ?",
@@ -1697,7 +1767,7 @@ def _finalize_link(conn, discord_id: str, steam_id: str, display_name: str, purp
                 )
             except sqlite3.IntegrityError as exc:
                 raise SeedDomainError("identity_taken", "Discord или Steam уже привязан. Обратитесь к администратору.") from exc
-            seed_audit("identity_relinked", discord_id, {"user_id": user["id"]})
+            seed_audit("identity_relinked" if archived else "identity_claimed_pending", discord_id, {"user_id": user["id"]})
             user_id = user["id"]
             balance = user["balance"]
             total_seconds = user["total_seconds"]
@@ -1765,10 +1835,11 @@ def seed_unlink_discord(discord_id: str, actor_id: str | None = None, reason: st
                 "paid_vip_active",
                 "Нельзя отменить привязку, пока оплаченный VIP действует или reserved slot ожидает снятия.",
             )
-        tombstone = _uuid.uuid4().hex
+        # Запись не архивируется, а становится записью без привязки: баллы и SteamID сохраняются,
+        # игра продолжает их копить, повторная привязка того же SteamID возвращает баланс.
         cur = conn.execute(
-            "UPDATE seed_users SET discord_id = ?, steam_id = ?, linked = 0, updated_at = ? WHERE id = ? AND linked = 1",
-            (f"unlinked:{user['id']}:{tombstone}", f"unlinked:{tombstone}:{user['id']}", now, user["id"]),
+            "UPDATE seed_users SET discord_id = ?, linked = 0, updated_at = ? WHERE id = ? AND linked = 1",
+            (_pending_key(user["steam_id"]), now, user["id"]),
         )
         if cur.rowcount != 1:
             # Параллельная отвязка уже выполнена: второй аудит-записи быть не должно.
@@ -1814,7 +1885,7 @@ def seed_apply_seeding_tick(eligible: list[dict], now_ms: int, week_key: str, gr
     awards: list[dict] = []
     # Весь тик в одной транзакции; снимок пользователей и сессий читается внутри неё.
     with _write_tx(conn):
-        users = seed_list_users()
+        users = seed_list_users(include_pending=True)
         for user in users:
             member = eligible_map.get(user["discord_id"])
             sess_row = conn.execute(
@@ -1909,11 +1980,15 @@ def seed_apply_passive_tick(steam_ids: list, now_ms: int, grace_seconds: int, ma
     with _write_tx(conn):
         for steam_id in steam_ids:
             user = conn.execute(
-                "SELECT id FROM seed_users WHERE steam_id = ? AND linked = 1", (str(steam_id),)
+                "SELECT id FROM seed_users WHERE steam_id = ? AND (linked = 1 OR discord_id = ?)",
+                (str(steam_id), _pending_key(str(steam_id))),
             ).fetchone()
-            if not user:
-                continue
-            user_id = user["id"]
+            if user:
+                user_id = user["id"]
+            else:
+                user_id = _insert_pending(conn, str(steam_id), now_ms)
+                if not user_id:
+                    continue
             row = conn.execute(
                 "SELECT continuous_seconds, last_seen_at FROM seed_passive_sessions WHERE user_id = ?", (user_id,)
             ).fetchone()
@@ -1960,7 +2035,7 @@ def seed_grant_bonus(steam_id: str, points: int, reason: str, key: str) -> bool:
         return False
     conn = get_conn()
     now = _now_ms()
-    user = seed_get_user_by_steam(steam_id)
+    user = seed_get_user_by_steam(steam_id) or seed_ensure_pending(str(steam_id))
     if not user:
         return False
     ref = f"bonus:{key}"

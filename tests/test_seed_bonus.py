@@ -41,8 +41,9 @@ def test_grant_bonus_once_per_key(bot_database):
     assert bot_database.seed_get_user_by_discord("111")["balance"] == 40
 
 
-def test_grant_bonus_skips_unlinked_steam(bot_database):
-    assert bot_database.seed_grant_bonus("76561190000000009", 40, "server_start_bonus", "k2") is False
+def test_grant_bonus_for_unlinked_steam_goes_to_pending_record(bot_database):
+    assert bot_database.seed_grant_bonus("76561190000000009", 40, "server_start_bonus", "k2") is True
+    assert bot_database.seed_list_users() == []
 
 
 def test_passive_rates_are_10_then_15_per_hour():
