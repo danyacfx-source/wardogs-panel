@@ -28,6 +28,13 @@ import seed_rates
 from seed_card import CardData, render_server_card
 from rules_panel import BANNER as RULES_BANNER, SOURCES as RULES_SOURCES, load_parts as load_rules_parts
 from start_card import StartCardData, render_start_card
+from connect_card import (
+    ASSET_DIR as CONNECT_ASSET_DIR,
+    CONNECT_SERVERS,
+    build_connect_embed,
+    connect_description,
+    connect_digest,
+)
 from steam_ids import extract_steam_id
 from database import (
     seed_apply_passive_tick,
@@ -636,6 +643,8 @@ class SeedingCog(commands.Cog):
             self.backup_loop.start()
         if not self.card_loop.is_running():
             self.card_loop.start()
+        if not self.connect_loop.is_running():
+            self.connect_loop.start()
 
     async def cog_load(self):
         self.rcon = self._make_rcon(config.SEED_RCON_URL, config.SEED_RCON_PASSWORD, "main")
@@ -838,6 +847,7 @@ class SeedingCog(commands.Cog):
             self.gather_loop,
             self.backup_loop,
             self.card_loop,
+            self.connect_loop,
         ):
             if loop.is_running():
                 loop.cancel()
@@ -1822,6 +1832,68 @@ class SeedingCog(commands.Cog):
     async def _before_card_loop(self):
         await self.bot.wait_until_ready()
         await asyncio.sleep(40)
+
+    @tasks.loop(minutes=10)
+    async def connect_loop(self):
+        try:
+            await self._connect_refresh()
+        except Exception as e:
+            log.exception("connect_card_refresh_failed: %s", e)
+
+    @connect_loop.before_loop
+    async def _before_connect_loop(self):
+        await self.bot.wait_until_ready()
+        await asyncio.sleep(45)
+
+    async def _connect_refresh(self):
+        """Публикует «Как подключиться» по карточке на сервер и обновляет их при смене логотипа или текста."""
+        if not config.SEED_CONNECT_CHANNEL_ID:
+            return
+        guild = self.bot.get_guild(config.GUILD_ID)
+        if not guild:
+            return
+        channel = guild.get_channel(config.SEED_CONNECT_CHANNEL_ID)
+        if not isinstance(channel, discord.TextChannel):
+            try:
+                channel = await guild.fetch_channel(config.SEED_CONNECT_CHANNEL_ID)
+            except Exception:
+                return
+        if not isinstance(channel, discord.TextChannel):
+            return
+        for server in CONNECT_SERVERS:
+            public_id = self._server_public_id(server.key)
+            if not public_id or public_id == "—":
+                continue
+            logo = (CONNECT_ASSET_DIR / server.logo).read_bytes()
+            description = connect_description(server.label, public_id)
+            digest = connect_digest(logo, description)
+            state_key = f"seed_connect_message_{server.key}"
+            hash_key = f"seed_connect_hash_{server.key}"
+            if seed_get_state(hash_key, "") == digest and seed_get_state(state_key, ""):
+                continue
+            # Ошибка отправки не сохраняет отпечаток: на следующем проходе попробуем снова.
+            await self._upsert_connect(channel, state_key, server, description, logo)
+            seed_set_state(hash_key, digest)
+
+    async def _upsert_connect(self, channel: discord.TextChannel, state_key: str, server, description: str, logo: bytes):
+        filename = f"server_logo_{server.key}.webp"
+        embed = build_connect_embed(server, description, filename)
+        prior = seed_get_state(state_key, "")
+        if prior:
+            try:
+                msg = await channel.fetch_message(int(prior))
+            except discord.NotFound:
+                msg = None
+            if msg is not None:
+                await msg.edit(embed=embed, attachments=[discord.File(io.BytesIO(logo), filename=filename)])
+                return
+        msg = await channel.send(
+            embed=embed,
+            file=discord.File(io.BytesIO(logo), filename=filename),
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+        seed_set_state(state_key, str(msg.id))
+        seed_audit("seed_connect_message_created", "", {"server": server.key, "message_id": str(msg.id)})
 
     async def _card_refresh(self):
         if not config.SEED_CARD_CHANNEL_ID:
